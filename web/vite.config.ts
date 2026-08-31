@@ -7,7 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': resolve(__dirname, '../src/shared'),
-      '@renderer': resolve(__dirname, '../src/renderer/src')
+      '@renderer': resolve(__dirname, '../src/renderer/src'),
+      // The renderer lives outside this folder, so its bare imports must be
+      // pinned to this project's node_modules for the Vercel build.
+      react: resolve(__dirname, 'node_modules/react'),
+      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
+      qrcode: resolve(__dirname, 'node_modules/qrcode')
     }
   },
   server: {
