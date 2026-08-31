@@ -25,7 +25,8 @@ export default defineConfig({
         app: resolve(__dirname, 'app.html'),
         event: resolve(__dirname, 'event.html'),
         host: resolve(__dirname, 'host.html'),
-        legal: resolve(__dirname, 'legal.html')
+        legal: resolve(__dirname, 'legal.html'),
+        replay: resolve(__dirname, 'replay.html')
       }
     }
   }

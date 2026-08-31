@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitka — Replay</title>
+<style>
+:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a;--shadow:rgba(20,20,22,.10)}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.45)}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px 80px}
+header{display:flex;align-items:center;justify-content:space-between;height:58px;border-bottom:1px solid var(--border);margin-bottom:26px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:750;font-size:15px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--text)}
+.htag{font-size:10px;font-weight:800;letter-spacing:.09em;color:var(--t3);border:1px solid var(--border);border-radius:6px;padding:2px 8px}
+h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
+.meta{color:var(--t3);font-size:13.5px;margin-bottom:18px}
+.player{border-radius:16px;overflow:hidden;background:#000;box-shadow:0 12px 34px var(--shadow);margin-bottom:22px}
+.player video{width:100%;display:block;max-height:60vh}
+.summary{color:var(--t2);font-size:15px;margin-bottom:22px}
+.sec{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:26px 0 10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.hchip{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border:1px solid var(--border);border-radius:20px;background:var(--soft);color:var(--text);font-size:13px;font-weight:550;cursor:pointer;transition:border-color .15s ease}
+.hchip:hover{border-color:var(--text)}
+.hchip .tt{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3)}
+.search{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--soft);color:var(--text);font-size:14px;margin-bottom:14px}
+.search:focus{outline:none;border-color:var(--text)}
+.seg{display:flex;gap:12px;padding:6px 10px;border-radius:9px;cursor:pointer}
+.seg:hover{background:var(--soft)}
+.seg.now{background:var(--softer)}
+.ts{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3);padding-top:4px;min-width:44px;text-align:right;flex-shrink:0}
+.segtext{color:var(--t2)}
+.center{padding:16vh 20px;text-align:center}
+.center h1{margin-bottom:8px}
+.center p{color:var(--t2)}
+footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13.5px;color:var(--t3)}
+.cta{display:inline-flex;align-items:center;padding:9px 18px;border-radius:11px;background:var(--text);color:var(--bg);font-size:13.5px;font-weight:650}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/"><span class="dot"></span>Sitka</a>
+    <span class="htag">REPLAY</span>
+  </header>
+  <div id="loading" class="center"><p>Loading the replay…</p></div>
+  <div id="notfound" class="center" style="display:none">
+    <h1>Replay not available</h1>
+    <p>The host hasn't published this event's replay, or the link is wrong.</p>
+  </div>
+  <div id="main" style="display:none">
+    <h1 id="rtitle"></h1>
+    <div class="meta" id="rmeta"></div>
+    <div class="player"><video id="rvideo" controls playsinline preload="metadata"></video></div>
+    <div class="summary" id="rsummary"></div>
+    <div class="sec" id="momtitle" style="display:none">Key moments — tap to jump</div>
+    <div class="chips" id="rchips"></div>
+    <div class="sec">Transcript — tap any line to jump</div>
+    <input class="search" id="rsearch" placeholder="Search the transcript…">
+    <div id="rsegs"></div>
+    <footer>
+      <span>This event was captured and made searchable by Sitka.</span>
+      <a class="cta" href="/">Host yours with Sitka</a>
+    </footer>
+  </div>
+</div>
+<script type="module" src="/src/replay.ts"></script>
+</body>
+</html>

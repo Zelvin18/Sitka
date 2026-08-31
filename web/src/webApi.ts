@@ -1338,6 +1338,48 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       return { running: false }
     },
+    publishReplay: async (sessionId: string, enable: boolean) => {
+      const d = await loadSession(sessionId)
+      if (!d) return { error: 'Session not found.' }
+      const evId = d.meta.eventId
+      if (!evId) return { error: 'Only sessions hosted as events can be published as replays.' }
+      if (!enable) {
+        await sb
+          .from('events')
+          .update({
+            replay: { enabled: false },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', evId)
+        return { enabled: false }
+      }
+      const video = await api.readVideo(sessionId, 'video')
+      if (!video || video.byteLength < 5000) {
+        return { error: 'No recording found for this session.' }
+      }
+      const { error } = await sb.storage
+        .from('replays')
+        .upload(`${evId}.webm`, new Blob([video], { type: 'video/webm' }), {
+          upsert: true,
+          contentType: 'video/webm'
+        })
+      if (error) return { error: 'Upload failed: ' + error.message }
+      await sb
+        .from('events')
+        .update({
+          replay: {
+            enabled: true,
+            title: d.meta.title,
+            summary: d.meta.summary ?? '',
+            highlights: d.meta.highlights ?? [],
+            durationMs: d.meta.durationMs,
+            publishedAt: Date.now()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', evId)
+      return { enabled: true, url: `${location.origin}/r/${evId}` }
+    },
     launchPoll: async (question: string, options: string[]) => {
       if (!conf) return { error: 'Go live first.' }
       const cleanOpts = options.map((o) => o.trim()).filter(Boolean).slice(0, 6)

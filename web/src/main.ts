@@ -19,6 +19,7 @@ interface EventRow {
   pre_event_chat: boolean
   materials_present: boolean
   live_voice: { enabled: boolean; languages: string[] }
+  replay?: { enabled?: boolean } | null
 }
 interface SegRow {
   idx: number
@@ -948,6 +949,9 @@ const myChat: { role: string; content: string }[] = []
       p = { summary: answer }
     }
     let h = ''
+    if (ev?.replay?.enabled) {
+      h += `<a class="btn btn2" style="margin:0 0 4px;text-decoration:none" href="/r/${eventId}">Watch the full replay</a>`
+    }
     if (moments.length > 0) {
       h += `<div class="tkcard"><h2>My saved moments</h2>${moments
         .map(

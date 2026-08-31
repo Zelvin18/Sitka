@@ -55,6 +55,7 @@ export function installBrowserMockIfNeeded(): void {
     pushStageFrame: async () => undefined,
     launchPoll: async () => ({ error: 'unavailable in browser preview' }),
     closePoll: async () => undefined,
+    publishReplay: async () => ({ error: 'unavailable in browser preview' }),
     conferenceStatus: async () => ({ running: false }),
     onConferenceUpdate: () => () => undefined,
     listCoachProjects: async () => [],

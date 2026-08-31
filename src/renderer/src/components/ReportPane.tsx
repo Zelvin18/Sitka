@@ -17,6 +17,20 @@ export default function ReportPane({
 }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [replayBusy, setReplayBusy] = useState(false)
+  const [replayUrl, setReplayUrl] = useState<string | null>(null)
+  const [replayErr, setReplayErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const setReplay = (enable: boolean): void => {
+    setReplayBusy(true)
+    setReplayErr(null)
+    void window.sitka.publishReplay(sessionId, enable).then((res) => {
+      setReplayBusy(false)
+      if (res.error) setReplayErr(res.error)
+      else setReplayUrl(enable && res.url ? res.url : null)
+    })
+  }
 
   if (!report) {
     return (
@@ -70,6 +84,57 @@ export default function ReportPane({
         <span>
           <strong>{report.aiAsks}</strong> private AI ask{report.aiAsks === 1 ? '' : 's'}
         </span>
+      </div>
+
+      <div className="replay-card">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 650, marginBottom: 2 }}>Public replay</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            {replayUrl
+              ? 'Live — anyone with the link can watch the recording with the clickable transcript.'
+              : 'Publish this event as a shareable page: the recording, transcript and key moments, one link for everyone.'}
+          </div>
+          {replayUrl && (
+            <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 6, wordBreak: 'break-all' }}>
+              {replayUrl}
+            </div>
+          )}
+          {replayErr && (
+            <div style={{ fontSize: 13, color: 'var(--danger)', marginTop: 6 }}>{replayErr}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          {replayUrl ? (
+            <>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(replayUrl)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1800)
+                }}
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={replayBusy}
+                onClick={() => setReplay(false)}
+              >
+                Unpublish
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={replayBusy}
+              onClick={() => setReplay(true)}
+            >
+              <IconBroadcast size={13} />
+              {replayBusy ? 'Publishing…' : 'Publish replay'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div

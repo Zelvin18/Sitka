@@ -640,6 +640,56 @@ export async function cloudLaunchPoll(
   }
 }
 
+/** Publish (or unpublish) a hosted session's recording as a public replay page. */
+export async function cloudPublishReplay(
+  sessionId: string,
+  enable: boolean
+): Promise<{ url?: string; enabled?: boolean; error?: string }> {
+  const meta = store.getMeta(sessionId)
+  if (!meta) return { error: 'Session not found.' }
+  if (!meta.eventId) {
+    return { error: 'Only sessions hosted as events can be published as replays.' }
+  }
+  try {
+    const client = cloud?.client ?? makeClient()
+    if (!enable) {
+      await client
+        .from('events')
+        .update({ replay: { enabled: false }, updated_at: new Date().toISOString() })
+        .eq('id', meta.eventId)
+      return { enabled: false }
+    }
+    const { readFile } = await import('fs/promises')
+    let video: Buffer
+    try {
+      video = await readFile(store.videoPath(sessionId))
+    } catch {
+      return { error: 'No recording found for this session.' }
+    }
+    const { error } = await client.storage
+      .from('replays')
+      .upload(`${meta.eventId}.webm`, video, { upsert: true, contentType: 'video/webm' })
+    if (error) return { error: 'Upload failed: ' + error.message }
+    await client
+      .from('events')
+      .update({
+        replay: {
+          enabled: true,
+          title: meta.title,
+          summary: meta.summary ?? '',
+          highlights: meta.highlights ?? [],
+          durationMs: meta.durationMs,
+          publishedAt: Date.now()
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', meta.eventId)
+    return { enabled: true, url: webUrlFor(meta.eventId).replace('/e/', '/r/') }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 export async function cloudClosePoll(): Promise<void> {
   if (!cloud) return
   await cloud.client

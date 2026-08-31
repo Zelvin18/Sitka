@@ -131,6 +131,11 @@ const api = {
   launchPoll: (question: string, options: string[]): Promise<{ error?: string }> =>
     ipcRenderer.invoke('conference:launchPoll', question, options),
   closePoll: (): Promise<void> => ipcRenderer.invoke('conference:closePoll'),
+  publishReplay: (
+    sessionId: string,
+    enable: boolean
+  ): Promise<{ url?: string; enabled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('replay:publish', sessionId, enable),
   // ---------- coach ----------
   listCoachProjects: (): Promise<CoachProject[]> => ipcRenderer.invoke('coach:list'),
   createCoachProject: (

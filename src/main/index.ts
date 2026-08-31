@@ -53,6 +53,7 @@ import {
   cloudClosePoll,
   cloudConfigured,
   cloudLaunchPoll,
+  cloudPublishReplay,
   cloudStatus,
   configureCloud,
   endCloudEvent,
@@ -747,6 +748,11 @@ function registerIpc(): void {
       : { error: 'Live polls need an online (cloud) event.' }
   )
   ipcMain.handle('conference:closePoll', () => (isCloudActive() ? cloudClosePoll() : undefined))
+  ipcMain.handle('replay:publish', (_e, sessionId: string, enable: boolean) =>
+    cloudConfigured()
+      ? cloudPublishReplay(sessionId, enable)
+      : { error: 'Set up online events in Settings first.' }
+  )
 
   // ---------- events (the hosting ecosystem) ----------
 

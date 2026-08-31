@@ -3614,6 +3614,17 @@ body.dragging-row .splitter-h {
   }
 }
 
+.replay-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--bg-soft);
+  margin-top: 18px;
+}
+
 /* ============ Audience loop: reactions, polls, upvotes ============ */
 
 .react-strip {
