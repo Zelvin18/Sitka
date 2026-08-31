@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Sitka Live</title>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
+  <div class="evtitle" id="evtitle"></div>
+</header>
+
+<div id="loading" class="center" style="text-align:center">
+  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <div class="waiting" style="text-align:center">Connecting to the event…</div>
+</div>
+
+<div id="notfound" class="center hidden" style="text-align:center">
+  <h1>Event not found</h1>
+  <div class="sub">Check the link or QR code with the host.</div>
+</div>
+
+<div id="join" class="center hidden">
+  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <h1 style="text-align:center">Join this event</h1>
+  <div class="sub" style="text-align:center">Your own AI companion for this talk — ask anything, privately, at your level.</div>
+  <div class="label">I am a…</div>
+  <div class="chips" id="personas"></div>
+  <div class="label">My language — AI answers, captions &amp; voice</div>
+  <select id="lang">
+    <option>English</option><option>Shona</option><option>Ndebele</option><option>Swahili</option>
+    <option>French</option><option>Portuguese</option><option>Spanish</option><option>German</option>
+    <option>Arabic</option><option>Chinese</option><option>Hindi</option>
+  </select>
+  <button class="btn" id="joinbtn">Join event</button>
+  <div class="consent">This event is captured and AI-assisted by the host's Sitka. Your questions stay private to you; questions you submit to the speaker are shared with the host.</div>
+</div>
+
+<div id="wait" class="center hidden" style="text-align:center">
+  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <div class="checkbig"><svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg></div>
+  <h1>You're in</h1>
+  <div class="sub" id="waitmsg">Waiting for the host to start the event…</div>
+  <div class="waiting">This page will come alive by itself — keep it open.</div>
+</div>
+
+<div id="main" class="hidden" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <div class="pane sel" id="pane-live">
+    <div class="livehead">
+      <div class="stagecard hidden" id="stagecard">
+        <img id="stageimg" alt="Live stage">
+        <span class="stagetag"><span class="ldot"></span>STAGE</span>
+        <button class="stageexp" id="stageexpbtn" aria-label="Fullscreen"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+      </div>
+      <button class="listen hidden" id="listenbtn"></button>
+      <div class="small hidden" id="voicenote" style="margin-top:8px"></div>
+    </div>
+    <div class="waiting" id="livewait">Waiting for the talk…</div>
+    <div id="segs"></div>
+  </div>
+  <div class="pane" id="pane-ask">
+    <div class="notice hidden" id="prenotice"><b>The event hasn't started yet</b> — but the host has briefed me. Ask what it's about, who's speaking, or what to prepare.</div>
+    <div class="notice" id="livenotice">Ask about anything being said — it answers for <b>you</b>. Or tap <b>Catch me up</b> if you just arrived.</div>
+    <button class="btn btn2" style="margin:0 0 6px" id="catchup"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 1.9"/></svg>Catch me up</button>
+    <div id="chat"></div>
+  </div>
+  <div class="pane" id="pane-q">
+    <div class="notice">Send a question to the speaker. Sitka first checks whether it was already answered.</div>
+    <textarea id="qtext" rows="3" class="qta" placeholder="Your question for the speaker…"></textarea>
+    <button class="btn" id="qsend">Check &amp; submit</button>
+    <div id="qresult"></div>
+  </div>
+  <div class="pane" id="pane-take">
+    <h1 style="font-size:19px">Your take-home pack</h1>
+    <div class="sub" id="takewait">It will be ready when the event ends — or tap below for a snapshot now.</div>
+    <button class="btn btn2" style="margin:0" id="takebtn">Get my pack</button>
+    <div id="takebody"></div>
+  </div>
+  <div class="inputrow" id="askrow" style="display:none">
+    <textarea id="asktext" rows="1" placeholder="Ask about this talk…"></textarea>
+    <button class="send" id="asksend"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+  </div>
+  <div class="navwrap">
+    <div class="tabs">
+      <button class="tab sel" data-pane="live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.4 18.6a9.4 9.4 0 0 1 0-13.2M18.6 5.4a9.4 9.4 0 0 1 0 13.2"/></svg><span>Live</span></button>
+      <button class="tab" data-pane="ask"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.6 0-3.1-.4-4.4-1.2L3 20l1.2-5.1A8.5 8.5 0 1 1 21 11.5z"/></svg><span>Ask</span></button>
+      <button class="tab" data-pane="q"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg><span>Speaker</span></button>
+      <button class="tab" data-pane="take"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 0 1 1-1z"/></svg><span>Take-home</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="stagefull" class="hidden">
+  <img id="stagefullimg" alt="Live stage">
+  <button class="xbtn" id="stageclose" aria-label="Close"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
