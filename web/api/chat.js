@@ -43,10 +43,15 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, system = '', messages = [], maxTokens = 1600 } = req.body || {}
-    const anthropicKey = String(keys.anthropicApiKey || '').trim()
-    const groqKey = String(keys.groqApiKey || '').trim()
+    // API keys are ASCII; strip anything else (smart dashes, stray words,
+    // invisible characters from copy-paste) so headers can never crash.
+    const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
+    const anthropicKey = clean(keys.anthropicApiKey)
+    const groqKey = clean(keys.groqApiKey)
 
-    if (anthropicKey) {
+    // Only treat the Anthropic field as real when it looks like an Anthropic
+    // key — otherwise stray text there would block the working Groq path.
+    if (anthropicKey.startsWith('sk-')) {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {

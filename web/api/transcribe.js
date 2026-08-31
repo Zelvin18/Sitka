@@ -8,8 +8,9 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = req.body || {}
-    const openaiKey = String(keys.openaiApiKey || '').trim()
-    const groqKey = String(keys.groqApiKey || '').trim()
+    const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
+    const openaiKey = clean(keys.openaiApiKey)
+    const groqKey = clean(keys.groqApiKey)
     const key = openaiKey || groqKey
     if (!key) {
       res.status(400).json({ error: 'missing-key' })
