@@ -50,7 +50,9 @@ import {
   updateFrame
 } from './conference'
 import {
+  cloudClosePoll,
   cloudConfigured,
+  cloudLaunchPoll,
   cloudStatus,
   configureCloud,
   endCloudEvent,
@@ -739,6 +741,12 @@ function registerIpc(): void {
     updateFrame(dataUrl)
     updateCloudFrame(dataUrl)
   })
+  ipcMain.handle('conference:launchPoll', (_e, question: string, options: string[]) =>
+    isCloudActive()
+      ? cloudLaunchPoll(question, options)
+      : { error: 'Live polls need an online (cloud) event.' }
+  )
+  ipcMain.handle('conference:closePoll', () => (isCloudActive() ? cloudClosePoll() : undefined))
 
   // ---------- events (the hosting ecosystem) ----------
 

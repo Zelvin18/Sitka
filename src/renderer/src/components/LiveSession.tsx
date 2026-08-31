@@ -114,8 +114,21 @@ export default function LiveSession({
   }, [])
   const [audience, setAudience] = useState<{
     attendees: number
-    questions: { topic: string; items: { text: string; at: number }[] }[]
+    questions: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
+    reactions?: { landed: number; lost: number; recentLost: number }
+    poll?: {
+      id: string
+      question: string
+      options: string[]
+      counts: number[]
+      total: number
+      status: 'open' | 'closed'
+    }
   }>({ attendees: 0, questions: [] })
+  const [pollQ, setPollQ] = useState('')
+  const [pollOpts, setPollOpts] = useState('')
+  const [pollErr, setPollErr] = useState<string | null>(null)
+  const lastLostPulseRef = useRef(0)
   const [nudge, setNudge] = useState<string | null>(null)
   const nudgesShownRef = useRef<string[]>([])
   const nudgeBusyRef = useRef(false)
@@ -240,7 +253,13 @@ export default function LiveSession({
         if (!s.running) return
         const questions = s.questions ?? []
         const attendees = s.attendees ?? 0
-        setAudience({ attendees, questions })
+        setAudience({ attendees, questions, reactions: s.reactions, poll: s.poll })
+        // comprehension pulse: several people tapped "lost me" recently
+        const recentLost = s.reactions?.recentLost ?? 0
+        if (recentLost >= 3 && Date.now() - lastLostPulseRef.current > 180000) {
+          lastLostPulseRef.current = Date.now()
+          addPulse(`${recentLost} people say they're lost right now — a quick recap could help.`)
+        }
         // ---- audience pulses ----
         const total = questions.reduce((n, g) => n + g.items.length, 0)
         if (total > prevQuestionTotalRef.current) {
@@ -1174,6 +1193,91 @@ export default function LiveSession({
               </div>
             </div>
 
+            {audience.reactions &&
+              (audience.reactions.landed > 0 || audience.reactions.lost > 0) && (
+                <div className="react-strip">
+                  <span className="react-pill">Landed · {audience.reactions.landed}</span>
+                  <span
+                    className={`react-pill${(audience.reactions.recentLost ?? 0) >= 3 ? ' hot' : ''}`}
+                  >
+                    Lost me · {audience.reactions.lost}
+                  </span>
+                </div>
+              )}
+
+            <div className="section-title">Live poll</div>
+            {audience.poll && (
+              <div className="poll-card">
+                <div className="poll-q">{audience.poll.question}</div>
+                {audience.poll.options.map((o, i) => {
+                  const count = audience.poll!.counts[i] ?? 0
+                  const pct =
+                    audience.poll!.total > 0
+                      ? Math.round((count / audience.poll!.total) * 100)
+                      : 0
+                  return (
+                    <div key={i} className="poll-row">
+                      <div className="poll-bar" style={{ width: `${Math.max(4, pct)}%` }} />
+                      <span className="poll-opt">{o}</span>
+                      <span className="poll-count">
+                        {count} · {pct}%
+                      </span>
+                    </div>
+                  )
+                })}
+                <div className="poll-foot">
+                  <span>
+                    {audience.poll.total} vote{audience.poll.total === 1 ? '' : 's'} ·{' '}
+                    {audience.poll.status === 'open' ? 'live on every phone' : 'closed'}
+                  </span>
+                  {audience.poll.status === 'open' && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => void window.sitka.closePoll()}
+                    >
+                      Close poll
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {(!audience.poll || audience.poll.status === 'closed') && (
+              <div className="poll-compose">
+                <input
+                  className="input"
+                  placeholder="Ask the room a question…"
+                  value={pollQ}
+                  onChange={(e) => setPollQ(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="Options, separated by commas (e.g. Yes, No, Not sure)"
+                  value={pollOpts}
+                  onChange={(e) => setPollOpts(e.target.value)}
+                />
+                {pollErr && (
+                  <div className="field-hint" style={{ color: 'var(--danger)' }}>
+                    {pollErr}
+                  </div>
+                )}
+                <button
+                  className="btn btn-sm"
+                  onClick={() =>
+                    void window.sitka.launchPoll(pollQ, pollOpts.split(',')).then((r) => {
+                      if (r.error) setPollErr(r.error)
+                      else {
+                        setPollErr(null)
+                        setPollQ('')
+                        setPollOpts('')
+                      }
+                    })
+                  }
+                >
+                  Launch poll
+                </button>
+              </div>
+            )}
+
             {agendaList.length > 0 && (
               <>
                 <div className="section-title">Your plan</div>
@@ -1217,6 +1321,11 @@ export default function LiveSession({
                 </div>
                 {g.items.map((q, i) => (
                   <div key={i} className="qgroup-item">
+                    {(q.votes ?? 0) > 0 && (
+                      <span className="vote-chip" title="Attendee upvotes">
+                        ▲ {q.votes}
+                      </span>
+                    )}
                     {q.text}
                   </div>
                 ))}

@@ -56,6 +56,11 @@
       <button class="listen hidden" id="listenbtn"></button>
       <div class="small hidden" id="voicenote" style="margin-top:8px"></div>
       <button class="savebtn hidden" id="savebtn"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.2 5.8L12 16.4l-5.2 2.9 1.2-5.8-4.4-4 5.9-.6z"/></svg><span>Save this moment</span></button>
+      <div class="reactrow hidden" id="reactrow">
+        <button class="reactbtn" id="reactup"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>Landed</button>
+        <button class="reactbtn" id="reactlost"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9a3 3 0 1 1 4.5 2.6c-.9.5-1.5 1-1.5 2.1M12 17.2v.3"/><circle cx="12" cy="12" r="9.2"/></svg>Lost me</button>
+      </div>
+      <div id="pollcard" class="pollcard hidden"></div>
     </div>
     <div class="waiting" id="livewait">Waiting for the talk…</div>
     <div id="segs"></div>
@@ -71,6 +76,9 @@
     <textarea id="qtext" rows="3" class="qta" placeholder="Your question for the speaker…"></textarea>
     <button class="btn" id="qsend">Check &amp; submit</button>
     <div id="qresult"></div>
+    <div class="label" style="margin-top:22px">What the room is asking</div>
+    <div class="small" style="margin-bottom:10px">Upvote the questions you want the speaker to answer.</div>
+    <div id="qboard"><div class="waiting">No questions from the room yet.</div></div>
   </div>
   <div class="pane" id="pane-take">
     <h1 style="font-size:19px">Your take-home pack</h1>

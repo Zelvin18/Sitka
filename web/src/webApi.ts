@@ -312,6 +312,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   }
 
   // ---------- live audience (this tab is the conference brain) ----------
+  interface ConfPoll {
+    id: string
+    question: string
+    options: string[]
+    counts: number[]
+    total: number
+    status: 'open' | 'closed'
+  }
   interface Conf {
     eventId: string
     sessionId: string
@@ -322,7 +330,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     attendeeLangs: Map<string, string>
     attendeeCount: number
     askCount: number
-    questions: { topic: string; items: { text: string; at: number }[] }[]
+    questions: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
+    reactions: { landed: number; lost: number; recentLost: number }
+    poll: ConfPoll | null
     translated: Map<string, number>
     frameBusy: boolean
   }
@@ -500,23 +510,87 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     for (const a of atts ?? []) c.attendeeLangs.set(a.id as string, (a.lang as string) || 'English')
     const { data: subs } = await sb
       .from('speaker_questions')
-      .select('refined,text,topic,created_at')
+      .select('id,refined,text,topic,created_at')
       .eq('event_id', c.eventId)
       .eq('status', 'submitted')
       .order('created_at', { ascending: true })
-    const byTopic = new Map<string, { text: string; at: number }[]>()
+    // upvote counts per question
+    const qids = (subs ?? []).map((q) => q.id as string)
+    const voteCount = new Map<string, number>()
+    if (qids.length > 0) {
+      const { data: qv } = await sb
+        .from('question_votes')
+        .select('question_id')
+        .in('question_id', qids)
+      for (const v of qv ?? []) {
+        const k = v.question_id as string
+        voteCount.set(k, (voteCount.get(k) ?? 0) + 1)
+      }
+    }
+    const byTopic = new Map<string, { text: string; at: number; votes: number }[]>()
     for (const q of subs ?? []) {
       const topic = (q.topic as string) || 'General'
       const list = byTopic.get(topic) ?? []
       list.push({
         text: (q.refined as string) || (q.text as string),
-        at: new Date(q.created_at as string).getTime()
+        at: new Date(q.created_at as string).getTime(),
+        votes: voteCount.get(q.id as string) ?? 0
       })
       byTopic.set(topic, list)
     }
     c.questions = [...byTopic.entries()]
-      .map(([topic, items]) => ({ topic, items }))
-      .sort((a, b) => b.items.length - a.items.length)
+      .map(([topic, items]) => ({ topic, items: items.sort((a, b) => b.votes - a.votes) }))
+      .sort(
+        (a, b) =>
+          b.items.reduce((n, i) => n + i.votes, 0) + b.items.length -
+          (a.items.reduce((n, i) => n + i.votes, 0) + a.items.length)
+      )
+
+    // reactions: totals + "lost" in the last 3 minutes (the pulse signal)
+    const { data: reacts } = await sb
+      .from('reactions')
+      .select('kind,at')
+      .eq('event_id', c.eventId)
+    let landed = 0
+    let lost = 0
+    let recentLost = 0
+    const cutoff = Date.now() - 180000
+    for (const r of reacts ?? []) {
+      if (r.kind === 'landed') landed++
+      else {
+        lost++
+        if (new Date(r.at as string).getTime() > cutoff) recentLost++
+      }
+    }
+    c.reactions = { landed, lost, recentLost }
+
+    // latest poll + live tallies
+    const { data: pollRows } = await sb
+      .from('polls')
+      .select('*')
+      .eq('event_id', c.eventId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (pollRows && pollRows.length > 0) {
+      const p = pollRows[0]
+      const options = (p.options as string[]) ?? []
+      const counts = options.map(() => 0)
+      const { data: pv } = await sb.from('poll_votes').select('choice').eq('poll_id', p.id)
+      for (const v of pv ?? []) {
+        const idx = Number(v.choice)
+        if (idx >= 0 && idx < counts.length) counts[idx]++
+      }
+      c.poll = {
+        id: p.id as string,
+        question: p.question as string,
+        options,
+        counts,
+        total: (pv ?? []).length,
+        status: (p.status as 'open' | 'closed') ?? 'open'
+      }
+    } else {
+      c.poll = null
+    }
     if (c.attendeeCount !== prev) emitConf()
   }
 
@@ -1212,6 +1286,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           attendeeCount: 0,
           askCount: 0,
           questions: [],
+          reactions: { landed: 0, lost: 0, recentLost: 0 },
+          poll: null,
           translated: new Map(),
           frameBusy: false,
           workTimer: window.setInterval(() => void confPollWork(), 3000),
@@ -1242,7 +1318,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           eventId: conf.eventId,
           attendees: conf.attendeeCount,
           recentAsks: conf.askCount,
-          questions: conf.questions
+          questions: conf.questions,
+          reactions: conf.reactions,
+          poll: conf.poll ?? undefined
         }
       }
       if (armedId) {
@@ -1259,6 +1337,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         }
       }
       return { running: false }
+    },
+    launchPoll: async (question: string, options: string[]) => {
+      if (!conf) return { error: 'Go live first.' }
+      const cleanOpts = options.map((o) => o.trim()).filter(Boolean).slice(0, 6)
+      if (!question.trim() || cleanOpts.length < 2) {
+        return { error: 'A poll needs a question and at least two options.' }
+      }
+      // close any open poll first — one at a time keeps the room focused
+      await sb.from('polls').update({ status: 'closed' }).eq('event_id', conf.eventId).eq('status', 'open')
+      const { error } = await sb.from('polls').insert({
+        id: uid(),
+        event_id: conf.eventId,
+        question: question.trim().slice(0, 200),
+        options: cleanOpts,
+        status: 'open'
+      })
+      if (error) return { error: error.message }
+      void confPollStats()
+      return {}
+    },
+    closePoll: async () => {
+      if (!conf) return
+      await sb.from('polls').update({ status: 'closed' }).eq('event_id', conf.eventId).eq('status', 'open')
+      void confPollStats()
     },
     pushStageFrame: async (dataUrl: string) => {
       if (!conf || conf.frameBusy) return

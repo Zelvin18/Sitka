@@ -117,8 +117,20 @@ const api = {
     url?: string
     ended?: boolean
     attendees?: number
-    questions?: { topic: string; items: { text: string; at: number }[] }[]
+    questions?: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
+    reactions?: { landed: number; lost: number; recentLost: number }
+    poll?: {
+      id: string
+      question: string
+      options: string[]
+      counts: number[]
+      total: number
+      status: 'open' | 'closed'
+    }
   }> => ipcRenderer.invoke('conference:status'),
+  launchPoll: (question: string, options: string[]): Promise<{ error?: string }> =>
+    ipcRenderer.invoke('conference:launchPoll', question, options),
+  closePoll: (): Promise<void> => ipcRenderer.invoke('conference:closePoll'),
   // ---------- coach ----------
   listCoachProjects: (): Promise<CoachProject[]> => ipcRenderer.invoke('coach:list'),
   createCoachProject: (

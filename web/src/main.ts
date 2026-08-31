@@ -496,6 +496,166 @@ el('sh-explain').onclick = () => sheetAsk('Explain this simply')
 el('sh-define').onclick = () => sheetAsk('Define the technical terms in this')
 el('sh-why').onclick = () => sheetAsk('Why does this matter for someone like me?')
 
+// ---------- reactions: one-tap comprehension pulse to the host ----------
+const reactCooldown: Record<string, number> = {}
+function react(kind: 'landed' | 'lost'): void {
+  if (!attId) return
+  const now = Date.now()
+  if (now - (reactCooldown[kind] || 0) < 20000) return
+  reactCooldown[kind] = now
+  void sb
+    .from('reactions')
+    .insert({ id: crypto.randomUUID(), event_id: eventId, attendee_id: attId, kind })
+  const b = el(kind === 'landed' ? 'reactup' : 'reactlost')
+  b.classList.add('sent')
+  setTimeout(() => b.classList.remove('sent'), 1200)
+}
+el('reactup').onclick = () => react('landed')
+el('reactlost').onclick = () => react('lost')
+
+// ---------- live polls from the host ----------
+interface PollRow {
+  id: string
+  question: string
+  options: string[]
+  status: string
+}
+let activePoll: PollRow | null = null
+let pollTimer: number | null = null
+let votedPolls = new Set<string>()
+try {
+  votedPolls = new Set(JSON.parse(localStorage.getItem('sitka-pollvotes') || '[]') as string[])
+} catch {
+  /* fresh */
+}
+function renderPoll(counts?: number[], total?: number): void {
+  const card = el('pollcard')
+  if (!activePoll) {
+    card.classList.add('hidden')
+    return
+  }
+  card.classList.remove('hidden')
+  const voted = votedPolls.has(activePoll.id)
+  const closed = activePoll.status !== 'open'
+  let h = `<div class="poll-q"><span class="poll-tag">${closed ? 'POLL RESULTS' : 'LIVE POLL'}</span>${escH(activePoll.question)}</div>`
+  activePoll.options.forEach((o, i) => {
+    if (voted || closed) {
+      const c = counts?.[i] ?? 0
+      const pct = total ? Math.round((c / total) * 100) : 0
+      h += `<div class="poll-row"><div class="poll-bar" style="width:${Math.max(4, pct)}%"></div><span class="poll-opt">${escH(o)}</span><span class="poll-count">${pct}%</span></div>`
+    } else {
+      h += `<button class="poll-vote" data-i="${i}">${escH(o)}</button>`
+    }
+  })
+  card.innerHTML = h
+  card.querySelectorAll('.poll-vote').forEach((b) => {
+    ;(b as HTMLElement).onclick = () => void votePoll(Number((b as HTMLElement).dataset.i))
+  })
+}
+async function refreshPollResults(): Promise<void> {
+  if (!activePoll) return
+  const { data } = await sb.from('poll_votes').select('choice').eq('poll_id', activePoll.id)
+  const counts = activePoll.options.map(() => 0)
+  for (const v of data ?? []) {
+    const i = Number(v.choice)
+    if (i >= 0 && i < counts.length) counts[i]++
+  }
+  renderPoll(counts, (data ?? []).length)
+}
+function setPoll(p: PollRow | null): void {
+  activePoll = p && p.status === 'open' ? p : votedPolls.has(p?.id ?? '') ? p : null
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  if (!activePoll) {
+    renderPoll()
+    return
+  }
+  if (votedPolls.has(activePoll.id) || activePoll.status !== 'open') {
+    void refreshPollResults()
+    if (activePoll.status === 'open') {
+      pollTimer = window.setInterval(() => void refreshPollResults(), 6000)
+    }
+  } else {
+    renderPoll()
+  }
+}
+async function votePoll(choice: number): Promise<void> {
+  if (!activePoll || !attId) return
+  votedPolls.add(activePoll.id)
+  try {
+    localStorage.setItem('sitka-pollvotes', JSON.stringify([...votedPolls].slice(-50)))
+  } catch {
+    /* private mode */
+  }
+  await sb.from('poll_votes').insert({ poll_id: activePoll.id, attendee_id: attId, choice })
+  setPoll(activePoll)
+}
+
+// ---------- the room's question board (with upvotes) ----------
+let votedQuestions = new Set<string>()
+try {
+  votedQuestions = new Set(JSON.parse(localStorage.getItem('sitka-qvotes') || '[]') as string[])
+} catch {
+  /* fresh */
+}
+async function refreshBoard(): Promise<void> {
+  if (!joined) return
+  const { data: qs } = await sb
+    .from('speaker_questions')
+    .select('id,refined,text,topic')
+    .eq('event_id', eventId)
+    .eq('status', 'submitted')
+    .order('created_at', { ascending: false })
+    .limit(30)
+  const ids = (qs ?? []).map((q) => q.id as string)
+  const counts = new Map<string, number>()
+  if (ids.length > 0) {
+    const { data: v } = await sb.from('question_votes').select('question_id').in('question_id', ids)
+    for (const r of v ?? []) {
+      const k = r.question_id as string
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+  }
+  const list = (qs ?? [])
+    .map((q) => ({
+      id: q.id as string,
+      text: (q.refined as string) || (q.text as string),
+      votes: counts.get(q.id as string) ?? 0
+    }))
+    .sort((a, b) => b.votes - a.votes)
+  const wrap = el('qboard')
+  wrap.innerHTML = ''
+  if (list.length === 0) {
+    wrap.innerHTML = '<div class="waiting">No questions from the room yet.</div>'
+    return
+  }
+  for (const q of list) {
+    const d = document.createElement('div')
+    d.className = 'qb-item'
+    d.innerHTML = `<button class="qb-vote${votedQuestions.has(q.id) ? ' on' : ''}">▲<span>${q.votes}</span></button><div class="qb-text"></div>`
+    ;(d.querySelector('.qb-text') as HTMLElement).textContent = q.text
+    ;(d.querySelector('.qb-vote') as HTMLButtonElement).onclick = () => {
+      if (votedQuestions.has(q.id) || !attId) return
+      votedQuestions.add(q.id)
+      try {
+        localStorage.setItem('sitka-qvotes', JSON.stringify([...votedQuestions].slice(-100)))
+      } catch {
+        /* private mode */
+      }
+      void sb
+        .from('question_votes')
+        .insert({ question_id: q.id, attendee_id: attId })
+        .then(() => void refreshBoard())
+    }
+    wrap.appendChild(d)
+  }
+}
+window.setInterval(() => {
+  if (el('pane-q').classList.contains('sel')) void refreshBoard()
+}, 12000)
+
 // ---------- wake lock (screen stays on during the live talk) ----------
 let wakeLock: { release: () => Promise<void> } | null = null
 async function keepAwake(): Promise<void> {
@@ -519,6 +679,7 @@ function goLiveView(): void {
   el('catchup').classList.remove('hidden')
   document.querySelectorAll('.tab').forEach((t) => t.classList.remove('off'))
   el('savebtn').classList.remove('hidden')
+  el('reactrow').classList.remove('hidden')
   startStage()
   void keepAwake()
 }
@@ -574,6 +735,7 @@ document.querySelectorAll('.tab').forEach((t) => {
       const p = el('pane-live')
       p.scrollTop = p.scrollHeight
     }
+    if (pane === 'q') void refreshBoard()
   }
 })
 
@@ -897,6 +1059,14 @@ async function join(newJoin: boolean): Promise<void> {
     )
     .on(
       'postgres_changes',
+      { event: '*', schema: 'public', table: 'polls', filter: 'event_id=eq.' + eventId },
+      (payload) => {
+        const p = payload.new as PollRow | null
+        if (p && p.id) setPoll(p)
+      }
+    )
+    .on(
+      'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'asks', filter: 'attendee_id=eq.' + attId },
       (payload) => {
         const row = payload.new as { id: string; kind: string; question: string; status: string; answer: string | null }
@@ -938,6 +1108,16 @@ async function join(newJoin: boolean): Promise<void> {
   listening = false // don't speak the whole backlog
   for (const row of segRows ?? []) upsertSeg(row as SegRow, transMap.get((row as SegRow).idx))
   listening = wasListening
+
+  // pick up a poll that is already running
+  const { data: pollRows } = await sb
+    .from('polls')
+    .select('id,question,options,status')
+    .eq('event_id', eventId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (pollRows && pollRows.length > 0) setPoll(pollRows[0] as PollRow)
 
   applyEventState()
 }

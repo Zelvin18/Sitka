@@ -8,6 +8,7 @@
  * which never leave this machine.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 import type { ScheduledEvent, TranscriptSegment } from '@shared/types'
 import * as store from './store'
 import { completeText, extractJson, formatTime, streamChatGeneric, type AiKeys } from './ai'
@@ -35,7 +36,16 @@ interface CloudState {
   attendeeCache: Map<string, { persona: string; lang: string }>
   attendeeCount: number
   askCount: number
-  questions: { topic: string; items: { text: string; at: number }[] }[]
+  questions: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
+  reactions: { landed: number; lost: number; recentLost: number }
+  poll: {
+    id: string
+    question: string
+    options: string[]
+    counts: number[]
+    total: number
+    status: 'open' | 'closed'
+  } | null
   packCache: Map<string, string>
 }
 
@@ -108,6 +118,8 @@ export async function startCloudWaiting(
       attendeeCount: 0,
       askCount: 0,
       questions: [],
+      reactions: { landed: 0, lost: 0, recentLost: 0 },
+      poll: null,
       packCache: new Map(),
       pollTimer: setInterval(() => void pollCloud(), POLL_MS)
     }
@@ -445,23 +457,87 @@ async function pollCloud(): Promise<void> {
     }
     const { data: subs } = await state.client
       .from('speaker_questions')
-      .select('refined,text,topic,created_at')
+      .select('id,refined,text,topic,created_at')
       .eq('event_id', state.eventId)
       .eq('status', 'submitted')
       .order('created_at', { ascending: true })
-    const byTopic = new Map<string, { text: string; at: number }[]>()
+    const qids = (subs ?? []).map((q) => q.id as string)
+    const voteCount = new Map<string, number>()
+    if (qids.length > 0) {
+      const { data: qv } = await state.client
+        .from('question_votes')
+        .select('question_id')
+        .in('question_id', qids)
+      for (const v of qv ?? []) {
+        const k = v.question_id as string
+        voteCount.set(k, (voteCount.get(k) ?? 0) + 1)
+      }
+    }
+    const byTopic = new Map<string, { text: string; at: number; votes: number }[]>()
     for (const q of subs ?? []) {
       const topic = (q.topic as string) || 'General'
       const list = byTopic.get(topic) ?? []
       list.push({
         text: (q.refined as string) || (q.text as string),
-        at: new Date(q.created_at as string).getTime()
+        at: new Date(q.created_at as string).getTime(),
+        votes: voteCount.get(q.id as string) ?? 0
       })
       byTopic.set(topic, list)
     }
     state.questions = [...byTopic.entries()]
-      .map(([topic, items]) => ({ topic, items }))
+      .map(([topic, items]) => ({ topic, items: items.sort((a, b) => b.votes - a.votes) }))
       .sort((a, b) => b.items.length - a.items.length)
+
+    // reactions + latest poll (may not exist before wave2.sql runs — ignore errors)
+    try {
+      const { data: reacts } = await state.client
+        .from('reactions')
+        .select('kind,at')
+        .eq('event_id', state.eventId)
+      let landed = 0
+      let lost = 0
+      let recentLost = 0
+      const cutoff = Date.now() - 180000
+      for (const r of reacts ?? []) {
+        if (r.kind === 'landed') landed++
+        else {
+          lost++
+          if (new Date(r.at as string).getTime() > cutoff) recentLost++
+        }
+      }
+      state.reactions = { landed, lost, recentLost }
+      const { data: pollRows } = await state.client
+        .from('polls')
+        .select('*')
+        .eq('event_id', state.eventId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (pollRows && pollRows.length > 0) {
+        const p = pollRows[0]
+        const options = (p.options as string[]) ?? []
+        const counts = options.map(() => 0)
+        const { data: pv } = await state.client
+          .from('poll_votes')
+          .select('choice')
+          .eq('poll_id', p.id)
+        for (const v of pv ?? []) {
+          const idx = Number(v.choice)
+          if (idx >= 0 && idx < counts.length) counts[idx]++
+        }
+        state.poll = {
+          id: p.id as string,
+          question: p.question as string,
+          options,
+          counts,
+          total: (pv ?? []).length,
+          status: (p.status as 'open' | 'closed') ?? 'open'
+        }
+      } else {
+        state.poll = null
+      }
+    } catch {
+      /* wave2 tables missing — features stay dormant */
+    }
     if (state.attendeeCount !== prevCount) notifyHost()
 
     // sweep any segments the instant-push missed
@@ -509,7 +585,16 @@ export function cloudStatus(): {
   eventId?: string
   attendees?: number
   recentAsks?: number
-  questions?: { topic: string; items: { text: string; at: number }[] }[]
+  questions?: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
+  reactions?: { landed: number; lost: number; recentLost: number }
+  poll?: {
+    id: string
+    question: string
+    options: string[]
+    counts: number[]
+    total: number
+    status: 'open' | 'closed'
+  }
 } {
   if (!cloud) return { running: false }
   return {
@@ -520,6 +605,48 @@ export function cloudStatus(): {
     eventId: cloud.eventId,
     attendees: cloud.attendeeCount,
     recentAsks: cloud.askCount,
-    questions: cloud.questions
+    questions: cloud.questions,
+    reactions: cloud.reactions,
+    poll: cloud.poll ?? undefined
   }
+}
+
+export async function cloudLaunchPoll(
+  question: string,
+  options: string[]
+): Promise<{ error?: string }> {
+  if (!cloud) return { error: 'Go live on an online event first.' }
+  const cleanOpts = options.map((o) => o.trim()).filter(Boolean).slice(0, 6)
+  if (!question.trim() || cleanOpts.length < 2) {
+    return { error: 'A poll needs a question and at least two options.' }
+  }
+  try {
+    await cloud.client
+      .from('polls')
+      .update({ status: 'closed' })
+      .eq('event_id', cloud.eventId)
+      .eq('status', 'open')
+    const { error } = await cloud.client.from('polls').insert({
+      id: randomUUID(),
+      event_id: cloud.eventId,
+      question: question.trim().slice(0, 200),
+      options: cleanOpts,
+      status: 'open'
+    })
+    if (error) return { error: error.message }
+    return {}
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function cloudClosePoll(): Promise<void> {
+  if (!cloud) return
+  await cloud.client
+    .from('polls')
+    .update({ status: 'closed' })
+    .eq('event_id', cloud.eventId)
+    .eq('status', 'open')
+    .then(() => undefined)
+    .catch(() => undefined)
 }
