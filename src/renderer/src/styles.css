@@ -3614,6 +3614,44 @@ body.dragging-row .splitter-h {
   }
 }
 
+.mind-card {
+  border: 1.5px solid var(--text);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--bg-soft);
+  margin-bottom: 14px;
+}
+
+.mind-hint {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.mind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.mind-topic {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.mind-recap {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.mind-recap-text {
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
 .replay-card {
   display: flex;
   align-items: center;

@@ -136,6 +136,14 @@ const api = {
     enable: boolean
   ): Promise<{ url?: string; enabled?: boolean; error?: string }> =>
     ipcRenderer.invoke('replay:publish', sessionId, enable),
+  roomMind: (
+    sessionId: string
+  ): Promise<{ themes: { topic: string; count: number }[]; error?: string }> =>
+    ipcRenderer.invoke('room:mind', sessionId),
+  roomRecap: (sessionId: string, topic: string): Promise<{ text?: string; error?: string }> =>
+    ipcRenderer.invoke('room:recap', sessionId, topic),
+  pushRoomNote: (text: string): Promise<{ error?: string }> =>
+    ipcRenderer.invoke('room:pushNote', text),
   // ---------- coach ----------
   listCoachProjects: (): Promise<CoachProject[]> => ipcRenderer.invoke('coach:list'),
   createCoachProject: (

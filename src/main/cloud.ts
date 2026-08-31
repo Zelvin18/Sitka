@@ -549,6 +549,47 @@ async function pollCloud(): Promise<void> {
 
 // ---------- lifecycle ----------
 
+async function generateCloudProxyBriefs(
+  client: SupabaseClient,
+  evId: string,
+  sessionId: string
+): Promise<void> {
+  try {
+    const { data: rows } = await client
+      .from('proxies')
+      .select('attendee_id,request')
+      .eq('event_id', evId)
+      .eq('status', 'pending')
+      .limit(40)
+    if (!rows || rows.length === 0) return
+    const segments = store.getTranscript(sessionId)
+    const materials = store.getMaterialsText(evId) ?? ''
+    for (const p of rows) {
+      try {
+        const system = [
+          'You attended a live event on behalf of someone who could not be there. Write their personal brief.',
+          `They told you what they care about:\n"${p.request}"`,
+          'Structure: open with 2-3 sentences on the event overall; then "## What happened about your topics" — address EACH thing they asked for, citing moments as [[M:SS]] where discussed, or say plainly it was not covered (answer from the materials if you can); end with "## Worth knowing anyway" — 2-3 bullets of other important moments.',
+          'Be specific and grounded — never invent coverage that did not happen.',
+          materials ? `\nEvent materials:\n${materials.slice(0, 8000)}` : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
+        const brief = await completeText(
+          getKeys(),
+          system,
+          segments.map((s) => `[${formatTime(s.start)}] ${s.text}`).join('\n')
+        )
+        await client.from('proxies').update({ status: 'ready', brief }).eq('attendee_id', p.attendee_id)
+      } catch {
+        await client.from('proxies').update({ status: 'error' }).eq('attendee_id', p.attendee_id)
+      }
+    }
+  } catch {
+    /* proxies table missing — dormant */
+  }
+}
+
 export function endCloudEvent(sessionId: string): void {
   if (!cloud || cloud.sessionId !== sessionId) return
   const state = cloud
@@ -566,6 +607,7 @@ export function endCloudEvent(sessionId: string): void {
     .upsert(event ? eventRow(event, 'ended', sessionId) : { id: state.eventId, status: 'ended' })
     .then(() => undefined)
     .catch(() => undefined)
+  void generateCloudProxyBriefs(state.client, state.eventId, sessionId)
 }
 
 function stopCloudPolling(): void {
@@ -638,6 +680,80 @@ export async function cloudLaunchPoll(
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/** Room's Mind: cluster the audience's private questions into live themes. */
+export async function cloudRoomMind(
+  sessionId: string
+): Promise<{ themes: { topic: string; count: number }[]; error?: string }> {
+  if (!cloud || cloud.sessionId !== sessionId) return { themes: [] }
+  try {
+    const { data: asks } = await cloud.client
+      .from('asks')
+      .select('question,created_at')
+      .eq('event_id', cloud.eventId)
+      .eq('kind', 'ask')
+      .order('created_at', { ascending: false })
+      .limit(40)
+    const recent = (asks ?? []).filter(
+      (a) => Date.now() - new Date(a.created_at as string).getTime() < 20 * 60000
+    )
+    if (recent.length < 3) return { themes: [] }
+    const system = [
+      'You are analyzing the PRIVATE questions a live audience is asking their AI companions during a talk — the speaker cannot see them individually. Your job: reveal what the room is collectively struggling with or curious about, without exposing anyone.',
+      'Cluster the questions into at most 4 themes.',
+      'Return ONLY JSON: {"themes": [{"topic": "2-5 word label", "count": <number of questions in this theme>}]}',
+      'Order by count, largest first. Merge near-duplicates.'
+    ].join('\n')
+    const out = await completeText(
+      getKeys(),
+      system,
+      recent.map((a, i) => `${i + 1}. ${a.question}`).join('\n')
+    )
+    const parsed = extractJson<{ themes?: { topic?: string; count?: number }[] }>(out)
+    return {
+      themes: (parsed?.themes ?? [])
+        .filter((t) => t.topic)
+        .map((t) => ({ topic: String(t.topic), count: Math.max(1, Number(t.count) || 1) }))
+        .slice(0, 4)
+    }
+  } catch {
+    return { themes: [] }
+  }
+}
+
+export async function cloudRoomRecap(
+  sessionId: string,
+  topic: string
+): Promise<{ text?: string; error?: string }> {
+  try {
+    const segments = store.getTranscript(sessionId)
+    const system = [
+      `A live audience is collectively struggling with: "${topic}". Using the transcript, write a crystal-clear recap of that point in 3-5 short sentences, as if explaining it fresh to someone who just got lost.`,
+      'Plain text, no markdown headings, no preamble — it may be read aloud by the speaker or pushed to every attendee phone.'
+    ].join('\n')
+    const text = await completeText(
+      getKeys(),
+      system,
+      segments
+        .slice(-80)
+        .map((s) => `[${formatTime(s.start)}] ${s.text}`)
+        .join('\n')
+    )
+    return { text: text.trim() }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function cloudPushRoomNote(text: string): Promise<{ error?: string }> {
+  if (!cloud) return { error: 'Go live first.' }
+  const { error } = await cloud.client.from('room_notes').insert({
+    id: randomUUID(),
+    event_id: cloud.eventId,
+    text: text.trim().slice(0, 1200)
+  })
+  return error ? { error: error.message } : {}
 }
 
 /** Publish (or unpublish) a hosted session's recording as a public replay page. */

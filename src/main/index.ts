@@ -54,6 +54,9 @@ import {
   cloudConfigured,
   cloudLaunchPoll,
   cloudPublishReplay,
+  cloudPushRoomNote,
+  cloudRoomMind,
+  cloudRoomRecap,
   cloudStatus,
   configureCloud,
   endCloudEvent,
@@ -752,6 +755,15 @@ function registerIpc(): void {
     cloudConfigured()
       ? cloudPublishReplay(sessionId, enable)
       : { error: 'Set up online events in Settings first.' }
+  )
+  ipcMain.handle('room:mind', (_e, sessionId: string) =>
+    isCloudActive() ? cloudRoomMind(sessionId) : { themes: [] }
+  )
+  ipcMain.handle('room:recap', (_e, sessionId: string, topic: string) =>
+    cloudConfigured() ? cloudRoomRecap(sessionId, topic) : { error: 'missing-key' }
+  )
+  ipcMain.handle('room:pushNote', (_e, text: string) =>
+    isCloudActive() ? cloudPushRoomNote(text) : { error: 'Live notes need an online event.' }
   )
 
   // ---------- events (the hosting ecosystem) ----------

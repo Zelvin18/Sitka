@@ -644,6 +644,45 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  async function generateProxyBriefs(evId: string, segments: TranscriptSegment[]): Promise<void> {
+    try {
+      const { data: rows } = await sb
+        .from('proxies')
+        .select('attendee_id,request')
+        .eq('event_id', evId)
+        .eq('status', 'pending')
+        .limit(40)
+      if (!rows || rows.length === 0) return
+      const materials = await eventMaterialsText(evId)
+      for (const p of rows) {
+        try {
+          const system = [
+            'You attended a live event on behalf of someone who could not be there. Write their personal brief.',
+            `They told you what they care about:\n"${p.request}"`,
+            'Structure: open with 2-3 sentences on the event overall; then "## What happened about your topics" — address EACH thing they asked for, citing moments as [[M:SS]] where discussed, or say plainly it was not covered (answer from the materials if you can); end with "## Worth knowing anyway" — 2-3 bullets of other important moments.',
+            'Be specific and grounded — never invent coverage that did not happen.',
+            materials ? `\nEvent materials:\n${materials.slice(0, 8000)}` : ''
+          ]
+            .filter(Boolean)
+            .join('\n')
+          const brief = await aiChat(
+            system,
+            [{ role: 'user', content: transcriptBlock(segments) }],
+            2200
+          )
+          await sb
+            .from('proxies')
+            .update({ status: 'ready', brief })
+            .eq('attendee_id', p.attendee_id)
+        } catch {
+          await sb.from('proxies').update({ status: 'error' }).eq('attendee_id', p.attendee_id)
+        }
+      }
+    } catch {
+      /* proxies table missing or offline — feature stays dormant */
+    }
+  }
+
   async function endConf(sessionId: string): Promise<void> {
     if (!conf || conf.sessionId !== sessionId) return
     const c = conf
@@ -664,6 +703,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       .from('events')
       .update({ status: 'ended', updated_at: new Date().toISOString() })
       .eq('id', c.eventId)
+    void generateProxyBriefs(c.eventId, d?.segments ?? [])
     conf = null
   }
 
@@ -1338,6 +1378,68 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       return { running: false }
     },
+    // ---------- Room's Mind: what the audience is privately struggling with ----------
+    roomMind: async (sessionId: string) => {
+      if (!conf || conf.sessionId !== sessionId || !hasChatKey()) return { themes: [] }
+      try {
+        const { data: asks } = await sb
+          .from('asks')
+          .select('question,created_at')
+          .eq('event_id', conf.eventId)
+          .eq('kind', 'ask')
+          .order('created_at', { ascending: false })
+          .limit(40)
+        const recent = (asks ?? []).filter(
+          (a) => Date.now() - new Date(a.created_at as string).getTime() < 20 * 60000
+        )
+        if (recent.length < 3) return { themes: [] }
+        const system = [
+          'You are analyzing the PRIVATE questions a live audience is asking their AI companions during a talk — the speaker cannot see them individually. Your job: reveal what the room is collectively struggling with or curious about, without exposing anyone.',
+          'Cluster the questions into at most 4 themes.',
+          'Return ONLY JSON: {"themes": [{"topic": "2-5 word label", "count": <number of questions in this theme>}]}',
+          'Order by count, largest first. Merge near-duplicates. No theme for a single stray question unless there are no better clusters.'
+        ].join('\n')
+        const out = await aiChat(system, [
+          { role: 'user', content: recent.map((a, i) => `${i + 1}. ${a.question}`).join('\n') }
+        ])
+        const parsed = extractJson<{ themes?: { topic?: string; count?: number }[] }>(out)
+        return {
+          themes: (parsed?.themes ?? [])
+            .filter((t) => t.topic)
+            .map((t) => ({ topic: String(t.topic), count: Math.max(1, Number(t.count) || 1) }))
+            .slice(0, 4)
+        }
+      } catch {
+        return { themes: [] }
+      }
+    },
+    roomRecap: async (sessionId: string, topic: string) => {
+      if (!hasChatKey()) return { error: 'missing-key' }
+      try {
+        const d = await loadSession(sessionId)
+        if (!d) return { error: 'Session not found.' }
+        const system = [
+          `A live audience is collectively struggling with: "${topic}". Using the transcript, write a crystal-clear recap of that point in 3-5 short sentences, as if explaining it fresh to someone who just got lost.`,
+          'Plain text, no markdown headings, no preamble — it may be read aloud by the speaker or pushed to every attendee phone.'
+        ].join('\n')
+        const text = await aiChat(system, [
+          { role: 'user', content: transcriptBlock(d.segments.slice(-80)) }
+        ])
+        return { text: text.trim() }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+    pushRoomNote: async (text: string) => {
+      if (!conf) return { error: 'Go live first.' }
+      const { error } = await sb.from('room_notes').insert({
+        id: uid(),
+        event_id: conf.eventId,
+        text: text.trim().slice(0, 1200)
+      })
+      return error ? { error: error.message } : {}
+    },
+
     publishReplay: async (sessionId: string, enable: boolean) => {
       const d = await loadSession(sessionId)
       if (!d) return { error: 'Session not found.' }

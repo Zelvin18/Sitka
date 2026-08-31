@@ -594,6 +594,16 @@ async function votePoll(choice: number): Promise<void> {
   setPoll(activePoll)
 }
 
+// ---------- pushed room notes (host recap → this phone) ----------
+function showRoomNote(text: string): void {
+  const card = el('notecard')
+  card.innerHTML = '<b>FROM THE HOST’S SITKA</b><span></span><button class="nx" aria-label="Dismiss">✕</button>'
+  ;(card.children[1] as HTMLElement).textContent = text
+  ;(card.querySelector('.nx') as HTMLButtonElement).onclick = () => card.classList.add('hidden')
+  card.classList.remove('hidden')
+  speakText(text)
+}
+
 // ---------- the room's question board (with upvotes) ----------
 let votedQuestions = new Set<string>()
 try {
@@ -1071,6 +1081,14 @@ async function join(newJoin: boolean): Promise<void> {
     )
     .on(
       'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'room_notes', filter: 'event_id=eq.' + eventId },
+      (payload) => {
+        const note = payload.new as { text: string }
+        if (note?.text) showRoomNote(note.text)
+      }
+    )
+    .on(
+      'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'asks', filter: 'attendee_id=eq.' + attId },
       (payload) => {
         const row = payload.new as { id: string; kind: string; question: string; status: string; answer: string | null }
@@ -1132,6 +1150,103 @@ async function join(newJoin: boolean): Promise<void> {
   void join(true)
 }
 
+// ---------- "attend for me": absent-attendee proxy ----------
+const proxyKey = 'sitka-proxy-' + eventId
+el('proxylink').onclick = () => {
+  el('join').classList.add('hidden')
+  el('proxy').classList.remove('hidden')
+}
+el('proxyback').onclick = () => {
+  el('proxy').classList.add('hidden')
+  el('join').classList.remove('hidden')
+}
+;(el('proxysend') as HTMLButtonElement).onclick = async () => {
+  const request = (el('proxyreq') as HTMLTextAreaElement).value.trim()
+  if (!request) return
+  ;(el('proxysend') as HTMLButtonElement).disabled = true
+  const proxyId = crypto.randomUUID()
+  const lang = (el('lang') as HTMLSelectElement).value
+  const { error: aerr } = await sb.from('attendees').insert({
+    id: proxyId,
+    event_id: eventId,
+    persona: 'Absent (Sitka attending as proxy)',
+    lang
+  })
+  const { error: perr } = aerr
+    ? { error: aerr }
+    : await sb.from('proxies').insert({
+        attendee_id: proxyId,
+        event_id: eventId,
+        request: request.slice(0, 1500),
+        status: 'pending'
+      })
+  ;(el('proxysend') as HTMLButtonElement).disabled = false
+  if (aerr || perr) {
+    alert('Could not register — check your connection and try again.')
+    return
+  }
+  try {
+    localStorage.setItem(proxyKey, proxyId)
+  } catch {
+    /* private mode — the brief will still generate, but this device may not find it */
+  }
+  el('proxy').classList.add('hidden')
+  showProxyStatus(proxyId)
+}
+
+function renderBrief(brief: string): void {
+  el('proxytitle').textContent = 'Your personal brief'
+  el('proxystatus').textContent = ''
+  el('proxybrief').innerHTML = `<div class="tkcard md" style="text-align:left">${md(brief)}</div>`
+  document.querySelector('.hero-art')?.classList.remove('rippling')
+}
+
+function showProxyStatus(proxyId: string): void {
+  el('loading').classList.add('hidden')
+  el('join').classList.add('hidden')
+  el('proxywait').classList.remove('hidden')
+  const check = async (): Promise<boolean> => {
+    const { data } = await sb
+      .from('proxies')
+      .select('status,brief')
+      .eq('attendee_id', proxyId)
+      .single()
+    if (data?.status === 'ready' && data.brief) {
+      renderBrief(data.brief as string)
+      return true
+    }
+    if (data?.status === 'error') {
+      el('proxystatus').textContent =
+        'Something went wrong writing your brief — ask the host to reopen the event report.'
+      return true
+    }
+    el('proxystatus').textContent =
+      ev?.status === 'ended'
+        ? 'The event has ended — your brief is being written. This page updates by itself.'
+        : ev?.status === 'live'
+          ? 'The event is happening right now — Sitka is listening for your topics. Come back here afterwards.'
+          : 'Keep this link — your personal brief appears here when the event ends.'
+    return false
+  }
+  void check()
+  const t = window.setInterval(async () => {
+    if (await check()) clearInterval(t)
+  }, 15000)
+  sb.channel('proxy-' + proxyId)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'proxies', filter: 'attendee_id=eq.' + proxyId },
+      (payload) => {
+        const row = payload.new as { status: string; brief: string | null }
+        if (row.status === 'ready' && row.brief) {
+          renderBrief(row.brief)
+          clearInterval(t)
+        }
+      }
+    )
+    .subscribe()
+}
+
 // ---------- boot ----------
 async function boot(): Promise<void> {
   if (!eventId) {
@@ -1149,6 +1264,18 @@ async function boot(): Promise<void> {
   el('evtitle').textContent = ev.title
   document.title = ev.title + ' — Sitka Live'
   setBadge(ev.status === 'live' ? 'live' : ev.status === 'ended' ? 'ended' : 'soon')
+
+  // absent-attendee identity takes precedence: this device registered a proxy
+  let proxyId: string | null = null
+  try {
+    proxyId = localStorage.getItem(proxyKey)
+  } catch {
+    /* ignore */
+  }
+  if (proxyId) {
+    showProxyStatus(proxyId)
+    return
+  }
 
   let saved: { id: string; persona: string | null; lang: string } | null = null
   try {

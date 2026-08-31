@@ -3,6 +3,7 @@
  * Read-only, no account needed — the host published it deliberately.
  */
 import { createClient } from '@supabase/supabase-js'
+import { md, parseTs as parseChipTs } from './mdlite'
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -145,6 +146,85 @@ async function boot(): Promise<void> {
       lastActive = best
     }
   }
+
+  // ---------- Ask this event ----------
+  const materialsRes = await sb.from('events').select('materials_text').eq('id', eventId).single()
+  const materials = ((materialsRes.data?.materials_text as string) || '').slice(0, 10000)
+  const transcript = ((segs ?? []) as SegRow[])
+    .map((s) => `[${s.label}] ${s.text}`)
+    .join('\n')
+    .slice(0, 90000)
+  const askSystem = [
+    `You are Sitka, answering questions about a recorded live event: "${title}".`,
+    'Ground every answer in the transcript (and materials) below; if something was not covered, say so plainly.',
+    'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the transcript — plain ASCII double square brackets. These become tap-to-jump links into the recording.',
+    'Keep answers short and direct by default; use markdown structure only when it genuinely helps.',
+    materials ? `\nEvent materials:\n${materials}` : '',
+    `\nTranscript:\n${transcript || '(no transcript captured)'}`
+  ]
+    .filter(Boolean)
+    .join('\n')
+  const history: { role: 'user' | 'assistant'; content: string }[] = []
+  let asking = false
+
+  function chatBubble(cls: string, html: string, text?: string): HTMLElement {
+    const d = document.createElement('div')
+    d.className = cls
+    if (text !== undefined) d.textContent = text
+    else d.innerHTML = html
+    el('rchat').appendChild(d)
+    return d
+  }
+
+  async function askEvent(q: string): Promise<void> {
+    if (asking || !q.trim()) return
+    asking = true
+    chatBubble('bub-u', '', q)
+    const typing = chatBubble('typing', '', 'Reading the event…')
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keys: {},
+          system: askSystem,
+          messages: [...history.slice(-8), { role: 'user', content: q }],
+          maxTokens: 1000
+        })
+      })
+      const j = await r.json()
+      typing.remove()
+      if (!r.ok) {
+        chatBubble('err-note', '', j.error === 'missing-key'
+          ? 'Asking is not enabled on this deployment yet.'
+          : j.error || 'Could not answer — try again.')
+      } else {
+        chatBubble('bub-a md', md(j.text || ''))
+        history.push({ role: 'user', content: q }, { role: 'assistant', content: j.text || '' })
+      }
+    } catch {
+      typing.remove()
+      chatBubble('err-note', '', 'Connection problem — try again.')
+    } finally {
+      asking = false
+    }
+  }
+  ;(el('rasksend') as HTMLButtonElement).onclick = () => {
+    const inp = el('rask') as HTMLInputElement
+    const q = inp.value
+    inp.value = ''
+    void askEvent(q)
+  }
+  ;(el('rask') as HTMLInputElement).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') (el('rasksend') as HTMLButtonElement).click()
+  })
+  // citation chips inside answers seek the recording
+  el('rchat').addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest?.('.tchip') as HTMLElement | null
+    if (!chip) return
+    const sec = parseChipTs(chip.textContent || '') ?? parseFloat(chip.dataset.s || '')
+    if (Number.isFinite(sec)) seek(sec as number)
+  })
 
   el('loading').style.display = 'none'
   el('main').style.display = 'block'

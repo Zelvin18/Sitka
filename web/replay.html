@@ -32,6 +32,28 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .seg.now{background:var(--softer)}
 .ts{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3);padding-top:4px;min-width:44px;text-align:right;flex-shrink:0}
 .segtext{color:var(--t2)}
+/* ask this event */
+.askbox{border:1.5px solid var(--text);border-radius:16px;padding:16px;background:var(--soft);margin:26px 0 4px}
+.askbox .sec{margin-top:0}
+.askrow{display:flex;gap:8px;margin-top:10px}
+.askrow input{flex:1;padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text);font-size:14px}
+.askrow input:focus{outline:none;border-color:var(--text)}
+.askrow button{width:44px;height:44px;border-radius:12px;border:none;background:var(--text);color:var(--bg);font-size:16px;cursor:pointer;flex-shrink:0}
+.bub-u{background:var(--softer);border-radius:14px 14px 4px 14px;padding:9px 13px;margin:12px 0 10px auto;max-width:85%;width:fit-content;white-space:pre-wrap;font-size:14px}
+.bub-a{margin:10px 0;font-size:14.5px}
+.typing{color:var(--t3);font-size:13px;animation:pulse 1.2s infinite;margin:10px 0}
+@keyframes pulse{50%{opacity:.4}}
+.err-note{color:var(--danger);font-size:13.5px;margin:10px 0}
+.md{white-space:normal;color:var(--t2)}
+.md p{margin:0 0 8px}
+.md h2,.md h3,.md h4{margin:12px 0 6px;color:var(--text)}
+.md ul,.md ol{margin:0 0 8px;padding-left:20px}
+.md code{font-family:ui-monospace,monospace;font-size:12.5px;background:var(--softer);padding:1px 5px;border-radius:5px}
+.md .tw{overflow-x:auto;margin:0 0 8px;border:1px solid var(--border);border-radius:10px}
+.md table{border-collapse:collapse;font-size:13px;min-width:100%}
+.md th,.md td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left}
+.tchip{display:inline-flex;align-items:center;padding:1px 8px;margin:0 1px;border:1px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text);font-size:11px;font-family:ui-monospace,monospace;font-weight:650;vertical-align:baseline;cursor:pointer}
+.tchip:hover{border-color:var(--text)}
 .center{padding:16vh 20px;text-align:center}
 .center h1{margin-bottom:8px}
 .center p{color:var(--t2)}
@@ -55,6 +77,15 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
     <div class="meta" id="rmeta"></div>
     <div class="player"><video id="rvideo" controls playsinline preload="metadata"></video></div>
     <div class="summary" id="rsummary"></div>
+    <div class="askbox">
+      <div class="sec">Ask this event anything</div>
+      <div style="font-size:13.5px;color:var(--t2)">This recording answers questions — grounded in what was actually said, with tap-to-jump moments.</div>
+      <div id="rchat"></div>
+      <div class="askrow">
+        <input id="rask" placeholder="e.g. What was said about pricing?">
+        <button id="rasksend" aria-label="Ask">↑</button>
+      </div>
+    </div>
     <div class="sec" id="momtitle" style="display:none">Key moments — tap to jump</div>
     <div class="chips" id="rchips"></div>
     <div class="sec">Transcript — tap any line to jump</div>

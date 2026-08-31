@@ -36,6 +36,17 @@ async function pickGroqModel(key) {
   }
 }
 
+// Best-effort per-IP limiter for platform-funded (keyless) requests.
+const ipLog = new Map()
+function overLimit(ip) {
+  const now = Date.now()
+  const hits = (ipLog.get(ip) || []).filter((t) => now - t < 3600000)
+  hits.push(now)
+  ipLog.set(ip, hits)
+  if (ipLog.size > 5000) ipLog.clear()
+  return hits.length > 60
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
@@ -43,6 +54,14 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, system = '', messages = [], maxTokens = 1600 } = req.body || {}
+    const usingOwnKeys = Boolean(keys.anthropicApiKey || keys.groqApiKey)
+    if (!usingOwnKeys) {
+      const ip = String(req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim()
+      if (overLimit(ip)) {
+        res.status(429).json({ error: 'Slow down a little — try again in a few minutes.' })
+        return
+      }
+    }
     // API keys are ASCII; strip anything else (smart dashes, stray words,
     // invisible characters from copy-paste) so headers can never crash.
     const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')

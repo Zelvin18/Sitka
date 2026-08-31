@@ -129,6 +129,10 @@ export default function LiveSession({
   const [pollOpts, setPollOpts] = useState('')
   const [pollErr, setPollErr] = useState<string | null>(null)
   const lastLostPulseRef = useRef(0)
+  const [mind, setMind] = useState<{ topic: string; count: number }[]>([])
+  const [recap, setRecap] = useState<{ topic: string; text: string } | null>(null)
+  const [recapBusy, setRecapBusy] = useState(false)
+  const [notePushed, setNotePushed] = useState(false)
   const [nudge, setNudge] = useState<string | null>(null)
   const nudgesShownRef = useRef<string[]>([])
   const nudgeBusyRef = useRef(false)
@@ -314,6 +318,22 @@ export default function LiveSession({
       clearTimeout(first)
     }
   }, [phase, hosting, hasChatKey, agendaList, addPulse])
+
+  // ---- Room's Mind: cluster the audience's private questions (every 2 min) ----
+  useEffect(() => {
+    if (phase !== 'recording' || !hosting || !confUrl || !hasChatKey) return undefined
+    const check = (): void => {
+      const id = sessionIdRef.current
+      if (!id) return
+      void window.sitka.roomMind(id).then((r) => setMind(r.themes ?? []))
+    }
+    const t = setInterval(check, 120000)
+    const first = setTimeout(check, 60000)
+    return () => {
+      clearInterval(t)
+      clearTimeout(first)
+    }
+  }, [phase, hosting, confUrl, hasChatKey])
 
   // ---- marks (global hotkey + button) ----
   useEffect(() => {
@@ -1204,6 +1224,61 @@ export default function LiveSession({
                   </span>
                 </div>
               )}
+
+            {mind.length > 0 && (
+              <>
+                <div className="section-title">The room's mind</div>
+                <div className="mind-card">
+                  <div className="mind-hint">
+                    What the audience is privately asking about right now:
+                  </div>
+                  {mind.map((t) => (
+                    <div key={t.topic} className="mind-row">
+                      <span className="mind-topic">{t.topic}</span>
+                      <span className="duration-chip">{t.count}</span>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        disabled={recapBusy}
+                        onClick={() => {
+                          setRecapBusy(true)
+                          setRecap(null)
+                          setNotePushed(false)
+                          void window.sitka
+                            .roomRecap(sessionIdRef.current ?? '', t.topic)
+                            .then((r) => {
+                              setRecapBusy(false)
+                              if (r.text) setRecap({ topic: t.topic, text: r.text })
+                            })
+                        }}
+                      >
+                        {recapBusy ? '…' : 'Recap'}
+                      </button>
+                    </div>
+                  ))}
+                  {recap && (
+                    <div className="mind-recap">
+                      <div className="mind-recap-text">{recap.text}</div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button
+                          className="btn btn-sm"
+                          disabled={notePushed}
+                          onClick={() => {
+                            void window.sitka.pushRoomNote(recap.text).then((r) => {
+                              if (!r.error) setNotePushed(true)
+                            })
+                          }}
+                        >
+                          {notePushed ? 'Sent to every phone ✓' : 'Send to every phone'}
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setRecap(null)}>
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <div className="section-title">Live poll</div>
             {audience.poll && (

@@ -35,6 +35,24 @@
   </select>
   <button class="btn" id="joinbtn">Join event</button>
   <div class="consent">This event is captured and AI-assisted by the host's Sitka. Your questions stay private to you; questions you submit to the speaker are shared with the host.</div>
+  <button class="linklike" id="proxylink">Can't attend? Let Sitka attend for you</button>
+</div>
+
+<div id="proxy" class="center hidden">
+  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <h1 style="text-align:center">Sitka will attend for you</h1>
+  <div class="sub" style="text-align:center">Tell it what you care about. It sits through the whole event, watches for your topics, and writes you a personal brief the moment it ends.</div>
+  <div class="label">What should Sitka watch for?</div>
+  <textarea id="proxyreq" rows="4" class="qta" placeholder="e.g. Anything about the Q3 budget decision, who owns the new project, and whether the deadline moved…"></textarea>
+  <button class="btn" id="proxysend">Attend for me</button>
+  <button class="linklike" id="proxyback">Back — I'll attend myself</button>
+</div>
+
+<div id="proxywait" class="center hidden">
+  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <h1 style="text-align:center" id="proxytitle">Sitka is attending for you</h1>
+  <div class="sub" style="text-align:center" id="proxystatus">Keep this link — your personal brief appears here when the event ends.</div>
+  <div id="proxybrief" style="text-align:left"></div>
 </div>
 
 <div id="wait" class="center hidden" style="text-align:center">
@@ -61,6 +79,7 @@
         <button class="reactbtn" id="reactlost"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9a3 3 0 1 1 4.5 2.6c-.9.5-1.5 1-1.5 2.1M12 17.2v.3"/><circle cx="12" cy="12" r="9.2"/></svg>Lost me</button>
       </div>
       <div id="pollcard" class="pollcard hidden"></div>
+      <div id="notecard" class="notecard hidden"></div>
     </div>
     <div class="waiting" id="livewait">Waiting for the talk…</div>
     <div id="segs"></div>
