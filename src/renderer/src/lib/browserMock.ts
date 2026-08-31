@@ -8,7 +8,14 @@ import type { SitkaApi } from '../../../preload/index'
 export function installBrowserMockIfNeeded(): void {
   if ('sitka' in window) return
   const mock: SitkaApi = {
-    getSettings: async () => ({ anthropicApiKey: '', openaiApiKey: '', groqApiKey: '' }),
+    getSettings: async () => ({
+      anthropicApiKey: '',
+      openaiApiKey: '',
+      groqApiKey: '',
+      supabaseUrl: '',
+      supabaseServiceKey: '',
+      webAppUrl: ''
+    }),
     setSettings: async () => undefined,
     listSources: async () => [],
     getThumb: async () => null,
@@ -45,6 +52,7 @@ export function installBrowserMockIfNeeded(): void {
     deleteBrainChat: async () => undefined,
     startConference: async () => ({ error: 'unavailable in browser preview' }),
     stopConference: async () => undefined,
+    pushStageFrame: async () => undefined,
     conferenceStatus: async () => ({ running: false }),
     onConferenceUpdate: () => () => undefined,
     listCoachProjects: async () => [],

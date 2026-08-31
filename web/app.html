@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitka</title>
+<style>
+:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33}}
+#gate{position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:100;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'Segoe UI',Roboto,sans-serif}
+#gate.hidden{display:none}
+.gcard{width:100%;max-width:400px;padding:28px}
+.gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16px;justify-content:center;margin-bottom:6px}
+.gdot{width:9px;height:9px;border-radius:50%;background:var(--text)}
+.gsub{color:var(--t2);font-size:14px;text-align:center;margin-bottom:26px;line-height:1.5}
+.glabel{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:14px 0 7px}
+.gin{width:100%;box-sizing:border-box;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:14.5px;font-family:inherit}
+.gin:focus{outline:none;border-color:var(--text)}
+.gbtn{width:100%;padding:13px;border:none;border-radius:13px;background:var(--text);color:var(--bg);font-size:15px;font-weight:650;margin-top:20px;cursor:pointer;font-family:inherit}
+.gbtn.g2{background:var(--soft);color:var(--text);border:1px solid var(--border);margin-top:10px}
+.gbtn:disabled{opacity:.4}
+.gerr{color:var(--danger);font-size:13px;margin-top:12px;text-align:center;min-height:18px}
+.gwait{color:var(--t3);font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="gcard" id="gatecard">
+    <div class="gbrand"><span class="gdot"></span>Sitka</div>
+    <div class="gsub">Your live AI intelligence platform — attend, understand, remember. Sign in to open your workspace.</div>
+    <div class="glabel">Email</div>
+    <input class="gin" id="gemail" type="email" autocomplete="email" placeholder="you@example.com">
+    <div class="glabel">Password</div>
+    <input class="gin" id="gpassword" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button class="gbtn" id="gsignin">Sign in</button>
+    <button class="gbtn g2" id="gsignup">Create account</button>
+    <div class="gerr" id="gerr"></div>
+  </div>
+  <div class="gcard hidden" id="gateload" style="text-align:center"><div class="gwait">Opening your workspace…</div></div>
+</div>
+<div id="root"></div>
+<script type="module" src="/src/app-entry.ts"></script>
+</body>
+</html>

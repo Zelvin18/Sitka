@@ -533,34 +533,42 @@ export default function LiveSession({
       onSessionCreated(meta)
 
       // Screen (+ optional system audio). chromeMediaSource constraints are
-      // Electron-specific and not in the TS lib types.
+      // Electron-specific; on the web build the browser shows its own picker.
+      const isWeb = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
       const md = navigator.mediaDevices as unknown as {
         getUserMedia: (c: unknown) => Promise<MediaStream>
       }
       let desktopStream: MediaStream
-      try {
-        desktopStream = await md.getUserMedia({
-          audio: systemAudioOn ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: selectedSource,
-              maxFrameRate: 15
-            }
-          }
+      if (isWeb) {
+        desktopStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 15 },
+          audio: systemAudioOn
         })
-      } catch {
-        // System audio loopback can fail (e.g. window capture) — retry video-only.
-        desktopStream = await md.getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: selectedSource,
-              maxFrameRate: 15
+      } else {
+        try {
+          desktopStream = await md.getUserMedia({
+            audio: systemAudioOn ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: selectedSource,
+                maxFrameRate: 15
+              }
             }
-          }
-        })
+          })
+        } catch {
+          // System audio loopback can fail (e.g. window capture) — retry video-only.
+          desktopStream = await md.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: selectedSource,
+                maxFrameRate: 15
+              }
+            }
+          })
+        }
       }
       streamsRef.current.push(desktopStream)
 
