@@ -6,6 +6,8 @@ interface Props {
   onSaved: (s: Settings) => void
 }
 
+const isWeb = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 export default function SettingsView({ settings, onSaved }: Props): React.JSX.Element {
   const [anthropicKey, setAnthropicKey] = useState('')
   const [openaiKey, setOpenaiKey] = useState('')
@@ -109,7 +111,8 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
           </div>
         </div>
 
-        <div className="section-title">Online events</div>
+        {!isWeb && (
+        <><div className="section-title">Online events</div>
         <div className="card">
           <div className="field">
             <label className="field-label">Supabase project URL</label>
@@ -154,7 +157,8 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
               empty to use same-Wi-Fi mode.
             </div>
           </div>
-        </div>
+        </div></>
+        )}
 
         <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={() => void save()}>

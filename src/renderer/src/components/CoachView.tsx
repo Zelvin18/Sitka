@@ -278,15 +278,24 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
   const startShare = useCallback(async (sourceId: string): Promise<void> => {
     setSharePickerOpen(false)
     try {
-      const md = navigator.mediaDevices as unknown as {
-        getUserMedia: (c: unknown) => Promise<MediaStream>
-      }
-      const stream = await md.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId, maxFrameRate: 10 }
+      const isWeb = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+      let stream: MediaStream
+      if (isWeb) {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 10 },
+          audio: false
+        })
+      } else {
+        const md = navigator.mediaDevices as unknown as {
+          getUserMedia: (c: unknown) => Promise<MediaStream>
         }
-      })
+        stream = await md.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId, maxFrameRate: 10 }
+          }
+        })
+      }
       shareStreamRef.current?.getTracks().forEach((t) => t.stop())
       shareStreamRef.current = stream
       setSharing(true)

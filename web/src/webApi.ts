@@ -274,6 +274,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     frameBusy: boolean
   }
   let conf: Conf | null = null
+  /** Online events are always reachable; this tracks which one the Events page presents as armed. */
+  let armedId: string | null = null
 
   async function eventMaterialsText(eventId: string): Promise<string> {
     const { data } = await sb.from('events').select('materials_text').eq('id', eventId).single()
@@ -1144,14 +1146,31 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
     },
     conferenceStatus: async () => {
-      if (!conf) return { running: false }
-      return {
-        running: true,
-        url: conf.url,
-        ended: false,
-        attendees: conf.attendeeCount,
-        questions: conf.questions
+      if (conf) {
+        return {
+          running: true,
+          url: conf.url,
+          ended: false,
+          eventId: conf.eventId,
+          attendees: conf.attendeeCount,
+          recentAsks: conf.askCount,
+          questions: conf.questions
+        }
       }
+      if (armedId) {
+        const { count } = await sb
+          .from('attendees')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', armedId)
+        return {
+          running: true,
+          waiting: true,
+          eventId: armedId,
+          url: eventUrl(armedId),
+          attendees: count ?? 0
+        }
+      }
+      return { running: false }
     },
     pushStageFrame: async (dataUrl: string) => {
       if (!conf || conf.frameBusy) return
@@ -1186,10 +1205,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         .select('*')
         .eq('owner', user.id)
         .order('starts_at', { ascending: false, nullsFirst: false })
-      const events = ((data ?? []) as EvRow[]).map(evRowToScheduled)
+      const rows = (data ?? []) as (EvRow & { status: string })[]
+      const events = rows.map(evRowToScheduled)
+      // A shared link works the moment an event exists — default the armed
+      // presentation to the newest event that has not ended yet.
+      if (!armedId) {
+        armedId = rows.find((r) => r.status !== 'ended' && !r.session_id)?.id ?? null
+      }
       const status = conf
         ? { running: true, url: conf.url, waiting: false, eventId: conf.eventId }
-        : { running: false }
+        : armedId
+          ? { running: true, waiting: true, eventId: armedId, url: eventUrl(armedId) }
+          : { running: false }
       return { events, status }
     },
     createEvent: async (title, startsAt, agenda) => {
@@ -1223,11 +1250,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     deleteEvent: async (id: string) => {
       await sb.from('events').delete().eq('id', id)
+      if (armedId === id) armedId = null
     },
     armEvent: async (id: string) => {
       // Online events are always armed — the link works the moment it exists.
       const { data } = await sb.from('events').select('id').eq('id', id).single()
       if (!data) return { error: 'Event not found.' }
+      armedId = id
       return { url: eventUrl(id) }
     },
     addMaterialFile: async (id: string) => {
