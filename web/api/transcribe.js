@@ -8,12 +8,14 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = req.body || {}
-    const key = keys.openaiApiKey || keys.groqApiKey
+    const openaiKey = String(keys.openaiApiKey || '').trim()
+    const groqKey = String(keys.groqApiKey || '').trim()
+    const key = openaiKey || groqKey
     if (!key) {
       res.status(400).json({ error: 'missing-key' })
       return
     }
-    const useOpenai = Boolean(keys.openaiApiKey)
+    const useOpenai = Boolean(openaiKey)
     const url = useOpenai
       ? 'https://api.openai.com/v1/audio/transcriptions'
       : 'https://api.groq.com/openai/v1/audio/transcriptions'

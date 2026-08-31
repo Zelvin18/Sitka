@@ -4,24 +4,36 @@
 let groqModelCache = { id: null, at: 0 }
 
 async function pickGroqModel(key) {
-  if (groqModelCache.id && Date.now() - groqModelCache.at < 600000) return groqModelCache.id
+  if (groqModelCache.id && Date.now() - groqModelCache.at < 600000) {
+    return { id: groqModelCache.id }
+  }
   try {
     const r = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { Authorization: `Bearer ${key}` }
     })
     const j = await r.json()
-    const ids = (j.data || []).map((m) => m.id).filter((id) => !/whisper|tts|guard/i.test(id))
-    const prefs = ['llama-3.3-70b', 'llama-4', 'llama3-70b', '70b', 'llama']
+    if (!r.ok) {
+      return { error: j.error?.message || `Groq rejected the key (HTTP ${r.status})` }
+    }
+    const ids = (j.data || [])
+      .map((m) => m.id)
+      .filter((id) => !/whisper|tts|guard|embed|moderation|vision-preview/i.test(id))
+    const prefs = ['llama-3.3-70b', 'llama-4', 'llama3-70b', '70b', 'llama', 'qwen', 'deepseek']
     let pick = null
     for (const p of prefs) {
-      pick = ids.find((id) => id.includes(p))
+      pick = ids.find((id) => id.toLowerCase().includes(p))
       if (pick) break
     }
-    groqModelCache = { id: pick || ids[0] || null, at: Date.now() }
-  } catch {
-    /* keep cache */
+    pick = pick || ids[0] || null
+    if (pick) {
+      groqModelCache = { id: pick, at: Date.now() }
+      return { id: pick }
+    }
+    return { error: 'Groq returned no usable chat models for this key.' }
+  } catch (err) {
+    // Network blip listing models — try a known model id directly.
+    return { id: 'llama-3.3-70b-versatile' }
   }
-  return groqModelCache.id
 }
 
 export default async function handler(req, res) {
@@ -31,11 +43,14 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, system = '', messages = [], maxTokens = 1600 } = req.body || {}
-    if (keys.anthropicApiKey) {
+    const anthropicKey = String(keys.anthropicApiKey || '').trim()
+    const groqKey = String(keys.groqApiKey || '').trim()
+
+    if (anthropicKey) {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'x-api-key': keys.anthropicApiKey,
+          'x-api-key': anthropicKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json'
         },
@@ -48,7 +63,7 @@ export default async function handler(req, res) {
       })
       const j = await r.json()
       if (!r.ok) {
-        res.status(502).json({ error: j.error?.message || 'Anthropic error' })
+        res.status(502).json({ error: 'Anthropic: ' + (j.error?.message || `HTTP ${r.status}`) })
         return
       }
       res.status(200).json({
@@ -59,32 +74,35 @@ export default async function handler(req, res) {
       })
       return
     }
-    if (keys.groqApiKey) {
-      const model = await pickGroqModel(keys.groqApiKey)
-      if (!model) {
-        res.status(502).json({ error: 'No Groq chat model available' })
+
+    if (groqKey) {
+      const picked = await pickGroqModel(groqKey)
+      if (picked.error) {
+        res.status(502).json({ error: picked.error })
         return
       }
       const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${keys.groqApiKey}`,
+          Authorization: `Bearer ${groqKey}`,
           'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model,
+          model: picked.id,
           max_tokens: maxTokens,
           messages: [{ role: 'system', content: system }, ...messages]
         })
       })
       const j = await r.json()
       if (!r.ok) {
-        res.status(502).json({ error: j.error?.message || 'Groq error' })
+        groqModelCache = { id: null, at: 0 } // model may have been retired — rediscover next call
+        res.status(502).json({ error: 'Groq: ' + (j.error?.message || `HTTP ${r.status}`) })
         return
       }
       res.status(200).json({ text: j.choices?.[0]?.message?.content || '' })
       return
     }
+
     res.status(400).json({ error: 'missing-key' })
   } catch (err) {
     res.status(500).json({ error: String((err && err.message) || err) })
