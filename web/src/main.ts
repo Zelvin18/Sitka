@@ -408,6 +408,94 @@ el('stagefull').onclick = (e) => {
     el('stagefull').classList.add('hidden')
 }
 
+// ---------- save this moment (one tap: caption + slide snapshot) ----------
+interface Moment {
+  t: string
+  text: string
+  img: string | null
+  at: number
+}
+const momKey = 'sitka-moments-' + eventId
+let moments: Moment[] = []
+try {
+  moments = JSON.parse(localStorage.getItem(momKey) || '[]') as Moment[]
+} catch {
+  moments = []
+}
+function persistMoments(): void {
+  try {
+    localStorage.setItem(momKey, JSON.stringify(moments.slice(-40)))
+  } catch {
+    /* storage full/private mode — moments stay in memory */
+  }
+}
+function lastCaption(): { t: string; text: string } | null {
+  const w = el('segs')
+  const d = w.lastElementChild as HTMLElement | null
+  if (!d) return null
+  return {
+    t: (d.children[0] as HTMLElement).textContent || '',
+    text: (d.children[1] as HTMLElement).textContent || ''
+  }
+}
+function stageSnap(): string | null {
+  if (!stageSeen) return null
+  try {
+    const img = el('stageimg') as HTMLImageElement
+    const w = Math.min(640, img.naturalWidth || 640)
+    const h = Math.round((w * (img.naturalHeight || 360)) / (img.naturalWidth || 640))
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    c.getContext('2d')?.drawImage(img, 0, 0, w, h)
+    return c.toDataURL('image/jpeg', 0.6)
+  } catch {
+    return null
+  }
+}
+el('savebtn').onclick = () => {
+  const cap = lastCaption()
+  moments.push({
+    t: cap?.t || '',
+    text: cap?.text || '(moment saved before the talk began)',
+    img: stageSnap(),
+    at: Date.now()
+  })
+  persistMoments()
+  const span = el('savebtn').querySelector('span')
+  if (span) {
+    span.textContent = 'Saved — it will be in your pack'
+    setTimeout(() => {
+      span.textContent = 'Save this moment'
+    }, 1600)
+  }
+}
+
+// ---------- tappable captions: explain / define / why-for-me ----------
+let sheetSeg: { t: string; text: string } | null = null
+el('segs').addEventListener('click', (e) => {
+  const d = (e.target as HTMLElement).closest?.('.seg') as HTMLElement | null
+  if (!d) return
+  sheetSeg = {
+    t: (d.children[0] as HTMLElement).textContent || '',
+    text: (d.children[1] as HTMLElement).textContent || ''
+  }
+  el('sheetquote').textContent = '[' + sheetSeg.t + '] ' + sheetSeg.text
+  el('sheetwrap').classList.remove('hidden')
+})
+el('sheetwrap').onclick = (e) => {
+  if (e.target === el('sheetwrap')) el('sheetwrap').classList.add('hidden')
+}
+function sheetAsk(prefix: string): void {
+  if (!sheetSeg) return
+  el('sheetwrap').classList.add('hidden')
+  ;(document.querySelector('[data-pane=ask]') as HTMLElement).click()
+  ask(prefix + ' — the speaker just said: "' + sheetSeg.text + '" (at ' + sheetSeg.t + ')')
+}
+el('sh-explain').onclick = () => sheetAsk('Explain this simply')
+el('sh-define').onclick = () => sheetAsk('Define the technical terms in this')
+el('sh-why').onclick = () => sheetAsk('Why does this matter for someone like me?')
+
 // ---------- wake lock (screen stays on during the live talk) ----------
 let wakeLock: { release: () => Promise<void> } | null = null
 async function keepAwake(): Promise<void> {
@@ -430,6 +518,7 @@ function goLiveView(): void {
   el('livenotice').classList.remove('hidden')
   el('catchup').classList.remove('hidden')
   document.querySelectorAll('.tab').forEach((t) => t.classList.remove('off'))
+  el('savebtn').classList.remove('hidden')
   startStage()
   void keepAwake()
 }
@@ -696,7 +785,16 @@ const myChat: { role: string; content: string }[] = []
     } catch {
       p = { summary: answer }
     }
-    let h = `<div class="tkcard"><h2>Summary</h2><div class="segtext md">${md(p.summary || '')}</div></div>`
+    let h = ''
+    if (moments.length > 0) {
+      h += `<div class="tkcard"><h2>My saved moments</h2>${moments
+        .map(
+          (m) =>
+            `<div class="mom">${m.img ? `<img src="${m.img}" alt="Saved slide">` : ''}<div><span class="ts">${escH(m.t)}</span> <span class="segtext">${escH(m.text)}</span></div></div>`
+        )
+        .join('')}</div>`
+    }
+    h += `<div class="tkcard"><h2>Summary</h2><div class="segtext md">${md(p.summary || '')}</div></div>`
     if (p.takeaways?.length)
       h += `<div class="tkcard"><h2>Key takeaways</h2><ul class="md">${p.takeaways.map((t) => `<li>${inlineMd(escH(normCites(t)))}</li>`).join('')}</ul></div>`
     if (p.moments?.length)

@@ -1,7 +1,7 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     { "source": "/e/:id", "destination": "/event.html" },
-    { "source": "/host", "destination": "/host.html" },
     { "source": "/host/:path*", "destination": "/host.html" }
   ]
 }

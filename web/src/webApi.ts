@@ -73,6 +73,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const { data: sess } = await sb.auth.getSession()
   const user: User = sess!.session!.user
 
+  // Does this deployment provide platform AI keys? (Users then need none.)
+  let platform = { chat: false, stt: false }
+  try {
+    const r = await fetch('/api/health')
+    if (r.ok) platform = { ...platform, ...(await r.json()) }
+  } catch {
+    /* offline — user keys still work */
+  }
+
   // ---------- settings (AI keys live only in this browser) ----------
   const SETTINGS_KEY = 'sitka-web-settings'
   function getSettings(): Settings {
@@ -113,11 +122,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   }
   function hasChatKey(): boolean {
     const k = getSettings()
-    return Boolean(k.anthropicApiKey || k.groqApiKey)
+    return Boolean(k.anthropicApiKey || k.groqApiKey) || platform.chat
   }
   function hasSttKey(): boolean {
     const k = getSettings()
-    return Boolean(k.openaiApiKey || k.groqApiKey)
+    return Boolean(k.openaiApiKey || k.groqApiKey) || platform.stt
   }
 
   // ---------- event emitters ----------
@@ -169,12 +178,56 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       .eq('id', id)
   }
 
-  // recording buffers (video chunks stay here until finalize uploads them)
-  const recChunks = new Map<string, ArrayBuffer[]>()
+  // Recording buffers: chunks are uploaded as rolling ~8MB parts DURING the
+  // recording, so a crashed tab loses seconds — not the session — and no
+  // single file ever hits the storage size cap.
+  interface RecBuf {
+    parts: number
+    chunks: ArrayBuffer[]
+    bytes: number
+    thumbDone: boolean
+    chain: Promise<void>
+  }
+  const recBuf = new Map<string, RecBuf>()
+  const PART_BYTES = 8 * 1024 * 1024
   let recordingState: { id: string; startedAt: number } | null = null
 
   function videoPath(id: string): string {
     return `${user.id}/${id}.webm`
+  }
+  function partPath(id: string, n: number): string {
+    return `${user.id}/${id}/part-${String(n).padStart(4, '0')}.webm`
+  }
+
+  function flushPart(id: string, force: boolean): void {
+    const b = recBuf.get(id)
+    if (!b || b.chunks.length === 0) return
+    if (!force && b.bytes < PART_BYTES) return
+    const chunks = b.chunks
+    const bytes = b.bytes
+    const partNo = b.parts
+    b.chunks = []
+    b.bytes = 0
+    b.parts++
+    b.chain = b.chain.then(async () => {
+      const blob = new Blob(chunks, { type: 'video/webm' })
+      try {
+        const { error } = await sb.storage
+          .from('recordings')
+          .upload(partPath(id, partNo), blob, { upsert: true, contentType: 'video/webm' })
+        if (error) throw error
+        if (!b.thumbDone && partNo === 0) {
+          b.thumbDone = true
+          const thumb = await makeThumb(blob)
+          if (thumb) await patchSession(id, { thumb })
+        }
+      } catch {
+        // Upload failed (offline blip): put the data back for the next flush.
+        b.chunks = chunks.concat(b.chunks)
+        b.bytes += bytes
+        b.parts = partNo
+      }
+    })
   }
 
   async function makeThumb(blob: Blob): Promise<string | null> {
@@ -720,7 +773,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         marks: [],
         report: null
       })
-      recChunks.set(meta.id, [])
+      recBuf.set(meta.id, {
+        parts: 0,
+        chunks: [],
+        bytes: 0,
+        thumbDone: false,
+        chain: Promise.resolve()
+      })
       return meta
     },
 
@@ -781,7 +840,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     deleteSession: async (id: string) => {
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
-      await sb.storage.from('recordings').remove([videoPath(id)])
+      const { data: listing } = await sb.storage
+        .from('recordings')
+        .list(`${user.id}/${id}`, { limit: 1000 })
+      const paths = (listing ?? []).map((f) => `${user.id}/${id}/${f.name}`)
+      paths.push(videoPath(id))
+      await sb.storage.from('recordings').remove(paths)
     },
 
     saveChat: async (id, chat) => {
@@ -791,13 +855,39 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     appendChunk: async (id, chunk) => {
-      const list = recChunks.get(id) ?? []
-      list.push(chunk)
-      recChunks.set(id, list)
+      const b = recBuf.get(id)
+      if (!b) return
+      b.chunks.push(chunk)
+      b.bytes += chunk.byteLength
+      flushPart(id, false)
     },
 
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null
+      // Part-based recordings: download every part and stitch them together.
+      const { data: listing } = await sb.storage
+        .from('recordings')
+        .list(`${user.id}/${id}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+      if (listing && listing.length > 0) {
+        const buffers: ArrayBuffer[] = []
+        for (const f of listing) {
+          const { data } = await sb.storage
+            .from('recordings')
+            .download(`${user.id}/${id}/${f.name}`)
+          if (data) buffers.push(await data.arrayBuffer())
+        }
+        const total = buffers.reduce((n, b) => n + b.byteLength, 0)
+        if (total > 0) {
+          const out = new Uint8Array(total)
+          let at = 0
+          for (const b of buffers) {
+            out.set(new Uint8Array(b), at)
+            at += b.byteLength
+          }
+          return out
+        }
+      }
+      // Legacy single-file recordings.
       const { data } = await sb.storage.from('recordings').download(videoPath(id))
       if (!data) return null
       return new Uint8Array(await data.arrayBuffer())
@@ -892,24 +982,22 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       d.meta.status = 'complete'
       await endConf(id)
 
-      const chunks = recChunks.get(id) ?? []
-      recChunks.delete(id)
-      let thumb: string | null = null
-      if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: 'video/webm' })
-        thumb = await makeThumb(blob)
-        const { error } = await sb.storage
-          .from('recordings')
-          .upload(videoPath(id), blob, { upsert: true, contentType: 'video/webm' })
-        if (error) {
-          // Too large for storage (or offline): hand the file to the user instead.
+      // Flush the tail of the recording and wait for every part to land.
+      const b = recBuf.get(id)
+      if (b) {
+        flushPart(id, true)
+        await b.chain
+        if (b.chunks.length > 0) {
+          // A part failed even after retry queuing — save it locally so nothing is lost.
+          const blob = new Blob(b.chunks, { type: 'video/webm' })
           const a = document.createElement('a')
           a.href = URL.createObjectURL(blob)
-          a.download = `${d.meta.title.replace(/[^\w-]+/g, '-')}.webm`
+          a.download = `${d.meta.title.replace(/[^\w-]+/g, '-')}-partial.webm`
           a.click()
         }
+        recBuf.delete(id)
       }
-      await patchSession(id, { meta: d.meta, ...(thumb ? { thumb } : {}) })
+      await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
 
       // analysis in the background

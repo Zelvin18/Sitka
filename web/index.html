@@ -3,42 +3,183 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sitka</title>
+<title>Sitka — Live AI intelligence for every room</title>
+<meta name="description" content="Sitka attends your lectures, meetings and events with you — live captions in any language, private AI answers for every attendee, and perfect recall afterwards.">
 <style>
-:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a}
-@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33}}
-#gate{position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:100;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'Segoe UI',Roboto,sans-serif}
-.hidden{display:none!important}
-.gcard{width:100%;max-width:400px;padding:28px}
-.gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16px;justify-content:center;margin-bottom:6px}
-.gdot{width:9px;height:9px;border-radius:50%;background:var(--text)}
-.gsub{color:var(--t2);font-size:14px;text-align:center;margin-bottom:26px;line-height:1.5}
-.glabel{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:14px 0 7px}
-.gin{width:100%;box-sizing:border-box;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:14.5px;font-family:inherit}
-.gin:focus{outline:none;border-color:var(--text)}
-.gbtn{width:100%;padding:13px;border:none;border-radius:13px;background:var(--text);color:var(--bg);font-size:15px;font-weight:650;margin-top:20px;cursor:pointer;font-family:inherit}
-.gbtn.g2{background:var(--soft);color:var(--text);border:1px solid var(--border);margin-top:10px}
-.gbtn:disabled{opacity:.4}
-.gerr{color:var(--danger);font-size:13px;margin-top:12px;text-align:center;min-height:18px}
-.gwait{color:var(--t3);font-size:13px;text-align:center}
+:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a;--shadow:rgba(20,20,22,.09)}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.4)}}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16.5px;letter-spacing:-.01em}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--text)}
+.nav-links{display:flex;align-items:center;gap:22px;font-size:14px;font-weight:600;color:var(--t2)}
+.nav-links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 22px;border:none;border-radius:12px;background:var(--text);color:var(--bg);font-size:14.5px;font-weight:650;cursor:pointer;transition:transform .12s ease}
+.btn:active{transform:scale(.97)}
+.btn2{background:var(--soft);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:8px 16px;font-size:13.5px}
+
+.hero{padding:84px 0 70px;text-align:center;position:relative;overflow:hidden}
+.hero-art{position:relative;height:150px;margin-bottom:10px}
+.ring{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px solid var(--border);border-radius:50%;animation:ripple 3s ease-out infinite}
+.r1{width:60px;height:60px}
+.r2{width:112px;height:112px;opacity:.6;animation-delay:.4s}
+.r3{width:168px;height:168px;opacity:.3;animation-delay:.8s}
+.cdot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;background:var(--text);border-radius:50%}
+@keyframes ripple{0%{transform:translate(-50%,-50%) scale(.94);opacity:.85}70%{opacity:.2}100%{transform:translate(-50%,-50%) scale(1.1);opacity:.5}}
+h1{font-size:clamp(34px,6vw,56px);line-height:1.08;letter-spacing:-.03em;font-weight:800;max-width:800px;margin:0 auto 18px}
+.hero-sub{font-size:clamp(16px,2.4vw,19px);color:var(--t2);max-width:640px;margin:0 auto 34px}
+.hero-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.pillars{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:44px}
+.pillar{font-size:12.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);border:1px solid var(--border);border-radius:20px;padding:7px 16px}
+
+section{padding:70px 0}
+.sec-title{font-size:clamp(26px,4vw,34px);letter-spacing:-.02em;font-weight:750;margin-bottom:10px}
+.sec-sub{color:var(--t2);max-width:620px;margin-bottom:38px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.grid3,.grid2{grid-template-columns:1fr}}
+.card{border:1px solid var(--border);border-radius:18px;padding:24px;background:var(--soft);transition:border-color .15s ease}
+.card:hover{border-color:var(--t3)}
+.card .ic{width:26px;height:26px;margin-bottom:14px;color:var(--text)}
+.card h3{font-size:16.5px;font-weight:700;margin-bottom:6px;letter-spacing:-.01em}
+.card p{font-size:14px;color:var(--t2)}
+
+.altsec{background:var(--soft);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.altsec .card{background:var(--bg)}
+.steps{counter-reset:s}
+.step{display:flex;gap:18px;padding:18px 0;border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step-n{counter-increment:s;flex-shrink:0;width:36px;height:36px;border-radius:50%;border:1.5px solid var(--text);display:flex;align-items:center;justify-content:center;font-weight:750;font-size:14px}
+.step-n::before{content:counter(s)}
+.step h4{font-size:15.5px;font-weight:700}
+.step p{font-size:14px;color:var(--t2)}
+
+.who .card b{display:block;font-size:15.5px;margin-bottom:6px}
+.who .card span{font-size:14px;color:var(--t2)}
+
+.cta-end{text-align:center;padding:90px 0}
+.cta-end h2{font-size:clamp(26px,4.5vw,38px);letter-spacing:-.02em;font-weight:800;margin-bottom:12px}
+.cta-end p{color:var(--t2);margin-bottom:28px}
+
+footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:var(--t3)}
+.foot-in{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.foot-links{display:flex;gap:18px}
+.foot-links a:hover{color:var(--text)}
 </style>
 </head>
 <body>
-<div id="gate">
-  <div class="gcard" id="gatecard">
-    <div class="gbrand"><span class="gdot"></span>Sitka</div>
-    <div class="gsub">Your live AI intelligence platform — attend, understand, remember. Sign in to open your workspace.</div>
-    <div class="glabel">Email</div>
-    <input class="gin" id="gemail" type="email" autocomplete="email" placeholder="you@example.com">
-    <div class="glabel">Password</div>
-    <input class="gin" id="gpassword" type="password" autocomplete="current-password" placeholder="••••••••">
-    <button class="gbtn" id="gsignin">Sign in</button>
-    <button class="gbtn g2" id="gsignup">Create account</button>
-    <div class="gerr" id="gerr"></div>
+
+<nav><div class="wrap nav-in">
+  <a class="brand" href="/"><span class="dot"></span>Sitka</a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#who">Who it's for</a>
+    <a class="btn btn-sm" href="/app">Open Sitka</a>
   </div>
-  <div class="gcard hidden" id="gateload" style="text-align:center"><div class="gwait">Opening your workspace…</div></div>
-</div>
-<div id="root"></div>
-<script type="module" src="/src/app-entry.ts"></script>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="hero-art"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <h1>The AI that attends with you.</h1>
+  <p class="hero-sub">Sitka sits in your lectures, meetings and live events — capturing everything, answering privately in your language, and remembering every moment so you never have to.</p>
+  <div class="hero-cta">
+    <a class="btn" href="/app">Get started — it's free</a>
+    <a class="btn btn2" href="#how">See how it works</a>
+  </div>
+  <div class="pillars">
+    <span class="pillar">Prepare</span><span class="pillar">Perform</span><span class="pillar">Participate</span><span class="pillar">Remember</span>
+  </div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <h2 class="sec-title">One companion, every room</h2>
+  <p class="sec-sub">From a lecture hall to a boardroom to a conference stage — Sitka listens, understands, and answers, live.</p>
+  <div class="grid3">
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+      <h3>Live understanding</h3>
+      <p>Real-time transcription of everything said, with living notes that organize themselves as the session unfolds.</p>
+    </div>
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.6 0-3.1-.4-4.4-1.2L3 20l1.2-5.1A8.5 8.5 0 1 1 21 11.5z"/></svg>
+      <h3>Ask anything, privately</h3>
+      <p>Question the talk while it happens — answers grounded in what was actually said, cited to the exact moment.</p>
+    </div>
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.4 18.6a9.4 9.4 0 0 1 0-13.2M18.6 5.4a9.4 9.4 0 0 1 0 13.2"/></svg>
+      <h3>Host live events</h3>
+      <p>One QR code gives every attendee their own AI — captions translated into their language, spoken aloud, on their own phone.</p>
+    </div>
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+      <h3>Live stage view</h3>
+      <p>Your slides mirror to every phone in the room — the back row sees as clearly as the front.</p>
+    </div>
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 1 7 7c0 2.4-1.2 3.9-2.4 5.2-.9 1-1.6 1.9-1.6 3.3H9c0-1.4-.7-2.3-1.6-3.3C6.2 13.9 5 12.4 5 10a7 7 0 0 1 7-7zM9.5 21.5h5"/></svg>
+      <h3>A memory that compounds</h3>
+      <p>Search every moment you've ever attended. Ask across your whole library and jump straight to the second it was said.</p>
+    </div>
+    <div class="card">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M5 4h14v7a7 7 0 0 1-14 0zM5 6H3.5a1.5 1.5 0 0 0 0 3H5M19 6h1.5a1.5 1.5 0 0 1 0 3H19"/></svg>
+      <h3>Coach mode</h3>
+      <p>Rehearse your presentation against a simulated audience, get scored honestly, and walk on stage prepared.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="how" class="altsec"><div class="wrap">
+  <div class="grid2" style="gap:44px;align-items:start">
+    <div>
+      <h2 class="sec-title">Attending something?</h2>
+      <div class="steps">
+        <div class="step"><span class="step-n"></span><div><h4>Start a session</h4><p>One click captures the talk — screen, voice, everything.</p></div></div>
+        <div class="step"><span class="step-n"></span><div><h4>Stay present</h4><p>Sitka takes the notes, flags the important moments, and answers your questions as they come to you.</p></div></div>
+        <div class="step"><span class="step-n"></span><div><h4>Remember forever</h4><p>Summaries, study packs and a searchable recording — every moment one question away.</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h2 class="sec-title">Hosting something?</h2>
+      <div class="steps">
+        <div class="step"><span class="step-n"></span><div><h4>Create your event</h4><p>Brief the AI with your materials. Share one link or QR code.</p></div></div>
+        <div class="step"><span class="step-n"></span><div><h4>Go live</h4><p>Every attendee gets captions in their language, your slides on their phone, and a private AI at their level.</p></div></div>
+        <div class="step"><span class="step-n"></span><div><h4>Know how it went</h4><p>A full event report — who joined, what they asked, what to follow up on.</p></div></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<section id="who" class="who"><div class="wrap">
+  <h2 class="sec-title">Built for people who can't afford to miss things</h2>
+  <div class="grid3">
+    <div class="card"><b>Students</b><span>Attend the lecture once, keep it forever. Study packs, flashcards and quizzes build themselves from what your professor actually said.</span></div>
+    <div class="card"><b>Teams &amp; professionals</b><span>Meetings that remember their own decisions and action items — and answer for themselves weeks later.</span></div>
+    <div class="card"><b>Speakers &amp; organizers</b><span>Give every seat in the room a translator, an explainer and a concierge. Your event becomes unforgettable — literally.</span></div>
+  </div>
+</div></section>
+
+<section class="cta-end"><div class="wrap">
+  <h2>Never attend alone again.</h2>
+  <p>Free to start. Works in your browser, on any device.</p>
+  <a class="btn" href="/app" style="padding:14px 34px;font-size:16px">Open Sitka</a>
+</div></section>
+
+<footer><div class="wrap foot-in">
+  <span class="brand" style="font-size:14px"><span class="dot" style="width:7px;height:7px"></span>Sitka</span>
+  <div class="foot-links">
+    <a href="/legal">Privacy &amp; Terms</a>
+    <a href="/e/demo">Attendee view</a>
+    <a href="/app">Sign in</a>
+  </div>
+</div></footer>
+
 </body>
 </html>

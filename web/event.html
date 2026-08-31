@@ -55,6 +55,7 @@
       </div>
       <button class="listen hidden" id="listenbtn"></button>
       <div class="small hidden" id="voicenote" style="margin-top:8px"></div>
+      <button class="savebtn hidden" id="savebtn"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.2 5.8L12 16.4l-5.2 2.9 1.2-5.8-4.4-4 5.9-.6z"/></svg><span>Save this moment</span></button>
     </div>
     <div class="waiting" id="livewait">Waiting for the talk…</div>
     <div id="segs"></div>
@@ -95,6 +96,13 @@
   <img id="stagefullimg" alt="Live stage">
   <button class="xbtn" id="stageclose" aria-label="Close"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
 </div>
+
+<div id="sheetwrap" class="sheetwrap hidden"><div class="sheet">
+  <div class="sheet-quote" id="sheetquote"></div>
+  <button class="sheet-btn" id="sh-explain"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Explain this simply</button>
+  <button class="sheet-btn" id="sh-define"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Define the terms</button>
+  <button class="sheet-btn" id="sh-why"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>Why does this matter for me?</button>
+</div></div>
 
 <script type="module" src="/src/main.ts"></script>
 </body>

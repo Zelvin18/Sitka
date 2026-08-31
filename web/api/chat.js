@@ -46,8 +46,9 @@ export default async function handler(req, res) {
     // API keys are ASCII; strip anything else (smart dashes, stray words,
     // invisible characters from copy-paste) so headers can never crash.
     const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
-    const anthropicKey = clean(keys.anthropicApiKey)
-    const groqKey = clean(keys.groqApiKey)
+    // Users' own keys win; otherwise the deployment's platform keys serve them.
+    const anthropicKey = clean(keys.anthropicApiKey) || clean(process.env.ANTHROPIC_API_KEY)
+    const groqKey = clean(keys.groqApiKey) || clean(process.env.GROQ_API_KEY)
 
     // Only treat the Anthropic field as real when it looks like an Anthropic
     // key — otherwise stray text there would block the working Groq path.
