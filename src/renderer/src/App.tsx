@@ -29,8 +29,22 @@ export default function App(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
   const [refreshToken, setRefreshToken] = useState(0)
-  const [sidebarOpen, setSidebarOpen] = usePersistedBool('sitka.sidebar', true)
+  const [sidebarOpen, setSidebarOpen] = usePersistedBool(
+    'sitka.sidebar',
+    window.innerWidth >= 860
+  )
   const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // On phone-sized screens the sidebar is an overlay drawer: start closed,
+  // and slide away once a destination is chosen.
+  const isPhone = (): boolean => window.innerWidth < 860
+  useEffect(() => {
+    if (isPhone()) setSidebarOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const closeDrawer = useCallback((): void => {
+    if (isPhone()) setSidebarOpen(false)
+  }, [setSidebarOpen])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -64,8 +78,9 @@ export default function App(): React.JSX.Element {
       } else {
         setView({ name: 'session', id, seekTo, seekNonce: Date.now() })
       }
+      closeDrawer()
     },
-    [recordingSessionId]
+    [recordingSessionId, closeDrawer]
   )
 
   const deleteSession = useCallback(
@@ -98,14 +113,35 @@ export default function App(): React.JSX.Element {
           activeView={view.name}
           activeSessionId={activeSessionId}
           recordingSessionId={recordingSessionId}
-          onHomePage={() => setView({ name: 'homepage' })}
-          onEvents={() => setView({ name: 'events' })}
-          onCoach={() => setView({ name: 'coach' })}
-          onHome={() => setView({ name: 'home' })}
-          onNewSession={() => setView({ name: 'live' })}
-          onBrain={() => setView({ name: 'brain' })}
+          onHomePage={() => {
+            setView({ name: 'homepage' })
+            closeDrawer()
+          }}
+          onEvents={() => {
+            setView({ name: 'events' })
+            closeDrawer()
+          }}
+          onCoach={() => {
+            setView({ name: 'coach' })
+            closeDrawer()
+          }}
+          onHome={() => {
+            setView({ name: 'home' })
+            closeDrawer()
+          }}
+          onNewSession={() => {
+            setView({ name: 'live' })
+            closeDrawer()
+          }}
+          onBrain={() => {
+            setView({ name: 'brain' })
+            closeDrawer()
+          }}
           onOpenSession={openSession}
-          onSettings={() => setView({ name: 'settings' })}
+          onSettings={() => {
+            setView({ name: 'settings' })
+            closeDrawer()
+          }}
           onCollapse={() => setSidebarOpen(false)}
           onRenameSession={(id, title) => void renameSession(id, title)}
           onDeleteSession={(id) => void deleteSession(id)}

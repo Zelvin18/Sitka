@@ -3613,3 +3613,120 @@ body.dragging-row .splitter-h {
     transform: translateY(0);
   }
 }
+
+/* ============ Responsive: phone & tablet browsers ============ */
+
+@media (max-width: 860px) {
+  .app {
+    height: 100dvh;
+  }
+
+  /* Sidebar becomes an overlay drawer with a dimmed backdrop */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 80;
+    width: min(300px, 85vw);
+    padding-top: env(safe-area-inset-top);
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.28);
+  }
+
+  .app:has(.sidebar)::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(10, 10, 12, 0.38);
+  }
+
+  /* Floating menu button when the drawer is closed */
+  .sidebar-reopen {
+    position: fixed !important;
+    top: calc(8px + env(safe-area-inset-top)) !important;
+    left: 10px !important;
+    z-index: 40;
+    width: 40px;
+    height: 40px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-soft) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  }
+
+  .content-inner {
+    padding: 60px 18px 84px;
+  }
+
+  .page-title {
+    font-size: 23px;
+  }
+
+  /* Multi-column layouts stack */
+  .home-actions,
+  .ev-hero,
+  .feat-grid,
+  .evd-grid,
+  .intent-grid,
+  .room-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .home-recent {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ev-hero {
+    gap: 16px;
+  }
+
+  /* Session & live views: the chat stacks beneath the content */
+  .session-layout {
+    flex-direction: column;
+  }
+
+  .session-left {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .session-right {
+    width: 100% !important;
+    flex: 0 0 44dvh;
+    min-height: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .splitter-v,
+  .splitter-h {
+    display: none;
+  }
+
+  .session-layout .video-wrap {
+    height: min(30dvh, 240px) !important;
+  }
+
+  .session-header-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .session-header-row h1 {
+    font-size: 17px;
+  }
+
+  button,
+  .btn {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-inner {
+    padding: 58px 14px 80px;
+  }
+}
