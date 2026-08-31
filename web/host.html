@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitka — Host</title>
+</head>
+<body class="hostbody">
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>Sitka <span class="topbar-tag">HOST</span></div>
+  <div class="topbar-right hidden" id="userbox">
+    <span class="topbar-mail" id="usermail"></span>
+    <button class="tbtn" id="keysbtn">AI keys</button>
+    <button class="tbtn" id="signout">Sign out</button>
+  </div>
+</div>
+
+<!-- ---------- auth ---------- -->
+<div id="auth" class="page hidden">
+  <div class="authcard">
+    <div class="hero-art rippling" style="height:110px"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+    <h1 style="text-align:center">Host with Sitka</h1>
+    <div class="sub" style="text-align:center">Run live events where every attendee gets their own AI companion — captions, translations, answers, in their language.</div>
+    <div class="label">Email</div>
+    <input class="hin" id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <div class="label">Password</div>
+    <input class="hin" id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+    <div class="notice err hidden" id="autherr"></div>
+    <button class="btn" id="signin">Sign in</button>
+    <button class="btn btn2" id="signup">Create account</button>
+  </div>
+</div>
+
+<!-- ---------- dashboard ---------- -->
+<div id="dash" class="page hidden">
+  <h1>Your events</h1>
+  <div class="sub">Create an event, share its link or QR, and go live from this browser.</div>
+  <div class="cardgrid" id="evlist"></div>
+  <div class="hcard" style="margin-top:18px">
+    <div class="hcard-title">New event</div>
+    <div class="label">Title</div>
+    <input class="hin" id="newtitle" placeholder="e.g. Intro to Machine Learning — Lecture 4">
+    <div class="label">Starts (optional)</div>
+    <input class="hin" id="newwhen" type="datetime-local">
+    <div class="notice err hidden" id="newerr"></div>
+    <button class="btn" id="newbtn" style="max-width:260px">Create event</button>
+  </div>
+</div>
+
+<!-- ---------- event detail ---------- -->
+<div id="eventview" class="page hidden">
+  <button class="backbtn" id="backdash">&#8249; All events</button>
+  <div class="evgrid">
+    <div>
+      <h1 id="evtitle2" style="margin-bottom:2px"></h1>
+      <div class="sub" id="evsub"></div>
+      <div class="hcard">
+        <div class="hcard-title">Details</div>
+        <div class="label">Title</div>
+        <input class="hin" id="edtitle">
+        <div class="label">Starts</div>
+        <input class="hin" id="edwhen" type="datetime-local">
+        <div class="label">Topics to cover (one per line)</div>
+        <textarea class="hin" id="edagenda" rows="4"></textarea>
+        <div class="label">Materials for the AI (paste text — slides notes, program, speaker bio…)</div>
+        <textarea class="hin" id="edmaterials" rows="6" placeholder="Everything you paste here grounds the AI's answers for your audience."></textarea>
+        <label class="hrow" style="margin-top:12px"><input type="checkbox" id="edprechat"> Allow attendees to ask the AI before the event starts</label>
+        <div class="label">Live Voice languages</div>
+        <div class="chips" id="edlangs"></div>
+        <button class="btn" id="savebtn" style="max-width:220px">Save</button>
+        <span class="savednote hidden" id="savednote">Saved</span>
+      </div>
+      <div class="hcard">
+        <div class="hcard-title">Danger</div>
+        <button class="btn btn2" id="delbtn" style="max-width:220px;color:var(--danger)">Delete event</button>
+      </div>
+    </div>
+    <div>
+      <div class="hcard" style="text-align:center">
+        <div class="hcard-title" style="text-align:left">Share with your audience</div>
+        <canvas id="qrcanvas" class="qrbox"></canvas>
+        <div class="small" id="sharelink" style="word-break:break-all;margin:8px 0"></div>
+        <button class="btn btn2" id="copylink">Copy link</button>
+      </div>
+      <div class="hcard">
+        <div class="hcard-title">Showtime</div>
+        <div class="small" style="margin-bottom:10px">Going live captures your microphone (and optionally your screen or slides) from this browser and streams captions, translations and the stage view to every attendee.</div>
+        <div class="notice err hidden" id="goliveerr"></div>
+        <button class="btn" id="golivebtn">Go live</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- live studio ---------- -->
+<div id="studio" class="page hidden">
+  <div class="studiotop">
+    <div>
+      <span class="live on"><span class="ldot"></span>LIVE</span>
+      <span id="stitle" style="font-weight:700;margin-left:10px"></span>
+    </div>
+    <div class="studiotop-right">
+      <span class="small" id="sclock">0:00</span>
+      <button class="tbtn" id="sharescreen">Share screen</button>
+      <button class="btn" id="endbtn" style="width:auto;margin:0;padding:9px 22px;background:var(--danger);color:#fff">End event</button>
+    </div>
+  </div>
+  <div class="studiogrid">
+    <div class="scol">
+      <div class="spreview"><video id="spreview" autoplay muted playsinline></video><div class="spreview-empty" id="spreviewempty">Audio only — tap “Share screen” to give attendees a stage view</div></div>
+      <div class="hcard" style="flex:1;min-height:0;display:flex;flex-direction:column">
+        <div class="hcard-title">Live transcript</div>
+        <div class="stranscript" id="stranscript"><div class="waiting">Listening…</div></div>
+      </div>
+    </div>
+    <div class="scol">
+      <div class="statrow">
+        <div class="stat"><div class="stat-n" id="statatt">0</div><div class="stat-l">with you</div></div>
+        <div class="stat"><div class="stat-n" id="statasks">0</div><div class="stat-l">AI answers</div></div>
+        <div class="stat"><div class="stat-n" id="statq">0</div><div class="stat-l">questions</div></div>
+      </div>
+      <div class="hcard" style="flex:1;min-height:0;display:flex;flex-direction:column">
+        <div class="hcard-title">Questions for you</div>
+        <div class="stranscript" id="squestions"><div class="waiting">None yet — attendees can send questions from their phones.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- ended ---------- -->
+<div id="ended" class="page hidden" style="max-width:560px">
+  <div class="hero-art"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
+  <h1 style="text-align:center">Event ended</h1>
+  <div class="sub" style="text-align:center" id="endsummary"></div>
+  <button class="btn btn2 hidden" id="dlrec">Download recording</button>
+  <button class="btn" id="backhome">Back to events</button>
+</div>
+
+<!-- ---------- AI keys dialog ---------- -->
+<div id="keysdlg" class="dlgwrap hidden">
+  <div class="dlg">
+    <h1 style="font-size:18px">AI keys</h1>
+    <div class="sub">Stored only in this browser. Sent per request through your own deployment — never saved online.</div>
+    <div class="label">Groq API key (free — covers everything)</div>
+    <input class="hin" id="kgroq" type="password" placeholder="gsk_…">
+    <div class="label">Anthropic API key (best answers)</div>
+    <input class="hin" id="kanthropic" type="password" placeholder="sk-ant-…">
+    <div class="label">OpenAI API key (best transcription)</div>
+    <input class="hin" id="kopenai" type="password" placeholder="sk-…">
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn" id="keyssave" style="margin:0">Save</button>
+      <button class="btn btn2" id="keysclose" style="margin:0">Close</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/host.ts"></script>
+</body>
+</html>
