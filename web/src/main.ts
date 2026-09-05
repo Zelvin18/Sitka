@@ -44,7 +44,9 @@ const LANG_CODES: Record<string, string> = {
 const RE_FW = /【\s*((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*】/g
 const RE_BR = /\[{1,2}\s*((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*\]{1,2}/g
 const RE_CHIP = /\[\[((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\]\]/g
-const normCites = (t: string): string => (t || '').replace(RE_FW, '[[$1]]').replace(RE_BR, '[[$1]]')
+const RE_PAREN = /\((\d{1,2}:\d{2}(?::\d{2})?)\)/g
+const normCites = (t: string): string =>
+  (t || '').replace(RE_FW, '[[$1]]').replace(RE_BR, '[[$1]]').replace(RE_PAREN, '[[$1]]')
 const escH = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 

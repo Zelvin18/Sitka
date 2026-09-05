@@ -3,6 +3,16 @@
 
 let groqModelCache = { id: null, at: 0 }
 
+const isReasoningModel = (id) => /deepseek|qwq|qwen|r1|reason|think|gpt-oss/i.test(id)
+
+// Reasoning models sometimes leak their private chain-of-thought — never show it.
+function stripThinking(text) {
+  return String(text || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^\s*<think>[\s\S]*$/i, '')
+    .trim()
+}
+
 async function pickGroqModel(key) {
   if (groqModelCache.id && Date.now() - groqModelCache.at < 600000) {
     return { id: groqModelCache.id }
@@ -17,14 +27,17 @@ async function pickGroqModel(key) {
     }
     const ids = (j.data || [])
       .map((m) => m.id)
-      .filter((id) => !/whisper|tts|guard|embed|moderation|vision-preview/i.test(id))
-    const prefs = ['llama-3.3-70b', 'llama-4', 'llama3-70b', '70b', 'llama', 'qwen', 'deepseek']
+      .filter((id) => !/whisper|tts|guard|embed|moderation|vision-preview|safety/i.test(id))
+    // Plain instruction models first; reasoning models (which emit <think>
+    // blocks) only as a last resort.
+    const plain = ids.filter((id) => !isReasoningModel(id))
+    const prefs = ['llama-3.3-70b', 'llama-4-maverick', 'llama-4', 'llama3-70b', '70b', 'llama', 'gpt-oss', 'mixtral', 'gemma']
     let pick = null
     for (const p of prefs) {
-      pick = ids.find((id) => id.toLowerCase().includes(p))
+      pick = plain.find((id) => id.toLowerCase().includes(p))
       if (pick) break
     }
-    pick = pick || ids[0] || null
+    pick = pick || plain[0] || ids[0] || null
     if (pick) {
       groqModelCache = { id: pick, at: Date.now() }
       return { id: pick }
@@ -92,10 +105,12 @@ export default async function handler(req, res) {
         return
       }
       res.status(200).json({
-        text: (j.content || [])
-          .filter((b) => b.type === 'text')
-          .map((b) => b.text)
-          .join('')
+        text: stripThinking(
+          (j.content || [])
+            .filter((b) => b.type === 'text')
+            .map((b) => b.text)
+            .join('')
+        )
       })
       return
     }
@@ -115,7 +130,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: picked.id,
           max_tokens: maxTokens,
-          messages: [{ role: 'system', content: system }, ...messages]
+          messages: [{ role: 'system', content: system }, ...messages],
+          // reasoning models: keep the thinking out of the answer
+          ...(isReasoningModel(picked.id) ? { reasoning_format: 'hidden' } : {})
         })
       })
       const j = await r.json()
@@ -124,7 +141,7 @@ export default async function handler(req, res) {
         res.status(502).json({ error: 'Groq: ' + (j.error?.message || `HTTP ${r.status}`) })
         return
       }
-      res.status(200).json({ text: j.choices?.[0]?.message?.content || '' })
+      res.status(200).json({ text: stripThinking(j.choices?.[0]?.message?.content || '') })
       return
     }
 

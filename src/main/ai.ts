@@ -267,13 +267,24 @@ async function listGroqModels(apiKey: string): Promise<string[]> {
   return cachedGroqModelIds
 }
 
+/** Reasoning models emit private <think> blocks — only pick them as a last resort. */
+const GROQ_REASONING_RE = /deepseek|qwq|qwen|r1|reason|think|gpt-oss/i
+
 async function pickGroqChatModel(apiKey: string): Promise<string> {
   const ids = await listGroqModels(apiKey)
   const picked =
     GROQ_PREFERRED_CHAT_MODELS.find((p) => ids.includes(p)) ??
+    ids.find((id) => !GROQ_NON_CHAT_RE.test(id) && !GROQ_REASONING_RE.test(id)) ??
     ids.find((id) => !GROQ_NON_CHAT_RE.test(id))
   if (!picked) throw new Error('No chat model available on this Groq account.')
   return picked
+}
+
+function stripThinking(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^\s*<think>[\s\S]*$/i, '')
+    .trim()
 }
 
 async function pickGroqVisionModel(apiKey: string): Promise<string | null> {
@@ -300,6 +311,7 @@ async function groqChat(
   onDelta?: (text: string) => void,
   modelOverride?: string
 ): Promise<string> {
+  const groqModel = modelOverride ?? (await pickGroqChatModel(apiKey))
   const res = await fetchWithRetry(`${GROQ_BASE}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -307,9 +319,11 @@ async function groqChat(
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: modelOverride ?? (await pickGroqChatModel(apiKey)),
+      model: groqModel,
       messages,
-      stream: Boolean(onDelta)
+      stream: Boolean(onDelta),
+      // reasoning models: keep the thinking out of the answer
+      ...(GROQ_REASONING_RE.test(groqModel) ? { reasoning_format: 'hidden' } : {})
     })
   })
   if (!res.ok) {
@@ -321,7 +335,7 @@ async function groqChat(
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[]
     }
-    return data.choices?.[0]?.message?.content ?? ''
+    return stripThinking(data.choices?.[0]?.message?.content ?? '')
   }
 
   // Parse the OpenAI-compatible SSE stream.
@@ -354,7 +368,7 @@ async function groqChat(
       }
     }
   }
-  return full
+  return stripThinking(full)
 }
 
 export async function streamAskGroq(params: AskParams): Promise<string> {

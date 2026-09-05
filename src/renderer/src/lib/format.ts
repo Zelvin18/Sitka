@@ -52,4 +52,6 @@ export function normalizeCitations(text: string): string {
   return text
     .replace(new RegExp(`【\\s*${CITE_BODY}\\s*】`, 'g'), '[[$1]]')
     .replace(new RegExp(`(?<!\\[)\\[\\s*${CITE_BODY}\\s*\\](?!\\])`, 'g'), '[[$1]]')
+    // some models write (12:37) — a timestamp in parentheses is still a citation
+    .replace(/\((\d{1,2}:\d{2}(?::\d{2})?)\)/g, '[[$1]]')
 }
