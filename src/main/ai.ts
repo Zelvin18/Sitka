@@ -72,6 +72,7 @@ function askSystemPrompt(live: boolean): string {
     '',
     'Rules:',
     '- Ground every answer in the transcript. If something was not covered, say so plainly instead of guessing.',
+    '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
     '- When you reference a specific moment, cite it inline with the exact format [[M:SS]] or [[H:MM:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Never cite a range — cite the moment it starts. The app turns these into clickable links that jump the recording to that moment.',
     '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
     '- When the user asks "when was X discussed" or wants to find a moment, give the timestamp citation(s) plus a one-line description of each.',

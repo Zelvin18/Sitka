@@ -1060,24 +1060,33 @@ export default function LiveSession({
 
           <div className="section-title">Capture</div>
           {IS_WEB ? (
-            <div className="source-grid">
-              <div className={`source-tile web-pick${webStream ? ' selected' : ''}`}>
-                {webStream ? (
-                  <video ref={webPreviewRef} className="source-thumb" autoPlay muted playsInline />
-                ) : (
-                  <div className="source-thumb web-pick-empty">
-                    <IconScreen size={30} strokeWidth={1.4} />
-                    <span>Screen, window or tab</span>
+            <button
+              type="button"
+              className={`web-pick${webStream ? ' has-stream' : ''}`}
+              onClick={() => void pickWebScreen()}
+              title="Choose a screen, window or tab"
+            >
+              {webStream ? (
+                <>
+                  <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
+                  <div className="web-pick-bar">
+                    <span className="web-pick-live" />
+                    <span className="web-pick-label">{webLabel(webStream)}</span>
+                    <span className="web-pick-change">Tap to change</span>
                   </div>
-                )}
-                <div className="source-name web-pick-row">
-                  <span>{webStream ? webLabel(webStream) : 'Nothing chosen yet'}</span>
-                  <button className="btn btn-sm" onClick={() => void pickWebScreen()}>
-                    {webStream ? 'Change' : 'Choose what to capture'}
-                  </button>
+                </>
+              ) : (
+                <div className="web-pick-empty">
+                  <div className="web-pick-icon">
+                    <IconScreen size={26} strokeWidth={1.5} />
+                  </div>
+                  <div className="web-pick-title">Tap to choose your screen</div>
+                  <div className="web-pick-sub">
+                    Your entire screen, one window, or a browser tab — like sharing in a call.
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </button>
           ) : (
             <div className="source-grid">
               {sources.map((s) => (

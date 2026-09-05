@@ -288,6 +288,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '',
       'Rules:',
       '- Ground every answer in the transcript. If something was not covered, say so plainly instead of guessing.',
+      '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
       '- When you reference a specific moment, cite it inline with the exact format [[M:SS]] or [[H:MM:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Never cite a range — cite the moment it starts. The app turns these into clickable links that jump the recording to that moment.',
       '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
       '- When the user asks "when was X discussed" or wants to find a moment, give the timestamp citation(s) plus a one-line description of each.',
@@ -315,6 +316,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         : '',
       'Rules:',
       '- Ground every answer in the provided material; if something was not covered, say so plainly instead of guessing.',
+      '- When asked what YOU think — an opinion, a critique, whether the speaker is right, what you would challenge — give a genuine, reasoned point of view drawing on your broader knowledge as well as the talk. Never say you cannot have an opinion; make clear what is your view and what the speaker said.',
       '- When you reference a specific moment of the talk, cite it inline with the exact format [[M:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Plain ASCII double square brackets only. The app turns these into tappable links.',
       '- Match the length of your answer to the question: short and direct by default; structure only for catch-ups and summaries.',
       '- Formatting: **bold** for key terms, "-" bullets for genuine lists, "## " headings only in long answers, tables only for comparisons. This renders on a phone — keep it tight.',
@@ -1148,14 +1150,25 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
                   ? 'Focus on the core concepts taught and what is most likely to be examined.'
                   : 'Focus on the key messages and the moments that mattered.'
             const system = [
-              'Analyze this recorded session transcript.',
+              'You analyze a timestamped transcript of a recorded session (lecture, meeting, presentation, or event).',
               kindFocus,
-              'Return ONLY JSON: {"summary": string, "highlights": [{"time": "M:SS", "label": string}]}',
-              '- summary: 3-5 sentences. - highlights: 4-8 key moments, time copied exactly from a transcript timestamp, label max 10 words.'
+              'Return ONLY a JSON object, no prose and no code fences, with this exact shape:',
+              '{"title": string, "summary": string, "highlights": [{"time": "M:SS", "label": string}]}',
+              '- "title": a short, specific title for the session based on what it was about (max 8 words, no quotes inside).',
+              '- "summary": 2-4 sentences capturing what the session was about and its most important points.',
+              '- "highlights": 3-8 key moments worth revisiting, each with "time" copied exactly from a timestamp in the transcript (like "12:37") and a short label (max 10 words).'
             ].join('\n')
             const out = await aiChat(system, [{ role: 'user', content: transcriptBlock(d.segments) }])
-            const parsed = extractJson<{ summary?: string; highlights?: { time: string; label: string }[] }>(out)
+            const parsed = extractJson<{
+              title?: string
+              summary?: string
+              highlights?: { time: string; label: string }[]
+            }>(out)
             if (parsed?.summary) {
+              // Like the desktop app: the session is named after what it was about.
+              if (parsed.title && String(parsed.title).trim()) {
+                d.meta.title = String(parsed.title).trim().slice(0, 80)
+              }
               d.meta.summary = parsed.summary
               d.meta.highlights = (parsed.highlights ?? []).slice(0, 10)
               d.meta.analyzed = true
@@ -1256,6 +1269,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           `Their library: ${rows.length} sessions — ${rows.map((r) => `"${r.meta.title}"`).slice(0, 20).join(', ')}.`,
           'Relevant moments retrieved from their sessions are below; each is tagged [[<id>@M:SS]].',
           'Rules: ground answers in the retrieved moments; cite them EXACTLY as [[<id>@M:SS]] (plain ASCII double brackets) so the app renders clickable links into those recordings. If the library does not cover something, say so.',
+          'When the user asks what YOU think — an opinion, a critique, whether an idea holds up, what you would challenge or add — give a genuine, reasoned point of view drawing on your broader knowledge as well as their library. Never say you cannot have an opinion; make clear what is your assessment versus what was said.',
           'Keep answers direct; structure only when genuinely helpful.',
           `\nRetrieved moments:\n${context}`
         ].join('\n')

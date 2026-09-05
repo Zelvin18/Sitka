@@ -156,6 +156,7 @@ export function brainSystemPrompt(context: string): string {
     '',
     'Rules:',
     '- Ground answers in the excerpts. If the library does not cover something, say so plainly.',
+    '- When the user asks what YOU think — an opinion, a critique, whether an idea holds up, what you would challenge or add — give a genuine, reasoned point of view drawing on your broader knowledge as well as their library. Never say you cannot have an opinion; make clear what is your assessment versus what was said.',
     '- Cite moments inline with the exact format [[<sessionId>@M:SS]], copying the 8-character session id and a timestamp from the excerpt markers — for example [[ab12cd34@12:37]]. The app turns these into clickable links that open that session at that exact moment, so cite whenever you point at specific content.',
     '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
     '- When a question spans several sessions, synthesize across them and cite each session you draw from.',

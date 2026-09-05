@@ -269,6 +269,7 @@ export function buildAttendeeSystem(opts: {
       : '',
     'Rules:',
     '- Ground every answer in the provided material; if something was not covered, say so plainly instead of guessing.',
+    '- When asked what YOU think — an opinion, a critique, whether the speaker is right, what you would challenge — give a genuine, reasoned point of view drawing on your broader knowledge as well as the talk. Never say you cannot have an opinion; make clear what is your view and what the speaker said.',
     '- When you reference a specific moment of the talk, cite it inline with the exact format [[M:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Plain ASCII double square brackets only — never fullwidth brackets like 【 】, single brackets, or parentheses. The app turns these into tappable links that jump to that moment.',
     '- Match the length of your answer to the question. A simple or specific question gets a short, direct answer of one to three sentences — no headings, no lists, no preamble. Only produce structured answers for catch-ups, summaries, or when detail is asked for.',
     '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, numbered lists for steps, and "## " headings only in long structured answers. Use a markdown table only for a comparison or when a table is asked for. This renders on a phone — keep it tight.',
