@@ -42,13 +42,17 @@ export default async function handler(req, res) {
       res.status(502).json({ error: j.error?.message || 'Transcription error' })
       return
     }
+    // Whisper emits lone punctuation (and sometimes "I'm sorry." / "Thank you.")
+    // for silent audio — never show those as speech.
+    const isSpeech = (t) =>
+      /[\p{L}\p{N}]/u.test(t) && !/^(i'?m sorry|thank you|thanks for watching)\.?$/i.test(t.trim())
     const segments = (j.segments || [])
       .map((s) => ({
         start: offsetSec + (Number(s.start) || 0),
         end: offsetSec + (Number(s.end) || 0),
         text: String(s.text || '').trim()
       }))
-      .filter((s) => s.text)
+      .filter((s) => s.text && isSpeech(s.text))
     if (segments.length === 0 && j.text && String(j.text).trim()) {
       segments.push({ start: offsetSec, end: offsetSec + 5, text: String(j.text).trim() })
     }

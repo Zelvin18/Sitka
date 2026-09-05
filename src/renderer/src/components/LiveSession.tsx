@@ -120,7 +120,9 @@ export default function LiveSession({
     }
     let cancelled = false
     void navigator.mediaDevices
-      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+      })
       .then((s) => {
         if (cancelled) s.getTracks().forEach((t) => t.stop())
         else setMicPreview(s)
@@ -726,8 +728,14 @@ export default function LiveSession({
       let micStream: MediaStream | null = null
       if (micOn || captureMode === 'audio') {
         try {
+          // Audio-only: take the microphone raw. Echo cancellation would strip
+          // any sound the device itself is playing (a video, a call), and
+          // noise suppression can thin out distant speakers in a room.
           micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true }
+            audio:
+              captureMode === 'audio'
+                ? { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+                : { echoCancellation: true, noiseSuppression: true }
           })
           streamsRef.current.push(micStream)
         } catch {

@@ -774,9 +774,13 @@ export async function transcribeChunk(
     throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
   }
   const data = (await res.json()) as WhisperResponse
+  // Whisper emits lone punctuation (and "I'm sorry." / "Thank you.") for
+  // silence — never show those as speech.
+  const isSpeech = (t: string): boolean =>
+    /[\p{L}\p{N}]/u.test(t) && !/^(i'?m sorry|thank you|thanks for watching)\.?$/i.test(t.trim())
   if (data.segments && data.segments.length > 0) {
     return data.segments
-      .filter((s) => s.text && s.text.trim().length > 0)
+      .filter((s) => s.text && s.text.trim().length > 0 && isSpeech(s.text))
       .map((s) => ({
         start: offsetSec + s.start,
         end: offsetSec + s.end,
