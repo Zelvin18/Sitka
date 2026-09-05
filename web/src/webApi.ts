@@ -84,7 +84,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   // ---------- settings (AI keys live only in this browser) ----------
   const SETTINGS_KEY = 'sitka-web-settings'
-  function getSettings(): Settings {
+  // The interface treats a non-empty key as "AI available". When the
+  // deployment's platform keys cover the user, expose this placeholder so
+  // every AI feature lights up; it is stripped before any real use.
+  const PLATFORM = 'platform-managed'
+  const real = (k: string): string => (k === PLATFORM ? '' : k)
+  function storedSettings(): Settings {
     const base: Settings = {
       anthropicApiKey: '',
       openaiApiKey: '',
@@ -94,10 +99,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       webAppUrl: location.origin
     }
     try {
-      return { ...base, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') as Partial<Settings>) }
+      const s = { ...base, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') as Partial<Settings>) }
+      s.anthropicApiKey = real(s.anthropicApiKey)
+      s.openaiApiKey = real(s.openaiApiKey)
+      s.groqApiKey = real(s.groqApiKey)
+      return s
     } catch {
       return base
     }
+  }
+  function getSettings(): Settings {
+    const s = storedSettings()
+    if (!s.anthropicApiKey && !s.groqApiKey && platform.chat) s.groqApiKey = PLATFORM
+    if (!s.openaiApiKey && !s.groqApiKey && platform.stt) s.groqApiKey = PLATFORM
+    return s
   }
 
   async function aiChat(
@@ -105,7 +120,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     messages: { role: 'user' | 'assistant'; content: string }[],
     maxTokens = 2000
   ): Promise<string> {
-    const k = getSettings()
+    const k = storedSettings()
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -121,11 +136,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return j.text || ''
   }
   function hasChatKey(): boolean {
-    const k = getSettings()
+    const k = storedSettings()
     return Boolean(k.anthropicApiKey || k.groqApiKey) || platform.chat
   }
   function hasSttKey(): boolean {
-    const k = getSettings()
+    const k = storedSettings()
     return Boolean(k.openaiApiKey || k.groqApiKey) || platform.stt
   }
 
@@ -837,7 +852,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const api: SitkaApi = {
     getSettings: async () => getSettings(),
     setSettings: async (s: Settings) => {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify({
+          ...s,
+          anthropicApiKey: real(s.anthropicApiKey.trim()),
+          openaiApiKey: real(s.openaiApiKey.trim()),
+          groqApiKey: real(s.groqApiKey.trim())
+        })
+      )
     },
 
     listSources: async () => [
@@ -1156,7 +1179,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         for (let i = 0; i < bytes.length; i += step) {
           bin += String.fromCharCode(...bytes.subarray(i, i + step))
         }
-        const k = getSettings()
+        const k = storedSettings()
         const r = await fetch('/api/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

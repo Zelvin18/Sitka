@@ -18,6 +18,9 @@ import { clamp, usePersistedNumber } from '../lib/persist'
 
 const NOTES_INTERVAL_MS = 75000
 
+/** Running as the website (browser picker) rather than inside Electron. */
+const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 const VIDEO_CHUNK_MS = 3000
 const STT_CHUNK_MS = 5000
 const MIN_AUDIO_BYTES = 4000
@@ -157,6 +160,47 @@ export default function LiveSession({
   const notesBusyRef = useRef(false)
   const segmentsRef = useRef<TranscriptSegment[]>([])
   segmentsRef.current = segments
+
+  // ---- web: pick the screen up front and preview it live (browser picker) ----
+  const [webStream, setWebStream] = useState<MediaStream | null>(null)
+  const webStreamRef = useRef<MediaStream | null>(null)
+  const webPreviewRef = useRef<HTMLVideoElement>(null)
+  const pickWebScreen = useCallback(async (): Promise<void> => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 15 },
+        audio: systemAudioOn
+      })
+      webStreamRef.current?.getTracks().forEach((t) => t.stop())
+      webStreamRef.current = stream
+      setWebStream(stream)
+      const track = stream.getVideoTracks()[0]
+      if (track) {
+        track.onended = () => {
+          if (webStreamRef.current === stream) {
+            webStreamRef.current = null
+            setWebStream(null)
+          }
+        }
+      }
+    } catch {
+      /* user cancelled the browser picker */
+    }
+  }, [systemAudioOn])
+  useEffect(() => {
+    if (webStream && webPreviewRef.current) {
+      webPreviewRef.current.srcObject = webStream
+      void webPreviewRef.current.play().catch(() => undefined)
+    }
+  }, [webStream])
+  const webLabel = (s: MediaStream): string => {
+    const settings = s.getVideoTracks()[0]?.getSettings() as { displaySurface?: string }
+    const kind = settings?.displaySurface
+    if (kind === 'monitor') return 'Your screen'
+    if (kind === 'window') return 'A window'
+    if (kind === 'browser') return 'A browser tab'
+    return s.getVideoTracks()[0]?.label || 'Selected source'
+  }
 
   // ---- source list ----
   const refreshSources = useCallback(async (): Promise<void> => {
@@ -579,10 +623,18 @@ export default function LiveSession({
       }
       let desktopStream: MediaStream
       if (isWeb) {
-        desktopStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 15 },
-          audio: systemAudioOn
-        })
+        // Prefer the screen chosen (and previewed) on the picking page.
+        const pre = webStreamRef.current
+        if (pre && pre.getVideoTracks().some((t) => t.readyState === 'live')) {
+          desktopStream = pre
+          webStreamRef.current = null
+          setWebStream(null)
+        } else {
+          desktopStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: 15 },
+            audio: systemAudioOn
+          })
+        }
       } else {
         try {
           desktopStream = await md.getUserMedia({
@@ -1007,21 +1059,39 @@ export default function LiveSession({
           )}
 
           <div className="section-title">Capture</div>
-          <div className="source-grid">
-            {sources.map((s) => (
-              <button
-                key={s.id}
-                className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
-                onClick={() => setSelectedSource(s.id)}
-              >
-                <img className="source-thumb" src={s.thumbnail} alt="" />
-                <div className="source-name">
-                  {s.kind === 'screen' ? '🖥 ' : ''}
-                  {s.name}
+          {IS_WEB ? (
+            <div className="source-grid">
+              <div className={`source-tile web-pick${webStream ? ' selected' : ''}`}>
+                {webStream ? (
+                  <video ref={webPreviewRef} className="source-thumb" autoPlay muted playsInline />
+                ) : (
+                  <div className="source-thumb web-pick-empty">
+                    <IconScreen size={30} strokeWidth={1.4} />
+                    <span>Screen, window or tab</span>
+                  </div>
+                )}
+                <div className="source-name web-pick-row">
+                  <span>{webStream ? webLabel(webStream) : 'Nothing chosen yet'}</span>
+                  <button className="btn btn-sm" onClick={() => void pickWebScreen()}>
+                    {webStream ? 'Change' : 'Choose what to capture'}
+                  </button>
                 </div>
-              </button>
-            ))}
-          </div>
+              </div>
+            </div>
+          ) : (
+            <div className="source-grid">
+              {sources.map((s) => (
+                <button
+                  key={s.id}
+                  className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
+                  onClick={() => setSelectedSource(s.id)}
+                >
+                  <img className="source-thumb" src={s.thumbnail} alt="" />
+                  <div className="source-name">{s.name}</div>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="section-title">Audio</div>
           <div className="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
