@@ -168,7 +168,7 @@ export default function LiveSession({
   const pickWebScreen = useCallback(async (): Promise<void> => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 15 },
+        video: { width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 12 } },
         audio: systemAudioOn
       })
       webStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -631,7 +631,7 @@ export default function LiveSession({
           setWebStream(null)
         } else {
           desktopStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { frameRate: 15 },
+            video: { width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 12 } },
             audio: systemAudioOn
           })
         }
@@ -698,7 +698,12 @@ export default function LiveSession({
       sessionStartRef.current = Date.now()
       stoppingRef.current = false
 
-      const recorder = new MediaRecorder(recordStream, { mimeType: pickMimeType() })
+      // On the website recordings live in cloud storage: record at a compact
+      // bitrate (screens and slides compress very well) so space lasts.
+      const recorder = new MediaRecorder(recordStream, {
+        mimeType: pickMimeType(),
+        ...(IS_WEB ? { videoBitsPerSecond: 450_000, audioBitsPerSecond: 64_000 } : {})
+      })
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) enqueueAppend(e.data)
       }

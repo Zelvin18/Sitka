@@ -80,6 +80,41 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const { data: sess } = await sb.auth.getSession()
   const user: User = sess!.session!.user
 
+  // ---------- storage health: saving must never fail silently ----------
+  let bannerShown = false
+  function storageProblem(reason: string): void {
+    console.error('[sitka] storage problem:', reason)
+    if (bannerShown) return
+    bannerShown = true
+    const bar = document.createElement('div')
+    bar.id = 'sitka-storage-banner'
+    bar.setAttribute(
+      'style',
+      'position:fixed;left:0;right:0;top:0;z-index:9999;background:#1a1a1c;color:#fff;font:600 13px -apple-system,Segoe UI,Roboto,sans-serif;padding:11px 16px;display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,.25)'
+    )
+    const msg = document.createElement('span')
+    msg.textContent = 'Sitka cannot save to your database: ' + reason
+    const hint = document.createElement('span')
+    hint.setAttribute('style', 'font-weight:500;opacity:.8')
+    hint.textContent = /does not exist|relation|schema cache|not find/i.test(reason)
+      ? 'Run the setup scripts in Supabase (supabase/*.sql), then reload.'
+      : 'Check your connection, then reload.'
+    const close = document.createElement('button')
+    close.textContent = 'Reload'
+    close.setAttribute(
+      'style',
+      'border:1px solid rgba(255,255,255,.4);background:none;color:#fff;border-radius:8px;padding:5px 12px;font:inherit;cursor:pointer'
+    )
+    close.onclick = () => location.reload()
+    bar.append(msg, hint, close)
+    document.body.appendChild(bar)
+  }
+  // Probe the core table once so a missing setup is obvious immediately.
+  {
+    const probe = await sb.from('sessions').select('id', { count: 'exact', head: true })
+    if (probe.error) storageProblem(probe.error.message)
+  }
+
   // Does this deployment provide platform AI keys? (Users then need none.)
   let platform = { chat: false, stt: false }
   try {
@@ -188,16 +223,61 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const c = cache.get(id)
     if (c) return c
     const { data } = await sb.from('sessions').select('*').eq('id', id).single()
-    if (!data) return null
-    const d = rowToData(data as Row)
+    const row = (data as Row | null) ?? readBackups().find((b) => b.id === id) ?? null
+    if (!row) return null
+    const d = rowToData(row)
     cache.set(id, d)
     return d
   }
+  // Local safety net: if the database refuses a write, keep the session's text
+  // (meta, transcript, chat, notes) in this browser so it still shows up.
+  const BACKUP_PREFIX = 'sitka-backup-'
+  function backupSession(id: string): void {
+    const d = cache.get(id)
+    if (!d) return
+    try {
+      localStorage.setItem(
+        BACKUP_PREFIX + id,
+        JSON.stringify({
+          id,
+          meta: d.meta,
+          transcript: d.segments,
+          chat: d.chat,
+          notes: d.notes,
+          study: d.study,
+          marks: d.marks,
+          report: d.report,
+          thumb: null
+        })
+      )
+    } catch {
+      /* storage full — nothing more we can do locally */
+    }
+  }
+  function readBackups(): Row[] {
+    const out: Row[] = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(BACKUP_PREFIX)) {
+          out.push(JSON.parse(localStorage.getItem(k) || 'null') as Row)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return out.filter(Boolean)
+  }
+
   async function patchSession(id: string, patch: Record<string, unknown>): Promise<void> {
-    await sb
+    const { error } = await sb
       .from('sessions')
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
+    if (error) {
+      storageProblem(error.message)
+      backupSession(id)
+    }
   }
 
   // Recording buffers: chunks are uploaded as rolling ~8MB parts DURING the
@@ -803,11 +883,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
   }
   async function allSessions(): Promise<Row[]> {
-    const { data } = await sb
+    const { data, error } = await sb
       .from('sessions')
       .select('id,meta,transcript,chat,notes,study,marks,report,thumb')
       .order('created_at', { ascending: false })
-    return (data as Row[]) || []
+    if (error) storageProblem(error.message)
+    const rows = ((data as Row[]) || []).slice()
+    // merge local backups the database never received; drop ones it now has
+    const have = new Set(rows.map((r) => r.id))
+    for (const b of readBackups()) {
+      if (have.has(b.id)) {
+        try {
+          localStorage.removeItem(BACKUP_PREFIX + b.id)
+        } catch {
+          /* ignore */
+        }
+      } else {
+        rows.push(b)
+      }
+    }
+    return rows
   }
   function rankHits(rows: Row[], query: string, limit: number): BrainSearchHit[] {
     const toks = tokenize(query)
@@ -937,7 +1032,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         agenda,
         eventId
       }
-      await sb.from('sessions').insert({
+      const { error } = await sb.from('sessions').insert({
         id: meta.id,
         owner: user.id,
         meta,
@@ -945,6 +1040,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         chat: [],
         marks: []
       })
+      if (error) storageProblem(error.message)
       cache.set(meta.id, {
         meta,
         segments: [],
@@ -954,6 +1050,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         marks: [],
         report: null
       })
+      if (error) backupSession(meta.id)
       recBuf.set(meta.id, {
         parts: 0,
         chunks: [],
@@ -1179,6 +1276,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         recBuf.delete(id)
       }
       await patchSession(id, { meta: d.meta })
+      backupSession(id) // belt-and-braces: text survives even if the row write above failed
       emitSession(d.meta)
 
       // analysis in the background
