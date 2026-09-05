@@ -13,6 +13,7 @@ import TranscriptPane from './TranscriptPane'
 import NotesPane from './NotesPane'
 import Splitter from './Splitter'
 import QRCode from 'qrcode'
+import AudioLevel from './AudioLevel'
 import { IconBroadcast, IconMic, IconScreen, IconSparkle, IconStar, IconStop } from '../lib/icons'
 import { formatTime } from '../lib/format'
 import { clamp, usePersistedNumber } from '../lib/persist'
@@ -42,6 +43,8 @@ interface Props {
   space?: Space
   /** ecosystem flows skip the intent step and arrive with a kind chosen */
   presetKind?: SessionKind
+  /** start straight on the audio-only setup (no screen) */
+  presetAudio?: boolean
 }
 
 const SPACE_COPY: Record<
@@ -94,11 +97,39 @@ export default function LiveSession({
   initialEventId,
   onGoEvents,
   space,
-  presetKind
+  presetKind,
+  presetAudio
 }: Props): React.JSX.Element {
-  const [phase, setPhase] = useState<Phase>(presetKind ? 'picking' : 'intent')
+  const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
   const [kind, setKind] = useState<SessionKind>(presetKind ?? 'other')
+  // ---- capture mode: the screen with its sound, or the microphone alone ----
+  const [captureMode, setCaptureMode] = useState<'screen' | 'audio'>(
+    presetAudio ? 'audio' : 'screen'
+  )
+  const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
+  const [audioOnlyRec, setAudioOnlyRec] = useState(false)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  useEffect(() => {
+    if (phase !== 'picking' || captureMode !== 'audio') {
+      setMicPreview((s) => {
+        s?.getTracks().forEach((t) => t.stop())
+        return null
+      })
+      return undefined
+    }
+    let cancelled = false
+    void navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then((s) => {
+        if (cancelled) s.getTracks().forEach((t) => t.stop())
+        else setMicPreview(s)
+      })
+      .catch(() => setMicPreview(null))
+    return () => {
+      cancelled = true
+    }
+  }, [phase, captureMode])
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
   const [micOn, setMicOn] = useState(true)
@@ -611,7 +642,7 @@ export default function LiveSession({
 
   // ---- start recording ----
   const start = useCallback(async (): Promise<void> => {
-    if (!selectedSource) return
+    if (captureMode === 'screen' && !selectedSource) return
     setPhase('starting')
     setError(null)
     try {
@@ -635,7 +666,8 @@ export default function LiveSession({
         hosting,
         hosting ? agenda : undefined,
         hosting ? upcoming?.event.id : undefined,
-        space
+        space,
+        captureMode === 'audio'
       )
       setSession(meta)
       sessionIdRef.current = meta.id
@@ -647,8 +679,10 @@ export default function LiveSession({
       const md = navigator.mediaDevices as unknown as {
         getUserMedia: (c: unknown) => Promise<MediaStream>
       }
-      let desktopStream: MediaStream
-      if (isWeb) {
+      let desktopStream: MediaStream | null = null
+      if (captureMode === 'audio') {
+        // audio-only: nothing on screen to capture — the microphone is the session
+      } else if (isWeb) {
         // Prefer the screen chosen (and previewed) on the picking page.
         const pre = webStreamRef.current
         if (pre && pre.getVideoTracks().some((t) => t.readyState === 'live')) {
@@ -687,10 +721,10 @@ export default function LiveSession({
           })
         }
       }
-      streamsRef.current.push(desktopStream)
+      if (desktopStream) streamsRef.current.push(desktopStream)
 
       let micStream: MediaStream | null = null
-      if (micOn) {
+      if (micOn || captureMode === 'audio') {
         try {
           micStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true }
@@ -700,6 +734,11 @@ export default function LiveSession({
           micStream = null
         }
       }
+      if (captureMode === 'audio' && !micStream) {
+        throw new Error('Microphone access is needed for an audio-only session.')
+      }
+      micStreamRef.current = micStream
+      setAudioOnlyRec(captureMode === 'audio')
 
       // Mix desktop audio + mic into one track.
       const audioCtx = new AudioContext()
@@ -713,13 +752,15 @@ export default function LiveSession({
         }
       }
 
-      const recordTracks: MediaStreamTrack[] = [...desktopStream.getVideoTracks()]
+      const recordTracks: MediaStreamTrack[] = [...(desktopStream?.getVideoTracks() ?? [])]
       if (audioInputs > 0) recordTracks.push(...dest.stream.getAudioTracks())
       const recordStream = new MediaStream(recordTracks)
 
       // The preview <video> only mounts once phase becomes 'recording'; stash
       // the stream so the effect below can attach it after mount.
-      previewStreamRef.current = new MediaStream(desktopStream.getVideoTracks())
+      previewStreamRef.current = desktopStream
+        ? new MediaStream(desktopStream.getVideoTracks())
+        : null
 
       sessionStartRef.current = Date.now()
       stoppingRef.current = false
@@ -727,8 +768,12 @@ export default function LiveSession({
       // On the website recordings live in cloud storage: record at a compact
       // bitrate (screens and slides compress very well) so space lasts.
       const recorder = new MediaRecorder(recordStream, {
-        mimeType: pickMimeType(),
-        ...(IS_WEB ? { videoBitsPerSecond: 450_000, audioBitsPerSecond: 64_000 } : {})
+        mimeType: captureMode === 'audio' ? 'audio/webm;codecs=opus' : pickMimeType(),
+        ...(captureMode === 'audio'
+          ? { audioBitsPerSecond: 64_000 }
+          : IS_WEB
+            ? { videoBitsPerSecond: 450_000, audioBitsPerSecond: 64_000 }
+            : {})
       })
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) enqueueAppend(e.data)
@@ -762,7 +807,7 @@ export default function LiveSession({
       setError(err instanceof Error ? err.message : String(err))
       setPhase('picking')
     }
-  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated])
+  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space])
 
   // ---- stop recording ----
   const stop = useCallback(async (): Promise<void> => {
@@ -961,7 +1006,11 @@ export default function LiveSession({
           <button
             className="btn btn-ghost btn-sm page-back"
             onClick={() =>
-              eventLocked ? onGoEvents(initialEventId) : presetKind ? onCancel() : setPhase('intent')
+              eventLocked
+                ? onGoEvents(initialEventId)
+                : presetKind || presetAudio
+                  ? onCancel()
+                  : setPhase('intent')
             }
             disabled={phase === 'starting'}
           >
@@ -1097,7 +1146,38 @@ export default function LiveSession({
           )}
 
           <div className="section-title">Capture</div>
-          {IS_WEB ? (
+          <div className="mode-switch">
+            <button
+              type="button"
+              className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
+              onClick={() => setCaptureMode('screen')}
+            >
+              <IconScreen size={18} strokeWidth={1.7} />
+              <span className="mode-title">Screen + audio</span>
+              <span className="mode-desc">Slides, a call, a video — with the sound.</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-tile${captureMode === 'audio' ? ' on' : ''}`}
+              onClick={() => setCaptureMode('audio')}
+            >
+              <IconMic size={18} strokeWidth={1.7} />
+              <span className="mode-title">Audio only</span>
+              <span className="mode-desc">Just listen — in person, quick and simple.</span>
+            </button>
+          </div>
+          {captureMode === 'audio' ? (
+            <div className="mic-card">
+              <div className="mic-card-top">
+                <span className={`mic-dot${micPreview ? ' live' : ''}`} />
+                <span>{micPreview ? 'Microphone ready — say something' : 'Waiting for microphone access…'}</span>
+              </div>
+              <AudioLevel stream={micPreview} />
+              <div className="field-hint">
+                Sitka listens, transcribes, takes notes and answers exactly as it does with video.
+              </div>
+            </div>
+          ) : IS_WEB ? (
             <button
               type="button"
               className={`web-pick${webStream ? ' has-stream' : ''}`}
@@ -1140,6 +1220,8 @@ export default function LiveSession({
             </div>
           )}
 
+          {captureMode === 'screen' && (
+          <>
           <div className="section-title">Audio</div>
           <div className="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
             <div className="toggle-row">
@@ -1173,11 +1255,13 @@ export default function LiveSession({
               />
             </div>
           </div>
+          </>
+          )}
 
           <div style={{ display: 'flex', gap: 10, marginTop: 28 }}>
             <button
               className="btn btn-primary btn-lg"
-              disabled={!selectedSource || phase === 'starting'}
+              disabled={(captureMode === 'screen' && !selectedSource) || phase === 'starting'}
               onClick={() => void start()}
             >
               {phase === 'starting' ? (
@@ -1263,7 +1347,16 @@ export default function LiveSession({
           ref={videoWrapRef}
           style={{ height: hosting ? 130 : clamp(videoH, 140, 900) }}
         >
-          <video ref={previewRef} autoPlay muted playsInline />
+          {audioOnlyRec ? (
+            <div className="audio-stage">
+              <AudioLevel stream={micStreamRef.current} bars={44} tall />
+              <div className="audio-stage-label">
+                <IconMic size={13} strokeWidth={2} /> Audio session · listening
+              </div>
+            </div>
+          ) : (
+            <video ref={previewRef} autoPlay muted playsInline />
+          )}
         </div>
         {!hosting && (
           <Splitter

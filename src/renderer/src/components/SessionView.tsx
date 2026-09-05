@@ -1,3 +1,4 @@
+import { IconMic } from '../lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { SessionData, SessionMeta } from '@shared/types'
 import ChatPane from './ChatPane'
@@ -267,19 +268,29 @@ export default function SessionView({
         </div>
 
         <div
-          className="video-wrap"
+          className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}`}
           ref={videoWrapRef}
-          style={{ height: clamp(videoH, 140, 900) }}
+          style={{ height: meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900) }}
         >
           {videoSrc ? (
-            <video
-              ref={videoRef}
-              src={videoSrc}
-              controls
-              playsInline
-              onLoadedMetadata={onLoadedMetadata}
-              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-            />
+            <>
+              <video
+                ref={videoRef}
+                src={videoSrc}
+                controls
+                playsInline
+                onLoadedMetadata={onLoadedMetadata}
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+              />
+              {meta.audioOnly && (
+                <div className="audio-overlay">
+                  <span className="audio-overlay-icon">
+                    <IconMic size={20} strokeWidth={1.6} />
+                  </span>
+                  <span>Audio session</span>
+                </div>
+              )}
+            </>
           ) : (
             <div
               style={{

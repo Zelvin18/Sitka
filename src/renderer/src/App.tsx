@@ -22,7 +22,13 @@ type View =
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
-  | { name: 'live'; eventId?: string; space?: Space; presetKind?: SessionKind }
+  | {
+      name: 'live'
+      eventId?: string
+      space?: Space
+      presetKind?: SessionKind
+      audioOnly?: boolean
+    }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
 
@@ -238,14 +244,15 @@ export default function App(): React.JSX.Element {
               setSpace('education')
               setView({ name: 'education' })
             }}
+            onNewAudioSession={() => setView({ name: 'live', audioOnly: true })}
           />
         )}
         {(view.name === 'business' || view.name === 'education') && (
           <EcosystemView
             kind={view.name}
             sessions={sessions.filter((s) => s.space === view.name)}
-            onStartSession={(presetKind) =>
-              setView({ name: 'live', space: view.name, presetKind })
+            onStartSession={(presetKind, audioOnly) =>
+              setView({ name: 'live', space: view.name, presetKind, audioOnly })
             }
             onGoEvents={() => setView({ name: 'events' })}
             onGoCoach={() => setView({ name: 'coach' })}
@@ -305,6 +312,7 @@ export default function App(): React.JSX.Element {
               initialEventId={view.name === 'live' ? view.eventId : undefined}
               space={view.name === 'live' ? view.space : undefined}
               presetKind={view.name === 'live' ? view.presetKind : undefined}
+              presetAudio={view.name === 'live' ? view.audioOnly : undefined}
               onGoEvents={(eventId) => setView({ name: 'events', eventId })}
               onSessionCreated={(meta) => {
                 setRecordingSessionId(meta.id)

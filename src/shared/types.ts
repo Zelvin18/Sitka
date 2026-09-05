@@ -54,6 +54,8 @@ export interface SessionMeta {
   eventId?: string
   /** recorded inside Sitka for Business / Education (undefined = general) */
   space?: Space
+  /** recorded from the microphone only — no screen */
+  audioOnly?: boolean
 }
 
 export interface ChatMessage {

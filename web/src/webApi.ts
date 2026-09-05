@@ -346,6 +346,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           v.currentTime = Math.min(1.2, (v.duration || 2) / 2)
         }
         v.onseeked = () => {
+          if (!v.videoWidth) {
+            done(null) // audio-only recording: no picture to thumbnail
+            return
+          }
           try {
             const c = document.createElement('canvas')
             const scale = Math.min(1, 480 / (v.videoWidth || 480))
@@ -1020,7 +1024,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return (data?.thumb as string) || null
     },
 
-    createSession: async (title, kind, hosted, agenda, eventId, space) => {
+    createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly) => {
       const meta: SessionMeta = {
         id: uid(),
         title: title || 'Untitled session',
@@ -1031,7 +1035,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         hosted,
         agenda,
         eventId,
-        space
+        space,
+        audioOnly: audioOnly || undefined
       }
       const { error } = await sb.from('sessions').insert({
         id: meta.id,

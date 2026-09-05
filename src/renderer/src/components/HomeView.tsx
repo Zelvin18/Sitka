@@ -3,6 +3,7 @@ import type { ScheduledEvent, SessionMeta } from '@shared/types'
 import {
   IconBroadcast,
   IconCalendar,
+  IconMic,
   IconPlay,
   IconScreen,
   IconSparkle
@@ -18,6 +19,7 @@ interface Props {
   onOpenSession: (id: string) => void
   onGoBusiness: () => void
   onGoEducation: () => void
+  onNewAudioSession: () => void
 }
 
 function greeting(): string {
@@ -36,7 +38,8 @@ export default function HomeView({
   onGoLibrary,
   onOpenSession,
   onGoBusiness,
-  onGoEducation
+  onGoEducation,
+  onNewAudioSession
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -115,6 +118,19 @@ export default function HomeView({
             </span>
           </button>
         </div>
+
+        <button className="home-audio" onClick={onNewAudioSession}>
+          <span className="home-audio-icon">
+            <IconMic size={15} strokeWidth={1.8} />
+          </span>
+          <span>
+            <span className="home-audio-title">Nothing to share on screen?</span>
+            <span className="home-audio-desc">
+              Record audio only — in-person meetings and lectures, one tap.
+            </span>
+          </span>
+          <span className="home-door-arrow">→</span>
+        </button>
 
         <div className="home-deeper">
           <span className="home-deeper-label">Go deeper</span>

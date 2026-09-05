@@ -279,12 +279,14 @@ function registerIpc(): void {
       hosted?: boolean,
       agenda?: string[],
       eventId?: string,
-      space?: 'business' | 'education'
+      space?: 'business' | 'education',
+      audioOnly?: boolean
     ) => {
       const meta = store.createSession(title, kind, hosted, agenda)
       if (eventId) meta.eventId = eventId
       if (space) meta.space = space
-      if (eventId || space) store.saveMeta(meta)
+      if (audioOnly) meta.audioOnly = true
+      if (eventId || space || audioOnly) store.saveMeta(meta)
       return meta
     }
   )

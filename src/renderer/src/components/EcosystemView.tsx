@@ -15,7 +15,7 @@ interface Props {
   kind: 'business' | 'education'
   /** sessions that belong to this ecosystem only */
   sessions: SessionMeta[]
-  onStartSession: (kind: SessionKind) => void
+  onStartSession: (kind: SessionKind, audioOnly?: boolean) => void
   onGoEvents: () => void
   onGoCoach: () => void
   onGoOverview: () => void
@@ -167,6 +167,24 @@ export default function EcosystemView({
             </button>
           ))}
         </div>
+
+        <button
+          className="home-audio"
+          onClick={() => onStartSession(business ? 'meeting' : 'lecture', true)}
+        >
+          <span className="home-audio-icon">
+            <IconMic size={15} strokeWidth={1.8} />
+          </span>
+          <span>
+            <span className="home-audio-title">
+              {business ? 'In the room, no screen to share?' : 'Sitting in a lecture hall?'}
+            </span>
+            <span className="home-audio-desc">
+              Record audio only — Sitka listens, remembers and answers just the same.
+            </span>
+          </span>
+          <span className="home-door-arrow">→</span>
+        </button>
 
         {done.length > 0 && (
           <>
