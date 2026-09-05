@@ -1,36 +1,44 @@
 import React from 'react'
+import type { SessionKind, SessionMeta } from '@shared/types'
 import {
   IconBroadcast,
   IconCalendar,
   IconMic,
+  IconPlay,
   IconScreen,
   IconSparkle,
   IconStar
 } from '../lib/icons'
+import { formatDate, formatDuration } from '../lib/format'
 
 interface Props {
   kind: 'business' | 'education'
-  onBack: () => void
-  onNewSession: () => void
+  /** sessions that belong to this ecosystem only */
+  sessions: SessionMeta[]
+  onStartSession: (kind: SessionKind) => void
   onGoEvents: () => void
   onGoCoach: () => void
   onGoOverview: () => void
+  onOpenSession: (id: string) => void
 }
 
 /**
  * The doors into Sitka's two deep ecosystems. Sitka stays open to everyone;
- * these pages show what it does for a company or for a student and start
- * the right flow. No numbers here that Sitka has not earned.
+ * these pages show what it does for a company or for a student, start the
+ * right flow, and keep that ecosystem's own sessions. No numbers here that
+ * Sitka has not earned.
  */
 export default function EcosystemView({
   kind,
-  onBack,
-  onNewSession,
+  sessions,
+  onStartSession,
   onGoEvents,
   onGoCoach,
-  onGoOverview
+  onGoOverview,
+  onOpenSession
 }: Props): React.JSX.Element {
   const business = kind === 'business'
+  const done = sessions.filter((s) => s.status === 'complete')
 
   const starts = business
     ? [
@@ -38,7 +46,7 @@ export default function EcosystemView({
           icon: <IconScreen size={19} strokeWidth={1.7} />,
           title: 'Capture a meeting',
           desc: 'Decisions, promises and people are remembered — with the moment they were said.',
-          go: onNewSession
+          go: () => onStartSession('meeting')
         },
         {
           icon: <IconBroadcast size={19} strokeWidth={1.7} />,
@@ -58,7 +66,7 @@ export default function EcosystemView({
           icon: <IconScreen size={19} strokeWidth={1.7} />,
           title: 'Attend a lecture',
           desc: 'Live transcript, notes that write themselves, and answers at your level.',
-          go: onNewSession
+          go: () => onStartSession('lecture')
         },
         {
           icon: <IconStar size={19} strokeWidth={1.7} />,
@@ -137,12 +145,6 @@ export default function EcosystemView({
   return (
     <div className="content">
       <div className="content-inner" style={{ maxWidth: 900 }}>
-        <div className="page-back">
-          <button className="btn btn-ghost btn-sm" onClick={onBack}>
-            ‹ Back
-          </button>
-        </div>
-
         <div className="eco-hero">
           <div className="eco-kicker">{business ? 'Sitka for Business' : 'Sitka for Education'}</div>
           <h1 className="page-title" style={{ marginBottom: 8 }}>
@@ -165,6 +167,27 @@ export default function EcosystemView({
             </button>
           ))}
         </div>
+
+        {done.length > 0 && (
+          <>
+            <div className="section-title" style={{ marginTop: 34 }}>
+              {business ? 'Your meetings' : 'Your lectures'}
+            </div>
+            <div className="eco-sessions">
+              {done.slice(0, 6).map((s) => (
+                <button key={s.id} className="eco-session" onClick={() => onOpenSession(s.id)}>
+                  <span className="eco-session-icon">
+                    <IconPlay size={13} strokeWidth={2.2} />
+                  </span>
+                  <span className="eco-session-title">{s.title}</span>
+                  <span className="eco-session-meta">
+                    {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="section-title" style={{ marginTop: 34 }}>
           How it works for {business ? 'a company' : 'a student'}

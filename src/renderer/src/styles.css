@@ -3928,6 +3928,97 @@ body.dragging-row .splitter-h {
   white-space: nowrap;
 }
 
+/* ============ Global back + space tag ============ */
+
+.global-back {
+  position: absolute;
+  top: 9px;
+  left: 14px;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+}
+
+.global-back.shifted {
+  left: 56px;
+}
+
+.space-tag {
+  position: absolute;
+  top: 13px;
+  left: 92px;
+  z-index: 6;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  -webkit-app-region: no-drag;
+}
+
+.space-tag.shifted {
+  left: 134px;
+}
+
+.lib-badge-space {
+  margin-left: 6px;
+}
+
+.eco-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eco-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.eco-session:hover {
+  border-color: var(--text);
+}
+
+.eco-session-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+
+.eco-session-title {
+  flex: 1;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eco-session-meta {
+  font-size: 12.5px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
 /* ============ Home doors + ecosystem pages ============ */
 
 .home-deeper {

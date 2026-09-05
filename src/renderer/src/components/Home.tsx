@@ -184,6 +184,11 @@ export default function Home({
                         {s.hosted ? '● Hosted' : s.kind}
                       </span>
                     )}
+                  {s.space && (
+                    <span className="lib-badge lib-badge-space">
+                      {s.space === 'business' ? 'Business' : 'Education'}
+                    </span>
+                  )}
                   <button
                     className="lib-delete"
                     title="Delete session"

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  Space,
   CaptureSource,
   SessionKind,
   SessionMeta,
@@ -37,6 +38,28 @@ interface Props {
   /** preselects hosting mode linked to this event (from the Events page) */
   initialEventId?: string
   onGoEvents: (eventId?: string) => void
+  /** started from Sitka for Business / Education: the session belongs there */
+  space?: Space
+  /** ecosystem flows skip the intent step and arrive with a kind chosen */
+  presetKind?: SessionKind
+}
+
+const SPACE_COPY: Record<
+  Space,
+  { kicker: string; title: string; subtitle: string }
+> = {
+  business: {
+    kicker: 'Sitka for Business',
+    title: 'Capture a meeting',
+    subtitle:
+      'Sitka will follow the conversation and remember the decisions, promises and people — each with the moment it was said.'
+  },
+  education: {
+    kicker: 'Sitka for Education',
+    title: 'Attend a lecture',
+    subtitle:
+      'Sitka listens with you: a live transcript, notes that write themselves, and every concept you were taught, pinned to the moment.'
+  }
 }
 
 const NUDGE_INTERVAL_MS = 100000
@@ -69,11 +92,13 @@ export default function LiveSession({
   sessions,
   onOpenSessionAt,
   initialEventId,
-  onGoEvents
+  onGoEvents,
+  space,
+  presetKind
 }: Props): React.JSX.Element {
-  const [phase, setPhase] = useState<Phase>('intent')
+  const [phase, setPhase] = useState<Phase>(presetKind ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
-  const [kind, setKind] = useState<SessionKind>('other')
+  const [kind, setKind] = useState<SessionKind>(presetKind ?? 'other')
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
   const [micOn, setMicOn] = useState(true)
@@ -609,7 +634,8 @@ export default function LiveSession({
         kind,
         hosting,
         hosting ? agenda : undefined,
-        hosting ? upcoming?.event.id : undefined
+        hosting ? upcoming?.event.id : undefined,
+        space
       )
       setSession(meta)
       sessionIdRef.current = meta.id
@@ -934,24 +960,31 @@ export default function LiveSession({
         <div className="content-inner">
           <button
             className="btn btn-ghost btn-sm page-back"
-            onClick={() => (eventLocked ? onGoEvents(initialEventId) : setPhase('intent'))}
+            onClick={() =>
+              eventLocked ? onGoEvents(initialEventId) : presetKind ? onCancel() : setPhase('intent')
+            }
             disabled={phase === 'starting'}
           >
             {eventLocked ? '‹ Event dashboard' : '‹ Back'}
           </button>
+          {space && !eventLocked && <div className="eco-kicker">{SPACE_COPY[space].kicker}</div>}
           <h1 className="page-title">
             {eventLocked
               ? `Launch — ${upcoming?.event.title ?? 'your event'}`
               : hosting
                 ? 'Host a live event'
-                : 'New live session'}
+                : space
+                  ? SPACE_COPY[space].title
+                  : 'New live session'}
           </h1>
           <p className="page-subtitle">
             {eventLocked
               ? 'Choose what your audience will follow. The QR you shared goes live the moment you start.'
               : hosting
                 ? 'Choose what to capture and share with your audience. The join QR code appears as soon as you start.'
-                : 'Choose what Sitka should watch. It will capture the screen and audio, and understand the session as it happens.'}
+                : space
+                  ? SPACE_COPY[space].subtitle
+                  : 'Choose what Sitka should watch. It will capture the screen and audio, and understand the session as it happens.'}
           </p>
 
           {error && (

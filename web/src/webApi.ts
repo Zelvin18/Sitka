@@ -1020,7 +1020,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return (data?.thumb as string) || null
     },
 
-    createSession: async (title, kind, hosted, agenda, eventId) => {
+    createSession: async (title, kind, hosted, agenda, eventId, space) => {
       const meta: SessionMeta = {
         id: uid(),
         title: title || 'Untitled session',
@@ -1030,7 +1030,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         kind,
         hosted,
         agenda,
-        eventId
+        eventId,
+        space
       }
       const { error } = await sb.from('sessions').insert({
         id: meta.id,

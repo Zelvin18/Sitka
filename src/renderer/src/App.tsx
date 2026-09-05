@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import type { SessionMeta, Settings } from '@shared/types'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { SessionKind, SessionMeta, Settings, Space } from '@shared/types'
 import Sidebar from './components/Sidebar'
 import BrainView from './components/BrainView'
 import HomeView from './components/HomeView'
@@ -22,12 +22,50 @@ type View =
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
-  | { name: 'live'; eventId?: string }
+  | { name: 'live'; eventId?: string; space?: Space; presetKind?: SessionKind }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
 
 export default function App(): React.JSX.Element {
-  const [view, setView] = useState<View>({ name: 'homepage' })
+  const [view, setViewRaw] = useState<View>({ name: 'homepage' })
+  // ---- navigation history: every page gets a real "back" ----
+  const historyRef = useRef<View[]>([])
+  const viewRef = useRef<View>({ name: 'homepage' })
+  const [canBack, setCanBack] = useState(false)
+  const setView = useCallback((next: View | ((v: View) => View)): void => {
+    const resolved = typeof next === 'function' ? next(viewRef.current) : next
+    if (resolved.name !== viewRef.current.name || JSON.stringify(resolved) !== JSON.stringify(viewRef.current)) {
+      historyRef.current = [...historyRef.current.slice(-40), viewRef.current]
+      setCanBack(true)
+    }
+    viewRef.current = resolved
+    setViewRaw(resolved)
+  }, [])
+  const goBack = useCallback((): void => {
+    const prev = historyRef.current.pop()
+    if (!prev) return
+    viewRef.current = prev
+    setViewRaw(prev)
+    setCanBack(historyRef.current.length > 0)
+  }, [])
+
+  // ---- which ecosystem the user is inside (general by default) ----
+  const [space, setSpace] = useState<Space | undefined>(() => {
+    try {
+      const s = localStorage.getItem('sitka.space')
+      return s === 'business' || s === 'education' ? s : undefined
+    } catch {
+      return undefined
+    }
+  })
+  useEffect(() => {
+    try {
+      if (space) localStorage.setItem('sitka.space', space)
+      else localStorage.removeItem('sitka.space')
+    } catch {
+      /* ignore */
+    }
+  }, [space])
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
@@ -108,15 +146,20 @@ export default function App(): React.JSX.Element {
   const activeSessionId =
     view.name === 'session' ? view.id : view.name === 'live' ? recordingSessionId : undefined
 
+  // Sessions are scoped: general shows only general ones, an ecosystem only its own.
+  const inSpace = (s: SessionMeta): boolean => (space ? s.space === space : !s.space)
+  const scopedSessions = sessions.filter(inSpace)
+
   return (
     <div className="app">
       {sidebarOpen && (
         <Sidebar
-          sessions={sessions}
+          sessions={scopedSessions}
           activeView={view.name}
           activeSessionId={activeSessionId}
           recordingSessionId={recordingSessionId}
           onHomePage={() => {
+            setSpace(undefined)
             setView({ name: 'homepage' })
             closeDrawer()
           }}
@@ -133,7 +176,11 @@ export default function App(): React.JSX.Element {
             closeDrawer()
           }}
           onNewSession={() => {
-            setView({ name: 'live' })
+            setView(
+              space
+                ? { name: 'live', space, presetKind: space === 'business' ? 'meeting' : 'lecture' }
+                : { name: 'live' }
+            )
             closeDrawer()
           }}
           onBrain={() => {
@@ -161,26 +208,49 @@ export default function App(): React.JSX.Element {
             <IconPanel size={14} />
           </button>
         )}
+        {canBack && view.name !== 'homepage' && (
+          <button
+            className={`btn btn-ghost btn-sm global-back${sidebarOpen ? '' : ' shifted'}`}
+            title="Back to the previous page"
+            onClick={goBack}
+          >
+            ‹ Back
+          </button>
+        )}
+        {space && view.name !== 'homepage' && (
+          <span className={`space-tag${sidebarOpen ? '' : ' shifted'}`}>
+            {space === 'business' ? 'Business' : 'Education'}
+          </span>
+        )}
         {view.name === 'homepage' && (
           <HomeView
-            sessions={sessions}
+            sessions={sessions.filter((s) => !s.space)}
             onNewSession={() => setView({ name: 'live' })}
             onGoEvents={() => setView({ name: 'events' })}
             onGoOverview={() => setView({ name: 'brain' })}
             onGoLibrary={() => setView({ name: 'home' })}
             onOpenSession={openSession}
-            onGoBusiness={() => setView({ name: 'business' })}
-            onGoEducation={() => setView({ name: 'education' })}
+            onGoBusiness={() => {
+              setSpace('business')
+              setView({ name: 'business' })
+            }}
+            onGoEducation={() => {
+              setSpace('education')
+              setView({ name: 'education' })
+            }}
           />
         )}
         {(view.name === 'business' || view.name === 'education') && (
           <EcosystemView
             kind={view.name}
-            onBack={() => setView({ name: 'homepage' })}
-            onNewSession={() => setView({ name: 'live' })}
+            sessions={sessions.filter((s) => s.space === view.name)}
+            onStartSession={(presetKind) =>
+              setView({ name: 'live', space: view.name, presetKind })
+            }
             onGoEvents={() => setView({ name: 'events' })}
             onGoCoach={() => setView({ name: 'coach' })}
             onGoOverview={() => setView({ name: 'brain' })}
+            onOpenSession={openSession}
           />
         )}
         {view.name === 'coach' && (
@@ -233,6 +303,8 @@ export default function App(): React.JSX.Element {
               sessions={sessions}
               onOpenSessionAt={openSession}
               initialEventId={view.name === 'live' ? view.eventId : undefined}
+              space={view.name === 'live' ? view.space : undefined}
+              presetKind={view.name === 'live' ? view.presetKind : undefined}
               onGoEvents={(eventId) => setView({ name: 'events', eventId })}
               onSessionCreated={(meta) => {
                 setRecordingSessionId(meta.id)
@@ -243,7 +315,7 @@ export default function App(): React.JSX.Element {
                 void refreshSessions()
                 setView({ name: 'session', id })
               }}
-              onCancel={() => setView({ name: 'home' })}
+              onCancel={goBack}
               onOpenSettings={() => setView({ name: 'settings' })}
             />
           </div>

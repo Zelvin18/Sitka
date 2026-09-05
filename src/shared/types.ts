@@ -28,6 +28,9 @@ export type SessionStatus = 'recording' | 'complete'
 
 export type SessionKind = 'lecture' | 'meeting' | 'presentation' | 'other'
 
+/** Which ecosystem a session belongs to; undefined = the general workspace */
+export type Space = 'business' | 'education'
+
 export interface SessionMeta {
   id: string
   title: string
@@ -49,6 +52,8 @@ export interface SessionMeta {
   agenda?: string[]
   /** the scheduled event this session went live for */
   eventId?: string
+  /** recorded inside Sitka for Business / Education (undefined = general) */
+  space?: Space
 }
 
 export interface ChatMessage {

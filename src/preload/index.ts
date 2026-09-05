@@ -36,9 +36,10 @@ const api = {
     kind?: 'lecture' | 'meeting' | 'presentation' | 'other',
     hosted?: boolean,
     agenda?: string[],
-    eventId?: string
+    eventId?: string,
+    space?: 'business' | 'education'
   ): Promise<SessionMeta> =>
-    ipcRenderer.invoke('session:create', title, kind, hosted, agenda, eventId),
+    ipcRenderer.invoke('session:create', title, kind, hosted, agenda, eventId, space),
   hostCoverage: (id: string): Promise<{ covered: boolean[] }> =>
     ipcRenderer.invoke('host:coverage', id),
   reportInsights: (id: string): Promise<{ report?: EventReport; error?: string }> =>

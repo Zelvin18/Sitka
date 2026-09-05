@@ -278,13 +278,13 @@ function registerIpc(): void {
       kind?: 'lecture' | 'meeting' | 'presentation' | 'other',
       hosted?: boolean,
       agenda?: string[],
-      eventId?: string
+      eventId?: string,
+      space?: 'business' | 'education'
     ) => {
       const meta = store.createSession(title, kind, hosted, agenda)
-      if (eventId) {
-        meta.eventId = eventId
-        store.saveMeta(meta)
-      }
+      if (eventId) meta.eventId = eventId
+      if (space) meta.space = space
+      if (eventId || space) store.saveMeta(meta)
       return meta
     }
   )
