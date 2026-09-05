@@ -7,6 +7,12 @@
  */
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import type { SitkaApi } from '../../src/preload/index'
+import {
+  memorySystemPrompt,
+  memoryTranscript,
+  mergeMemory,
+  type MemoryExtraction
+} from '../../src/shared/memoryLogic'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -20,6 +26,7 @@ import type {
   CoachRehearsal,
   CoachScores,
   EventReport,
+  MemoryObject,
   ScheduledEvent,
   SessionData,
   SessionMeta,
@@ -826,6 +833,41 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return hits.slice(0, limit).map(({ score: _s, ...h }) => h)
   }
 
+  // ---------- memory store (decisions, promises, people, concepts) ----------
+  async function loadMemory(): Promise<MemoryObject[]> {
+    const { data } = await sb.from('memory_objects').select('data').order('updated_at', { ascending: false })
+    return ((data ?? []) as { data: MemoryObject }[]).map((r) => r.data)
+  }
+  async function saveMemoryList(list: MemoryObject[], previousIds: Set<string>): Promise<void> {
+    const rows = list.map((o) => ({
+      id: o.id,
+      owner: user.id,
+      data: o,
+      updated_at: new Date(o.updatedAt).toISOString()
+    }))
+    if (rows.length > 0) await sb.from('memory_objects').upsert(rows)
+    const gone = [...previousIds].filter((id) => !list.some((o) => o.id === id))
+    if (gone.length > 0) await sb.from('memory_objects').delete().in('id', gone)
+  }
+  async function rememberSession(meta: SessionMeta, segments: TranscriptSegment[]): Promise<void> {
+    if (segments.length < 6 || !hasChatKey()) return
+    try {
+      const existing = await loadMemory()
+      const today = new Date().toISOString().slice(0, 10)
+      const out = await aiChat(
+        memorySystemPrompt(meta.kind, existing, today),
+        [{ role: 'user', content: memoryTranscript(segments) }],
+        2500
+      )
+      const parsed = extractJson<MemoryExtraction>(out)
+      if (!parsed) return
+      const merged = mergeMemory(existing, parsed, { id: meta.id, title: meta.title }, uid)
+      await saveMemoryList(merged, new Set(existing.map((o) => o.id)))
+    } catch {
+      /* memory is best-effort — the session itself is already saved */
+    }
+  }
+
   // ---------- coach store ----------
   interface CoachRow {
     id: string
@@ -1174,6 +1216,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
               d.meta.analyzed = true
               await patchSession(id, { meta: d.meta })
               emitSession(d.meta)
+              // Memory: decisions, promises, people and concepts, pinned to their moments.
+              await rememberSession(d.meta, d.segments)
             }
           } catch {
             /* analysis is best-effort */
@@ -1415,6 +1459,24 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       return { running: false }
     },
+    // ---------- memory ----------
+    listMemory: async () => loadMemory(),
+    updateMemory: async (id, patch) => {
+      const { data } = await sb.from('memory_objects').select('data').eq('id', id).single()
+      if (!data) return null
+      const obj = data.data as MemoryObject
+      if (patch.status) obj.status = patch.status
+      obj.updatedAt = Date.now()
+      await sb
+        .from('memory_objects')
+        .update({ data: obj, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      return obj
+    },
+    deleteMemory: async (id: string) => {
+      await sb.from('memory_objects').delete().eq('id', id)
+    },
+
     // ---------- Room's Mind: what the audience is privately struggling with ----------
     roomMind: async (sessionId: string) => {
       if (!conf || conf.sessionId !== sessionId || !hasChatKey()) return { themes: [] }

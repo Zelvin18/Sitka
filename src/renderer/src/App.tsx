@@ -9,6 +9,7 @@ import CommandPalette from './components/CommandPalette'
 import { IconPanel } from './lib/icons'
 import { usePersistedBool } from './lib/persist'
 import Home from './components/Home'
+import EcosystemView from './components/EcosystemView'
 import SettingsView from './components/SettingsView'
 import LiveSession from './components/LiveSession'
 import SessionView from './components/SessionView'
@@ -19,6 +20,8 @@ type View =
   | { name: 'events'; eventId?: string }
   | { name: 'coach' }
   | { name: 'settings' }
+  | { name: 'business' }
+  | { name: 'education' }
   | { name: 'live'; eventId?: string }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
@@ -166,6 +169,18 @@ export default function App(): React.JSX.Element {
             onGoOverview={() => setView({ name: 'brain' })}
             onGoLibrary={() => setView({ name: 'home' })}
             onOpenSession={openSession}
+            onGoBusiness={() => setView({ name: 'business' })}
+            onGoEducation={() => setView({ name: 'education' })}
+          />
+        )}
+        {(view.name === 'business' || view.name === 'education') && (
+          <EcosystemView
+            kind={view.name}
+            onBack={() => setView({ name: 'homepage' })}
+            onNewSession={() => setView({ name: 'live' })}
+            onGoEvents={() => setView({ name: 'events' })}
+            onGoCoach={() => setView({ name: 'coach' })}
+            onGoOverview={() => setView({ name: 'brain' })}
           />
         )}
         {view.name === 'coach' && (

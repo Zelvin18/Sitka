@@ -249,6 +249,37 @@ export interface CoachProject {
   eventId?: string
 }
 
+// ---------- Memory: durable things Sitka keeps across sessions ----------
+
+export type MemoryKind = 'decision' | 'commitment' | 'person' | 'concept'
+
+export interface MemoryMoment {
+  sessionId: string
+  sessionTitle: string
+  /** "M:SS" or "H:MM:SS" within that session */
+  time: string
+  /** what happened at this moment (one sentence) */
+  note: string
+  at: number
+}
+
+export interface MemoryObject {
+  id: string
+  kind: MemoryKind
+  title: string
+  /** current understanding (latest) */
+  detail: string
+  /** decisions: open | changed (needs a look) · commitments: open | done */
+  status?: 'open' | 'changed' | 'done'
+  /** commitments: who owns it */
+  owner?: string
+  /** commitments: due date YYYY-MM-DD when stated */
+  due?: string
+  timeline: MemoryMoment[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface BrainConversation {
   id: string
   title: string

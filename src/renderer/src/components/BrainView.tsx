@@ -7,6 +7,7 @@ import type {
 } from '@shared/types'
 import ChatPane from './ChatPane'
 import ConfirmDialog from './ConfirmDialog'
+import MemoryPanel from './MemoryPanel'
 import { formatDate, formatTime } from '../lib/format'
 import { IconPlay, IconPlus } from '../lib/icons'
 
@@ -136,6 +137,10 @@ export default function BrainView({
           onChange={(e) => setQuery(e.target.value)}
           spellCheck={false}
         />
+
+        {!hasContent && !showAllChats && query.trim().length < 2 && (
+          <MemoryPanel onOpenSessionAt={onOpenSessionAt} />
+        )}
 
         {showRecents && (
           <>

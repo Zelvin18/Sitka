@@ -3720,6 +3720,352 @@ body.dragging-row .splitter-h {
   font-size: 12.5px;
 }
 
+/* ============ Memory (decisions, promises, people, concepts) ============ */
+
+.mem-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mem-alert {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+}
+
+.mem-alert-kicker {
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 3px;
+}
+
+.mem-alert-title {
+  font-weight: 650;
+}
+
+.mem-alert-detail {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.mem-alert-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.mem-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-soft);
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.seg-btn.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.seg-n {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.mem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mem-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px 14px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.mem-item:hover {
+  border-color: var(--text-3);
+}
+
+.mem-item.open {
+  border-color: var(--text);
+}
+
+.mem-item.done .mem-item-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.mem-item-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mem-item-title {
+  flex: 1;
+  font-weight: 650;
+  min-width: 0;
+}
+
+.mem-item-detail {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.mem-tag {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.mem-tag.hot {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.mem-timeline {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: default;
+}
+
+.mem-tl-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.mem-tl-note {
+  color: var(--text-2);
+  padding-top: 2px;
+}
+
+.mem-tl-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mem-moment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 11.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 260px;
+}
+
+.mem-moment:hover {
+  border-color: var(--text);
+}
+
+.mem-moment-time {
+  font-family: ui-monospace, monospace;
+  font-weight: 650;
+}
+
+.mem-moment-title {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ Home doors + ecosystem pages ============ */
+
+.home-deeper {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-top: 26px;
+}
+
+.home-deeper-label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding-right: 6px;
+}
+
+.home-door {
+  position: relative;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 40px 12px 14px;
+  background: var(--bg);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+
+.home-door:hover {
+  border-color: var(--text);
+}
+
+.home-door-title {
+  display: block;
+  font-weight: 650;
+}
+
+.home-door-desc {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+
+.home-door-arrow {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+}
+
+.eco-hero {
+  margin-bottom: 26px;
+}
+
+.eco-kicker {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.eco-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.eco-pillar {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  background: var(--bg-soft);
+}
+
+.eco-pillar-name {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+
+.eco-pillar-line {
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+
+.eco-points {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.eco-points li {
+  margin-bottom: 6px;
+}
+
+.eco-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 26px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.eco-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+@media (max-width: 860px) {
+  .home-deeper {
+    grid-template-columns: 1fr;
+  }
+
+  .eco-pillars {
+    grid-template-columns: 1fr;
+  }
+}
+
 .mind-card {
   border: 1.5px solid var(--text);
   border-radius: 14px;

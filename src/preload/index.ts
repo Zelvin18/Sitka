@@ -9,6 +9,7 @@ import type {
   CoachProject,
   CoachRehearsal,
   EventReport,
+  MemoryObject,
   ScheduledEvent,
   SimDifficulty,
   TranscriptSegment,
@@ -136,6 +137,13 @@ const api = {
     enable: boolean
   ): Promise<{ url?: string; enabled?: boolean; error?: string }> =>
     ipcRenderer.invoke('replay:publish', sessionId, enable),
+  // ---------- memory (decisions, promises, people, concepts) ----------
+  listMemory: (): Promise<MemoryObject[]> => ipcRenderer.invoke('memory:list'),
+  updateMemory: (
+    id: string,
+    patch: { status?: 'open' | 'changed' | 'done' }
+  ): Promise<MemoryObject | null> => ipcRenderer.invoke('memory:update', id, patch),
+  deleteMemory: (id: string): Promise<void> => ipcRenderer.invoke('memory:delete', id),
   roomMind: (
     sessionId: string
   ): Promise<{ themes: { topic: string; count: number }[]; error?: string }> =>

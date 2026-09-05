@@ -70,6 +70,7 @@ import {
 } from './cloud'
 import { randomUUID } from 'crypto'
 import { extractMaterialText } from './materials'
+import { deleteMemoryObject, loadMemory, rememberSession, updateMemoryObject } from './memory'
 import {
   buildBrief,
   liveCoachHint,
@@ -756,6 +757,13 @@ function registerIpc(): void {
       ? cloudPublishReplay(sessionId, enable)
       : { error: 'Set up online events in Settings first.' }
   )
+  ipcMain.handle('memory:list', () => loadMemory())
+  ipcMain.handle(
+    'memory:update',
+    (_e, id: string, patch: { status?: 'open' | 'changed' | 'done' }) =>
+      updateMemoryObject(id, patch)
+  )
+  ipcMain.handle('memory:delete', (_e, id: string) => deleteMemoryObject(id))
   ipcMain.handle('room:mind', (_e, sessionId: string) =>
     isCloudActive() ? cloudRoomMind(sessionId) : { themes: [] }
   )
@@ -1078,6 +1086,8 @@ async function runAnalysis(id: string): Promise<void> {
     meta.analyzed = true
     store.saveMeta(meta)
     mainWindow?.webContents.send('session:updated', meta)
+    // Memory: decisions, promises, people and concepts, pinned to their moments.
+    await rememberSession({ anthropicApiKey, groqApiKey }, meta, segments).catch(() => undefined)
   } catch {
     // analysis is best-effort; the session itself is already saved
   }

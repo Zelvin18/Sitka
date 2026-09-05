@@ -16,6 +16,8 @@ interface Props {
   onGoOverview: () => void
   onGoLibrary: () => void
   onOpenSession: (id: string) => void
+  onGoBusiness: () => void
+  onGoEducation: () => void
 }
 
 function greeting(): string {
@@ -32,7 +34,9 @@ export default function HomeView({
   onGoEvents,
   onGoOverview,
   onGoLibrary,
-  onOpenSession
+  onOpenSession,
+  onGoBusiness,
+  onGoEducation
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -109,6 +113,20 @@ export default function HomeView({
             <span className="home-action-desc">
               One question across everything you've ever captured.
             </span>
+          </button>
+        </div>
+
+        <div className="home-deeper">
+          <span className="home-deeper-label">Go deeper</span>
+          <button className="home-door" onClick={onGoBusiness}>
+            <span className="home-door-title">Sitka for Business</span>
+            <span className="home-door-desc">Turn conversations into coordinated action.</span>
+            <span className="home-door-arrow">→</span>
+          </button>
+          <button className="home-door" onClick={onGoEducation}>
+            <span className="home-door-title">Sitka for Education</span>
+            <span className="home-door-desc">Never learn alone again.</span>
+            <span className="home-door-arrow">→</span>
           </button>
         </div>
 
