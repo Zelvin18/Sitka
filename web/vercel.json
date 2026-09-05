@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/e/:id", "destination": "/event.html" },
     { "source": "/r/:id", "destination": "/replay.html" },
+    { "source": "/s/:id", "destination": "/stage.html" },
     { "source": "/host/:path*", "destination": "/host.html" }
   ]
 }

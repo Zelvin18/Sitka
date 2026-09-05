@@ -26,7 +26,8 @@ export default defineConfig({
         event: resolve(__dirname, 'event.html'),
         host: resolve(__dirname, 'host.html'),
         legal: resolve(__dirname, 'legal.html'),
-        replay: resolve(__dirname, 'replay.html')
+        replay: resolve(__dirname, 'replay.html'),
+        stage: resolve(__dirname, 'stage.html')
       }
     }
   }

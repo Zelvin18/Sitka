@@ -1207,6 +1207,15 @@ export default function LiveSession({
                 <button className="btn btn-sm" onClick={() => void openQr(confUrl)}>
                   Show QR
                 </button>
+                {confUrl.includes('/e/') && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    title="Open the big-screen view for the venue projector"
+                    onClick={() => window.open(confUrl.replace('/e/', '/s/'), '_blank')}
+                  >
+                    Stage screen
+                  </button>
+                )}
                 <button className="btn btn-ghost btn-sm" onClick={() => void stopHosting()}>
                   Stop
                 </button>

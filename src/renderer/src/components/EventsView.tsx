@@ -373,6 +373,15 @@ export default function EventsView({
                       >
                         Save image…
                       </button>
+                      {armedUrl?.includes('/e/') && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Big-screen view for the venue projector or lobby TV"
+                          onClick={() => window.open(armedUrl.replace('/e/', '/s/'), '_blank')}
+                        >
+                          Stage screen
+                        </button>
+                      )}
                     </div>
                   </>
                 ) : (
