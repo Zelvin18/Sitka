@@ -323,6 +323,38 @@ body {
   min-width: 0;
 }
 
+/* ---- New session: always reachable, never the loudest thing on screen ---- */
+
+.side-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    transform 0.12s ease;
+}
+
+.side-new:hover {
+  border-color: var(--text);
+  background: var(--bg-hover);
+}
+
+.side-new:active {
+  transform: scale(0.99);
+}
+
 /* ---- Sitka for Business / Education: the two doors, always in view ---- */
 
 .side-spaces {

@@ -151,9 +151,9 @@ export default function Sidebar({
       </div>
 
       <div className="side-section">
-        <button className="btn btn-primary" onClick={onNewSession} style={{ width: '100%' }}>
-          <IconPlus size={15} strokeWidth={2.2} />
-          New live session
+        <button className="side-new" onClick={onNewSession} title="Start a new session">
+          <IconPlus size={14} strokeWidth={2.2} />
+          New session
         </button>
       </div>
 
