@@ -18,8 +18,6 @@ interface Props {
   onGoOverview: () => void
   onGoLibrary: () => void
   onOpenSession: (id: string) => void
-  onGoBusiness: () => void
-  onGoEducation: () => void
   onNewAudioSession: () => void
 }
 
@@ -38,8 +36,6 @@ export default function HomeView({
   onGoOverview,
   onGoLibrary,
   onOpenSession,
-  onGoBusiness,
-  onGoEducation,
   onNewAudioSession
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
@@ -163,20 +159,6 @@ export default function HomeView({
           </span>
           <span className="home-door-arrow">→</span>
         </button>
-
-        <div className="home-deeper">
-          <span className="home-deeper-label">Go deeper</span>
-          <button className="home-door" onClick={onGoBusiness}>
-            <span className="home-door-title">Sitka for Business</span>
-            <span className="home-door-desc">Turn conversations into coordinated action.</span>
-            <span className="home-door-arrow">→</span>
-          </button>
-          <button className="home-door" onClick={onGoEducation}>
-            <span className="home-door-title">Sitka for Education</span>
-            <span className="home-door-desc">Never learn alone again.</span>
-            <span className="home-door-arrow">→</span>
-          </button>
-        </div>
 
         {upcomingEvents.length > 0 && (
           <>

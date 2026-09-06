@@ -247,14 +247,6 @@ export default function App(): React.JSX.Element {
             onGoOverview={() => setView({ name: 'brain' })}
             onGoLibrary={() => setView({ name: 'home' })}
             onOpenSession={openSession}
-            onGoBusiness={() => {
-              setSpace('business')
-              setView({ name: 'business' })
-            }}
-            onGoEducation={() => {
-              setSpace('education')
-              setView({ name: 'education' })
-            }}
             onNewAudioSession={() => setView({ name: 'live', audioOnly: true })}
           />
         )}
