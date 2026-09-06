@@ -152,8 +152,13 @@ export default function Sidebar({
 
       <div className="side-section">
         <button className="side-new" onClick={onNewSession} title="Start a new session">
-          <IconPlus size={14} strokeWidth={2.2} />
-          New session
+          <span className="side-new-icon">
+            <IconPlus size={15} strokeWidth={2.4} />
+          </span>
+          <span className="side-new-text">
+            <span className="side-new-name">New session</span>
+            <span className="side-new-sub">Screen, meeting or audio only</span>
+          </span>
         </button>
       </div>
 
