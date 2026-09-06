@@ -61,6 +61,26 @@ export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
 export const IconPlus = (p: IconProps) =>
   base(p.size, p.strokeWidth, <path d="M12 5v14M5 12h14" />)
 
+export const IconBriefcase = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
+      <path d="M9 7.5V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5v2M3 12.5h18" />
+    </>
+  )
+
+export const IconCap = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M2.5 9.5 12 5l9.5 4.5L12 14z" />
+      <path d="M6.5 11.8v4.2c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-4.2M21.5 9.5v5" />
+    </>
+  )
+
 export const IconShare = (p: IconProps) =>
   base(
     p.size,

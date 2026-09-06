@@ -323,6 +323,92 @@ body {
   min-width: 0;
 }
 
+/* ---- Sitka for Business / Education: the two doors, always in view ---- */
+
+.side-spaces {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.side-spaces .side-label {
+  padding-bottom: 4px;
+}
+
+.side-space {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    transform 0.12s ease;
+}
+
+.side-space:hover {
+  border-color: var(--text-3);
+  background: var(--bg-hover);
+}
+
+.side-space:active {
+  transform: scale(0.99);
+}
+
+.side-space.active {
+  border-color: var(--text);
+}
+
+.side-space-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.side-space.active .side-space-icon {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.side-space-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.side-space-name {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.side-space-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
 .side-item-time {
   font-size: 11px;
   color: var(--text-3);

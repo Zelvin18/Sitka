@@ -164,6 +164,17 @@ export default function App(): React.JSX.Element {
           activeView={view.name}
           activeSessionId={activeSessionId}
           recordingSessionId={recordingSessionId}
+          space={space}
+          onBusiness={() => {
+            setSpace('business')
+            setView({ name: 'business' })
+            closeDrawer()
+          }}
+          onEducation={() => {
+            setSpace('education')
+            setView({ name: 'education' })
+            closeDrawer()
+          }}
           onHomePage={() => {
             setSpace(undefined)
             setView({ name: 'homepage' })

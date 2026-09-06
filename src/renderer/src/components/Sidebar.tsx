@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import type { SessionMeta } from '@shared/types'
+import type { SessionMeta, Space } from '@shared/types'
 import {
+  IconBriefcase,
   IconBroadcast,
+  IconCap,
   IconDots,
   IconFolder,
   IconHome,
@@ -20,6 +22,10 @@ interface Props {
   activeView: string
   activeSessionId?: string
   recordingSessionId?: string
+  /** the ecosystem the user is currently inside, if any */
+  space?: Space
+  onBusiness: () => void
+  onEducation: () => void
   onHomePage: () => void
   onEvents: () => void
   onCoach: () => void
@@ -44,6 +50,9 @@ export default function Sidebar({
   activeView,
   activeSessionId,
   recordingSessionId,
+  space,
+  onBusiness,
+  onEducation,
   onHomePage,
   onEvents,
   onCoach,
@@ -183,6 +192,34 @@ export default function Sidebar({
         >
           <IconFolder size={15} />
           Library
+        </button>
+      </div>
+
+      <div className="side-spaces">
+        <div className="side-label">Sitka for</div>
+        <button
+          className={`side-space${space === 'business' ? ' active' : ''}`}
+          onClick={onBusiness}
+        >
+          <span className="side-space-icon">
+            <IconBriefcase size={15} strokeWidth={1.7} />
+          </span>
+          <span className="side-space-text">
+            <span className="side-space-name">Business</span>
+            <span className="side-space-sub">Meetings, decisions, follow-through</span>
+          </span>
+        </button>
+        <button
+          className={`side-space${space === 'education' ? ' active' : ''}`}
+          onClick={onEducation}
+        >
+          <span className="side-space-icon">
+            <IconCap size={15} strokeWidth={1.7} />
+          </span>
+          <span className="side-space-text">
+            <span className="side-space-name">Education</span>
+            <span className="side-space-sub">Lectures, understanding, exams</span>
+          </span>
         </button>
       </div>
 
