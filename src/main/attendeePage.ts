@@ -145,7 +145,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
 </head>
 <body>
 <header>
-  <div class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
+  <div class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
   <div class="evtitle">${title}</div>
 </header>
 

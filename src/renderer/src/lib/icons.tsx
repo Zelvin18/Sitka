@@ -28,7 +28,10 @@ function base(
   )
 }
 
-/** Sitka mark ("Spire"): five bars rising to a peak — spruce, waveform, growth. */
+/**
+ * Sitka mark ("Halo"): the loop of everything said, and the one moment held on it.
+ * With `live`, the point orbits the ring — Sitka is thinking or working.
+ */
 export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
   <svg
     className={live ? 'mark mark-live' : 'mark'}
@@ -38,11 +41,20 @@ export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
     fill="currentColor"
     aria-hidden="true"
   >
-    <rect x="11" y="39" width="6" height="14" rx="3" />
-    <rect x="20" y="27" width="6" height="26" rx="3" />
-    <rect x="29" y="11" width="6" height="42" rx="3" />
-    <rect x="38" y="27" width="6" height="26" rx="3" />
-    <rect x="47" y="39" width="6" height="14" rx="3" />
+    <circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" strokeWidth="9" />
+    <g className="mark-orbit">
+      <circle cx="46.1" cy="17.9" r="9" />
+      {live && (
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from="0 32 32"
+          to="360 32 32"
+          dur="1.6s"
+          repeatCount="indefinite"
+        />
+      )}
+    </g>
   </svg>
 )
 

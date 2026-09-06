@@ -26,10 +26,10 @@ nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,
 .brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16.5px;letter-spacing:-.01em}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--text)}
 .mark{width:20px;height:20px;flex:none;display:block}
-.mark-live rect,.brand:hover .mark rect{transform-box:fill-box;transform-origin:50% 100%;animation:spire 1.9s ease-in-out infinite}
-.mark rect:nth-child(2){animation-delay:.16s}.mark rect:nth-child(3){animation-delay:.32s}.mark rect:nth-child(4){animation-delay:.48s}.mark rect:nth-child(5){animation-delay:.64s}
-@keyframes spire{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.5)}}
-@media(prefers-reduced-motion:reduce){.mark rect{animation:none!important}}
+/* Halo: the point orbits the ring while Sitka is working (and on hover of the brand) */
+.mark-live circle:last-child,.brand:hover .mark circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.mark circle{animation:none!important}}
 .nav-links{display:flex;align-items:center;gap:22px;font-size:14px;font-weight:600;color:var(--t2)}
 .nav-links a:hover{color:var(--text)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 22px;border:none;border-radius:12px;background:var(--text);color:var(--bg);font-size:14.5px;font-weight:650;cursor:pointer;transition:transform .12s ease}
@@ -158,7 +158,7 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
 <body>
 
 <nav><div class="wrap nav-in">
-  <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</a>
+  <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</a>
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
@@ -194,7 +194,7 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
       </div>
       <div class="mock-phone">
         <div class="mp-screen">
-          <div class="mp-top"><span style="display:inline-flex;align-items:center;gap:5px"><svg class="mark mark-live" style="width:12px;height:12px" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</span><span class="mp-live">● LIVE</span></div>
+          <div class="mp-top"><span style="display:inline-flex;align-items:center;gap:5px"><svg class="mark mark-live" style="width:12px;height:12px" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</span><span class="mp-live">● LIVE</span></div>
           <div class="mp-stage"><span class="mp-stagetag">STAGE</span><div class="mp-slide"><i></i><i></i><i></i></div></div>
           <div class="mp-listen">Listen in French</div>
           <div class="mp-caps">
@@ -290,7 +290,7 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
 </div></section>
 
 <footer><div class="wrap foot-in">
-  <span class="brand" style="font-size:14px"><svg class="mark" style="width:16px;height:16px" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</span>
+  <span class="brand" style="font-size:14px"><svg class="mark" style="width:16px;height:16px" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</span>
   <div class="foot-links">
     <a href="/legal">Privacy &amp; Terms</a>
     <a href="/e/demo">Attendee view</a>

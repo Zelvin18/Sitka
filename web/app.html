@@ -17,9 +17,8 @@
 #gate{position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:100;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif}
 .gwait{display:flex;align-items:center;justify-content:center;gap:10px}
 .gwait .mark{width:18px;height:18px}
-.mark-live rect{transform-box:fill-box;transform-origin:50% 100%;animation:spire 1.9s ease-in-out infinite}
-.mark-live rect:nth-child(2){animation-delay:.16s}.mark-live rect:nth-child(3){animation-delay:.32s}.mark-live rect:nth-child(4){animation-delay:.48s}.mark-live rect:nth-child(5){animation-delay:.64s}
-@keyframes spire{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.5)}}
+.mark-live circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
 .hidden{display:none!important}
 .gcard{width:100%;max-width:400px;padding:28px}
 .gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16px;justify-content:center;margin-bottom:6px}
@@ -39,7 +38,7 @@
 <body>
 <div id="gate">
   <div class="gcard" id="gatecard">
-    <div class="gbrand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</div>
+    <div class="gbrand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</div>
     <div class="gsub">Your live AI intelligence platform — attend, understand, remember. Sign in to open your workspace.</div>
     <div class="glabel">Email</div>
     <input class="gin" id="gemail" type="email" autocomplete="email" placeholder="you@example.com">
@@ -50,7 +49,7 @@
     <button id="gforgot" style="background:none;border:none;color:var(--t3);font:inherit;font-size:12.5px;margin-top:14px;cursor:pointer;width:100%;text-align:center">Forgot password?</button>
     <div class="gerr" id="gerr"></div>
   </div>
-  <div class="gcard hidden" id="gateload" style="text-align:center"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Opening your workspace…</div></div>
+  <div class="gcard hidden" id="gateload" style="text-align:center"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Opening your workspace…</div></div>
 </div>
 <div id="root"></div>
 <script type="module" src="/src/app-entry.ts"></script>

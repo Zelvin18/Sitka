@@ -1,4 +1,4 @@
-// Renders the Sitka "Spire" mark to PNG/ICO with no native deps (pngjs only).
+// Renders the Sitka "Halo" mark (ring + held point) to PNG/ICO with no native deps (pngjs only).
 // Usage: node scripts/make-icons.js
 // Writes web/public/{apple-touch-icon,icon-192,icon-512,icon-512-maskable}.png
 // and build/icon.png (1024) + build/icon.ico (16..256) for the desktop app.
@@ -6,16 +6,21 @@ const fs = require('fs')
 const path = require('path')
 const { PNG } = require(path.join(__dirname, '..', 'node_modules', 'pngjs'))
 
-// Geometry in the 64-unit design grid.
-const BARS = [
-  [11, 39, 6, 14],
-  [20, 27, 6, 26],
-  [29, 11, 6, 42],
-  [38, 27, 6, 26],
-  [47, 39, 6, 14]
-]
-const RX = 3
+// Geometry in the 64-unit design grid (the mark is scaled to 78% inside tiles).
+const MARK_SCALE = 0.78
+const RING_R = 20
+const RING_W = 9
+const DOT = [46.1, 17.9, 9]
 const TILE_R = 14.4
+
+/** Signed distance to the Halo mark (ring + point), centred, scaled about (32,32). */
+function sdMark(px, py) {
+  const x = (px - 32) / MARK_SCALE + 32
+  const y = (py - 32) / MARK_SCALE + 32
+  const dRing = Math.abs(Math.hypot(x - 32, y - 32) - RING_R) - RING_W / 2
+  const dDot = Math.hypot(x - DOT[0], y - DOT[1]) - DOT[2]
+  return Math.min(dRing, dDot) * MARK_SCALE
+}
 
 // Signed distance to a rounded rectangle (x,y,w,h,r) in grid units.
 function sdRoundRect(px, py, x, y, w, h, r) {
@@ -82,14 +87,7 @@ function render(size, opts = {}) {
               ca = 1
             }
           }
-          let inBar = false
-          for (const [x, y, w, h] of BARS) {
-            if (sdRoundRect(gx, gy, x, y, w, h, RX) <= 0) {
-              inBar = true
-              break
-            }
-          }
-          if (inBar) {
+          if (sdMark(gx, gy) <= 0) {
             const ink = opts.tile ? [255, 255, 255] : [0x14, 0x14, 0x16]
             ;[cr, cg, cb] = ink
             ca = 1
