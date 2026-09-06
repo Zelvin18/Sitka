@@ -13,6 +13,7 @@ import EcosystemView from './components/EcosystemView'
 import SettingsView from './components/SettingsView'
 import LiveSession from './components/LiveSession'
 import SessionView from './components/SessionView'
+import QuickRecord from './components/QuickRecord'
 
 type View =
   | { name: 'homepage' }
@@ -28,6 +29,8 @@ type View =
       space?: Space
       presetKind?: SessionKind
       audioOnly?: boolean
+      /** quick record: start the audio session immediately */
+      quick?: boolean
     }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
@@ -75,6 +78,7 @@ export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>()
   const [refreshToken, setRefreshToken] = useState(0)
   const [sidebarOpen, setSidebarOpen] = usePersistedBool(
     'sitka.sidebar',
@@ -93,16 +97,38 @@ export default function App(): React.JSX.Element {
     if (isPhone()) setSidebarOpen(false)
   }, [setSidebarOpen])
 
+  // Quick record: one tap (or Ctrl+Shift+R) starts an audio session right now,
+  // filed under whichever ecosystem the user is standing in.
+  const quickRecord = useCallback((): void => {
+    if (recordingSessionId) {
+      setView({ name: 'live' })
+      return
+    }
+    setView({
+      name: 'live',
+      space,
+      presetKind: space === 'business' ? 'meeting' : space === 'education' ? 'lecture' : 'other',
+      audioOnly: true,
+      quick: true
+    })
+    closeDrawer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordingSessionId, space, closeDrawer])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
       }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        quickRecord()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [quickRecord])
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     setSessions(await window.sitka.listSessions())
@@ -316,13 +342,16 @@ export default function App(): React.JSX.Element {
               space={view.name === 'live' ? view.space : undefined}
               presetKind={view.name === 'live' ? view.presetKind : undefined}
               presetAudio={view.name === 'live' ? view.audioOnly : undefined}
+              autoStart={view.name === 'live' ? view.quick : undefined}
               onGoEvents={(eventId) => setView({ name: 'events', eventId })}
               onSessionCreated={(meta) => {
                 setRecordingSessionId(meta.id)
+                setRecordingStartedAt(Date.now())
                 void refreshSessions()
               }}
               onFinished={(id) => {
                 setRecordingSessionId(undefined)
+                setRecordingStartedAt(undefined)
                 void refreshSessions()
                 setView({ name: 'session', id })
               }}
@@ -358,6 +387,13 @@ export default function App(): React.JSX.Element {
           onOpenSessionAt={openSession}
         />
       )}
+      <QuickRecord
+        recording={recordingSessionId !== undefined}
+        startedAt={recordingStartedAt}
+        hidden={view.name === 'live'}
+        onStart={quickRecord}
+        onOpen={() => setView({ name: 'live' })}
+      />
     </div>
   )
 }

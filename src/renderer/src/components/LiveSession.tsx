@@ -53,6 +53,8 @@ interface Props {
   presetKind?: SessionKind
   /** start straight on the audio-only setup (no screen) */
   presetAudio?: boolean
+  /** quick record: begin the audio session immediately, no setup screen */
+  autoStart?: boolean
 }
 
 const SPACE_COPY: Record<
@@ -106,7 +108,8 @@ export default function LiveSession({
   onGoEvents,
   space,
   presetKind,
-  presetAudio
+  presetAudio,
+  autoStart
 }: Props): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
@@ -824,6 +827,16 @@ export default function LiveSession({
       setPhase('picking')
     }
   }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space])
+
+  // Quick record: the floating button lands here already in audio mode and
+  // starts on arrival — one tap, no setup.
+  const autoStartedRef = useRef(false)
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return
+    if (phase !== 'picking' || captureMode !== 'audio') return
+    autoStartedRef.current = true
+    void start()
+  }, [autoStart, phase, captureMode, start])
 
   // ---- stop recording ----
   const stop = useCallback(async (): Promise<void> => {
