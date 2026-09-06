@@ -6,6 +6,8 @@ import ConfirmDialog from './ConfirmDialog'
 
 interface Props {
   onOpenSessionAt: (sessionId: string, seconds?: number) => void
+  /** shown when nothing has been remembered yet (otherwise the panel renders nothing) */
+  emptyNote?: string
 }
 
 const TABS: { kind: MemoryKind; label: string; empty: string }[] = [
@@ -27,7 +29,10 @@ function niceDate(iso: string): string {
  * concepts — with the moments they came from. "What matters" surfaces the
  * items that need a look; nothing here is a number Sitka has not earned.
  */
-export default function MemoryPanel({ onOpenSessionAt }: Props): React.JSX.Element | null {
+export default function MemoryPanel({
+  onOpenSessionAt,
+  emptyNote
+}: Props): React.JSX.Element | null {
   const [items, setItems] = useState<MemoryObject[]>([])
   const [tab, setTab] = useState<MemoryKind>('decision')
   const [open, setOpen] = useState<string | null>(null)
@@ -43,7 +48,9 @@ export default function MemoryPanel({ onOpenSessionAt }: Props): React.JSX.Eleme
     return off
   }, [refresh])
 
-  if (items.length === 0) return null
+  if (items.length === 0) {
+    return emptyNote ? <div className="transcript-waiting">{emptyNote}</div> : null
+  }
 
   const today = todayIso()
   const attention = items.filter(
@@ -112,9 +119,6 @@ export default function MemoryPanel({ onOpenSessionAt }: Props): React.JSX.Eleme
       )}
 
       <div className="mem-head">
-        <div className="section-title" style={{ margin: 0 }}>
-          Memory
-        </div>
         <div className="seg">
           {TABS.map((t) => {
             const n = items.filter((o) => o.kind === t.kind).length
