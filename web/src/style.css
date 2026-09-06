@@ -11,6 +11,7 @@ svg.ic{flex-shrink:0}
 header{padding:calc(10px + env(safe-area-inset-top)) 18px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:750;font-size:14.5px;letter-spacing:-.01em}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--text)}
+.brand .mark{width:18px;height:18px;flex:none;display:block}
 .live{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.09em}
 .live.on{color:var(--danger)}
 .live.soon{color:var(--t3)}

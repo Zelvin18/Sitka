@@ -9,7 +9,8 @@ import {
   IconPanel,
   IconPlus,
   IconSettings,
-  IconSparkle
+  IconSparkle,
+  Mark
 } from '../lib/icons'
 import { formatDuration } from '../lib/format'
 import ConfirmDialog from './ConfirmDialog'
@@ -127,7 +128,7 @@ export default function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-drag" style={{ justifyContent: 'space-between' }}>
         <div className="wordmark">
-          <span className="wordmark-dot" />
+          <Mark size={18} />
           Sitka
         </div>
         <button

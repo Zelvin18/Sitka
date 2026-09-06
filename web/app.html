@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sitka</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#141416">
 <style>
 :root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33}}
@@ -12,6 +16,7 @@
 .gcard{width:100%;max-width:400px;padding:28px}
 .gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16px;justify-content:center;margin-bottom:6px}
 .gdot{width:9px;height:9px;border-radius:50%;background:var(--text)}
+.gbrand .mark{width:22px;height:22px;display:block}
 .gsub{color:var(--t2);font-size:14px;text-align:center;margin-bottom:26px;line-height:1.5}
 .glabel{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:14px 0 7px}
 .gin{width:100%;box-sizing:border-box;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:14.5px;font-family:inherit}
@@ -26,7 +31,7 @@
 <body>
 <div id="gate">
   <div class="gcard" id="gatecard">
-    <div class="gbrand"><span class="gdot"></span>Sitka</div>
+    <div class="gbrand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</div>
     <div class="gsub">Your live AI intelligence platform — attend, understand, remember. Sign in to open your workspace.</div>
     <div class="glabel">Email</div>
     <input class="gin" id="gemail" type="email" autocomplete="email" placeholder="you@example.com">

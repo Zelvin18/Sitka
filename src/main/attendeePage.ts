@@ -25,6 +25,7 @@ svg.ic{flex-shrink:0}
 header{padding:calc(10px + env(safe-area-inset-top)) 18px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:750;font-size:14.5px;letter-spacing:-.01em}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--text)}
+.brand .mark{width:18px;height:18px;flex:none;display:block}
 .live{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.09em}
 .live.on{color:var(--danger)}
 .live.soon{color:var(--t3)}
@@ -144,7 +145,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
 </head>
 <body>
 <header>
-  <div class="brand"><span class="dot"></span>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
+  <div class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
   <div class="evtitle">${title}</div>
 </header>
 
