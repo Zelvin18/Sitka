@@ -13,6 +13,7 @@ import {
   mergeMemory,
   type MemoryExtraction
 } from '../../src/shared/memoryLogic'
+import { SAMPLE_TITLE, sampleDurationMs, sampleSegments } from '../../src/shared/sample'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -1258,6 +1259,22 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return parts.length > 1 ? parts.join('\n\n') : null
     },
 
+    createSampleSession: async () => {
+      // One sample per workspace: reuse it if it already exists.
+      const existing = (await api.listSessions()).find((s) => s.sample)
+      if (existing) return existing
+      const meta = await api.createSession(SAMPLE_TITLE, 'lecture', false)
+      meta.audioOnly = true
+      meta.sample = true
+      recBuf.delete(meta.id)
+      const d = cache.get(meta.id)
+      if (d) d.segments = sampleSegments()
+      await patchSession(meta.id, { meta, transcript: sampleSegments() })
+      // Finalize like a real session: names it, summarises, extracts memory.
+      recBuf.set(meta.id, { parts: 0, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve() })
+      return api.finalizeSession(meta.id, sampleDurationMs())
+    },
+
     finalizeSession: async (id, durationMs) => {
       recordingState = null
       const d = await loadSession(id)
@@ -1684,6 +1701,49 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         })
         .eq('id', evId)
       return { enabled: true, url: `${location.origin}/r/${evId}` }
+    },
+    publishRecap: async (sessionId: string, enable: boolean) => {
+      const d = await loadSession(sessionId)
+      if (!d) return { error: 'Session not found.' }
+      if (!enable) {
+        const { error } = await sb
+          .from('recaps')
+          .update({ enabled: false, updated_at: new Date().toISOString() })
+          .eq('id', sessionId)
+        if (error) return { error: 'Could not stop sharing: ' + error.message }
+        delete d.meta.recapUrl
+        await patchSession(sessionId, { meta: d.meta })
+        emitSession(d.meta)
+        return { enabled: false }
+      }
+      if (d.segments.length === 0) {
+        return { error: 'Nothing to share yet — this session has no transcript.' }
+      }
+      const { error } = await sb.from('recaps').upsert({
+        id: sessionId,
+        owner: user.id,
+        title: d.meta.title,
+        summary: d.meta.summary ?? '',
+        highlights: d.meta.highlights ?? [],
+        notes: d.notes?.markdown ?? '',
+        transcript: d.segments,
+        duration_ms: d.meta.durationMs,
+        session_at: new Date(d.meta.createdAt).toISOString(),
+        enabled: true,
+        updated_at: new Date().toISOString()
+      })
+      if (error) {
+        return {
+          error: /relation .* does not exist/i.test(error.message)
+            ? 'Sharing is not set up yet — run supabase/wave6.sql in the Supabase SQL editor.'
+            : 'Could not share: ' + error.message
+        }
+      }
+      const url = `${location.origin}/r/${sessionId}`
+      d.meta.recapUrl = url
+      await patchSession(sessionId, { meta: d.meta })
+      emitSession(d.meta)
+      return { enabled: true, url }
     },
     launchPoll: async (question: string, options: string[]) => {
       if (!conf) return { error: 'Go live first.' }

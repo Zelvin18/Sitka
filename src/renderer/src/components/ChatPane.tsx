@@ -8,7 +8,7 @@ import React, {
 } from 'react'
 import type { AiStreamEvent, ChatMessage } from '@shared/types'
 import AiText from './AiText'
-import { IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop } from '../lib/icons'
+import { IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
 import { cleanForSpeech, copyRich } from '../lib/clipboard'
 
 interface Props {
@@ -314,10 +314,9 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
             {streamText ? (
               <AiText text={streamText} onSeek={onSeek} resolveLabel={resolveLabel} />
             ) : (
-              <span className="dots">
-                <span />
-                <span />
-                <span />
+              <span className="dots-mark">
+                <Mark size={16} live />
+                Thinking
               </span>
             )}
           </div>

@@ -806,6 +806,49 @@ export async function cloudPublishReplay(
   }
 }
 
+/**
+ * Publish any session as a public recap page (text only: title, summary,
+ * moments, notes, transcript). Works whenever the cloud is configured.
+ */
+export async function cloudPublishRecap(
+  sessionId: string,
+  enable: boolean
+): Promise<{ url?: string; enabled?: boolean; error?: string }> {
+  const meta = store.getMeta(sessionId)
+  if (!meta) return { error: 'Session not found.' }
+  try {
+    const client = cloud?.client ?? makeClient()
+    if (!enable) {
+      const { error } = await client
+        .from('recaps')
+        .update({ enabled: false, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      if (error) return { error: 'Supabase: ' + error.message }
+      return { enabled: false }
+    }
+    const transcript = store.getTranscript(sessionId)
+    if (transcript.length === 0) return { error: 'Nothing to share yet — this session has no transcript.' }
+    const { error } = await client.from('recaps').upsert({
+      id: sessionId,
+      owner: '00000000-0000-0000-0000-000000000000',
+      title: meta.title,
+      summary: meta.summary ?? '',
+      highlights: meta.highlights ?? [],
+      notes: store.getNotes(sessionId)?.markdown ?? '',
+      transcript,
+      duration_ms: meta.durationMs,
+      session_at: new Date(meta.createdAt).toISOString(),
+      enabled: true,
+      updated_at: new Date().toISOString()
+    })
+    if (error) return { error: 'Supabase: ' + error.message }
+    const base = store.getSettings().webAppUrl.replace(/\/+$/, '')
+    return { enabled: true, url: `${base}/r/${sessionId}` }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 export async function cloudClosePoll(): Promise<void> {
   if (!cloud) return
   await cloud.client

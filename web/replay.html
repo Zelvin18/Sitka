@@ -7,11 +7,14 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#141416">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a;--shadow:rgba(20,20,22,.10)}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.45)}}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+body{font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 .wrap{max-width:860px;margin:0 auto;padding:0 20px 80px}
 header{display:flex;align-items:center;justify-content:space-between;height:58px;border-bottom:1px solid var(--border);margin-bottom:26px}
@@ -33,6 +36,9 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .seg{display:flex;gap:12px;padding:6px 10px;border-radius:9px;cursor:pointer}
 .seg:hover{background:var(--soft)}
 .seg.now{background:var(--softer)}
+.seg.flash{box-shadow:inset 0 0 0 1.5px var(--text)}
+.notes{border:1px solid var(--border);border-radius:14px;padding:16px 18px;background:var(--soft)}
+.notes .md,.notes p,.notes li{color:var(--text)}
 .ts{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3);padding-top:4px;min-width:44px;text-align:right;flex-shrink:0}
 .segtext{color:var(--t2)}
 /* ask this event */
@@ -68,21 +74,23 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
 <div class="wrap">
   <header>
     <a class="brand" href="/"><svg class="mark" style="width:18px;height:18px;flex:none" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><rect x="11" y="39" width="6" height="14" rx="3"/><rect x="20" y="27" width="6" height="26" rx="3"/><rect x="29" y="11" width="6" height="42" rx="3"/><rect x="38" y="27" width="6" height="26" rx="3"/><rect x="47" y="39" width="6" height="14" rx="3"/></svg>Sitka</a>
-    <span class="htag">REPLAY</span>
+    <span class="htag" id="htag">REPLAY</span>
   </header>
-  <div id="loading" class="center"><p>Loading the replay…</p></div>
+  <div id="loading" class="center"><p>Loading…</p></div>
   <div id="notfound" class="center" style="display:none">
-    <h1>Replay not available</h1>
-    <p>The host hasn't published this event's replay, or the link is wrong.</p>
+    <h1>This page is not available</h1>
+    <p>The owner hasn't shared it, has stopped sharing it, or the link is wrong.</p>
   </div>
   <div id="main" style="display:none">
     <h1 id="rtitle"></h1>
     <div class="meta" id="rmeta"></div>
-    <div class="player"><video id="rvideo" controls playsinline preload="metadata"></video></div>
+    <div class="player" id="player"><video id="rvideo" controls playsinline preload="metadata"></video></div>
     <div class="summary" id="rsummary"></div>
+    <div class="sec" id="notestitle" style="display:none">Notes</div>
+    <div class="md notes" id="rnotes" style="display:none"></div>
     <div class="askbox">
-      <div class="sec">Ask this event anything</div>
-      <div style="font-size:13.5px;color:var(--t2)">This recording answers questions — grounded in what was actually said, with tap-to-jump moments.</div>
+      <div class="sec">Ask this session anything</div>
+      <div style="font-size:13.5px;color:var(--t2)" id="asksub">This recording answers questions — grounded in what was actually said, with tap-to-jump moments.</div>
       <div id="rchat"></div>
       <div class="askrow">
         <input id="rask" placeholder="e.g. What was said about pricing?">
@@ -95,8 +103,8 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
     <input class="search" id="rsearch" placeholder="Search the transcript…">
     <div id="rsegs"></div>
     <footer>
-      <span>This event was captured and made searchable by Sitka.</span>
-      <a class="cta" href="/">Host yours with Sitka</a>
+      <span id="footnote">This event was captured and made searchable by Sitka.</span>
+      <a class="cta" href="/" id="footcta">Host yours with Sitka</a>
     </footer>
   </div>
 </div>

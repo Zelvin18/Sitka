@@ -10,7 +10,8 @@ import Splitter from './Splitter'
 import { clamp, usePersistedNumber } from '../lib/persist'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
-import { IconCopy, IconDownload, IconEdit, IconNotes, IconStar } from '../lib/icons'
+import { IconCopy, IconDownload, IconEdit, IconNotes, IconShare, IconStar } from '../lib/icons'
+import ShareCard from './ShareCard'
 
 interface Props {
   sessionId: string
@@ -55,6 +56,7 @@ export default function SessionView({
   const [reelSaved, setReelSaved] = useState(false)
   const [exported, setExported] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const durationFixedRef = useRef(false)
   const pendingSeekRef = useRef<number | null>(null)
@@ -258,6 +260,17 @@ export default function SessionView({
               </div>
             )}
             <span className="duration-chip">{formatDuration(meta.durationMs)}</span>
+            {meta.status === 'complete' && (
+              <button
+                className={`btn btn-sm ${meta.recapUrl ? '' : 'btn-ghost'}`}
+                style={{ marginLeft: 'auto' }}
+                title="Share this session as a recap page"
+                onClick={() => setSharing((v) => !v)}
+              >
+                <IconShare size={13} />
+                {meta.recapUrl ? 'Shared' : 'Share'}
+              </button>
+            )}
           </div>
           <div className="session-meta-row">
             <span>{formatDate(meta.createdAt)}</span>
@@ -265,6 +278,17 @@ export default function SessionView({
               <span>· generating summary…</span>
             )}
           </div>
+          {sharing && (
+            <ShareCard
+              meta={meta}
+              onChange={(url) =>
+                setData((d) =>
+                  d ? { ...d, meta: { ...d.meta, recapUrl: url ?? undefined } } : d
+                )
+              }
+              onClose={() => setSharing(false)}
+            />
+          )}
         </div>
 
         <div

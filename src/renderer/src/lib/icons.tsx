@@ -29,9 +29,9 @@ function base(
 }
 
 /** Sitka mark ("Spire"): five bars rising to a peak — spruce, waveform, growth. */
-export const Mark = ({ size }: { size?: number }) => (
+export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
   <svg
-    className="mark"
+    className={live ? 'mark mark-live' : 'mark'}
     width={size ?? 18}
     height={size ?? 18}
     viewBox="0 0 64 64"
@@ -48,6 +48,26 @@ export const Mark = ({ size }: { size?: number }) => (
 
 export const IconPlus = (p: IconProps) =>
   base(p.size, p.strokeWidth, <path d="M12 5v14M5 12h14" />)
+
+export const IconShare = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" />
+      <path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" />
+    </>
+  )
+
+export const IconLink = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5" />
+    </>
+  )
 
 export const IconHome = (p: IconProps) =>
   base(

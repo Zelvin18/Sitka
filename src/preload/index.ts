@@ -87,6 +87,8 @@ const api = {
     id: string,
     kind: 'transcript' | 'notes' | 'study' | 'overview'
   ): Promise<string | null> => ipcRenderer.invoke('session:exportText', id, kind),
+  createSampleSession: (): Promise<SessionMeta | null> =>
+    ipcRenderer.invoke('session:sample'),
   finalizeSession: (id: string, durationMs: number): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:finalize', id, durationMs),
 
@@ -139,6 +141,12 @@ const api = {
     enable: boolean
   ): Promise<{ url?: string; enabled?: boolean; error?: string }> =>
     ipcRenderer.invoke('replay:publish', sessionId, enable),
+  /** Share any session as a public recap page (text only — the recording stays private). */
+  publishRecap: (
+    sessionId: string,
+    enable: boolean
+  ): Promise<{ url?: string; enabled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('recap:publish', sessionId, enable),
   // ---------- memory (decisions, promises, people, concepts) ----------
   listMemory: (): Promise<MemoryObject[]> => ipcRenderer.invoke('memory:list'),
   updateMemory: (

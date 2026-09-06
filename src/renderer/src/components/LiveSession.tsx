@@ -14,7 +14,15 @@ import NotesPane from './NotesPane'
 import Splitter from './Splitter'
 import QRCode from 'qrcode'
 import AudioLevel from './AudioLevel'
-import { IconBroadcast, IconMic, IconScreen, IconSparkle, IconStar, IconStop } from '../lib/icons'
+import {
+  IconBroadcast,
+  IconMic,
+  IconScreen,
+  IconSparkle,
+  IconStar,
+  IconStop,
+  Mark
+} from '../lib/icons'
 import { formatTime } from '../lib/format'
 import { clamp, usePersistedNumber } from '../lib/persist'
 
@@ -1359,7 +1367,7 @@ export default function LiveSession({
             <div className="audio-stage">
               <AudioLevel stream={micStreamRef.current} bars={44} tall />
               <div className="audio-stage-label">
-                <IconMic size={13} strokeWidth={2} /> Audio session · listening
+                <Mark size={14} live /> Audio session · listening
               </div>
             </div>
           ) : (

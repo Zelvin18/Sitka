@@ -2,7 +2,7 @@
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.45)}}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{height:100%}
-body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+body{font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 .hidden{display:none!important}
 button{font-family:inherit;cursor:pointer}
 svg.ic{flex-shrink:0}

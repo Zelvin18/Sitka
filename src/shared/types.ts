@@ -56,6 +56,10 @@ export interface SessionMeta {
   space?: Space
   /** recorded from the microphone only — no screen */
   audioOnly?: boolean
+  /** the built-in sample lecture, created on first run so the app is never empty */
+  sample?: boolean
+  /** public recap page, set while the session is shared */
+  recapUrl?: string
 }
 
 export interface ChatMessage {

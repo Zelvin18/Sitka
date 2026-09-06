@@ -148,9 +148,10 @@ export default function Home({
             <div className="empty-icon">
               <IconScreen size={36} strokeWidth={1.3} />
             </div>
-            <div className="empty-title">No sessions yet</div>
-            <div style={{ marginBottom: 20 }}>
-              Start a live session before your next lecture, meeting, or presentation.
+            <div className="empty-title">Your library starts with your first session</div>
+            <div style={{ marginBottom: 20, maxWidth: 420, margin: '0 auto 20px' }}>
+              Every session you capture lands here with a title, a summary, and the moments
+              worth revisiting. Start one before your next lecture, meeting, or presentation.
             </div>
             <button className="btn btn-primary btn-lg" onClick={onNewSession}>
               <IconPlus size={16} strokeWidth={2.2} />
@@ -189,6 +190,7 @@ export default function Home({
                       {s.space === 'business' ? 'Business' : 'Education'}
                     </span>
                   )}
+                  {s.sample && <span className="lib-badge lib-badge-sample">Sample</span>}
                   <button
                     className="lib-delete"
                     title="Delete session"

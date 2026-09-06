@@ -36,6 +36,7 @@ import {
   transcriptBlock
 } from './ai'
 import * as store from './store'
+import { SAMPLE_TITLE, sampleDurationMs, sampleSegments } from '@shared/sample'
 import { remuxSession } from './remux'
 import { generateReel } from './reel'
 import { ensureThumb } from './thumbs'
@@ -53,6 +54,7 @@ import {
   cloudClosePoll,
   cloudConfigured,
   cloudLaunchPoll,
+  cloudPublishRecap,
   cloudPublishReplay,
   cloudPushRoomNote,
   cloudRoomMind,
@@ -290,6 +292,22 @@ function registerIpc(): void {
       return meta
     }
   )
+
+  // The built-in sample lecture: a complete session with a transcript, so the
+  // very first screen already shows what Sitka does. Analysis runs like any session.
+  ipcMain.handle('session:sample', () => {
+    const existing = store.listSessions().find((s) => s.sample)
+    if (existing) return existing
+    const meta = store.createSession(SAMPLE_TITLE, 'lecture', false)
+    meta.audioOnly = true
+    meta.sample = true
+    meta.durationMs = sampleDurationMs()
+    meta.status = 'complete'
+    store.appendTranscript(meta.id, sampleSegments())
+    store.saveMeta(meta)
+    void runAnalysis(meta.id)
+    return meta
+  })
 
   ipcMain.handle('host:coverage', async (_e, id: string) => {
     const { anthropicApiKey, groqApiKey } = store.getSettings()
@@ -759,6 +777,22 @@ function registerIpc(): void {
       ? cloudPublishReplay(sessionId, enable)
       : { error: 'Set up online events in Settings first.' }
   )
+  ipcMain.handle('recap:publish', async (_e, sessionId: string, enable: boolean) => {
+    if (!cloudConfigured()) {
+      return { error: 'Sharing needs the online setup: add your Supabase details in Settings.' }
+    }
+    const res = await cloudPublishRecap(sessionId, enable)
+    if (!res.error) {
+      const meta = store.getMeta(sessionId)
+      if (meta) {
+        if (enable && res.url) meta.recapUrl = res.url
+        else delete meta.recapUrl
+        store.saveMeta(meta)
+        mainWindow?.webContents.send('session:updated', meta)
+      }
+    }
+    return res
+  })
   ipcMain.handle('memory:list', () => loadMemory())
   ipcMain.handle(
     'memory:update',
