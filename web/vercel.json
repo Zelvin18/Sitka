@@ -1,9 +1,12 @@
 {
-  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/legal", "destination": "/legal.html" },
+    { "source": "/host", "destination": "/host.html" },
+    { "source": "/host/:path*", "destination": "/host.html" },
     { "source": "/e/:id", "destination": "/event.html" },
     { "source": "/r/:id", "destination": "/replay.html" },
-    { "source": "/s/:id", "destination": "/stage.html" },
-    { "source": "/host/:path*", "destination": "/host.html" }
+    { "source": "/s/:id", "destination": "/stage.html" }
   ]
 }
