@@ -22,7 +22,8 @@ function toWinAnsi(s: string): number[] {
   const out: number[] = []
   for (const ch of s) {
     const c = ch.codePointAt(0) ?? 63
-    if (c >= 32 && c <= 126) out.push(c)
+    // ASCII, including the newlines and tabs that hold the file together.
+    if (c <= 126) out.push(c)
     else if (WINANSI[ch] !== undefined) out.push(WINANSI[ch])
     else if (c >= 0xa0 && c <= 0xff) out.push(c)
     else out.push(63)
