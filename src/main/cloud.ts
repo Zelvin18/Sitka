@@ -11,6 +11,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import type { ScheduledEvent, TranscriptSegment } from '@shared/types'
 import * as store from './store'
+import { joinMaterials } from '@shared/materialsLogic'
 import { completeText, extractJson, formatTime, streamChatGeneric, type AiKeys } from './ai'
 import {
   buildAttendeeSystem,
@@ -332,7 +333,10 @@ async function answerAsk(row: AskRow): Promise<void> {
           persona: att.persona,
           lang: att.lang,
           segments,
-          materialsText: store.getMaterialsText(state.eventId),
+          materialsText: joinMaterials(
+            store.getMaterialsText(state.eventId),
+            store.getSessionMaterialsBlock(state.sessionId)
+          ),
           preEvent: state.sessionId === null
         }),
         history,
@@ -563,7 +567,8 @@ async function generateCloudProxyBriefs(
       .limit(40)
     if (!rows || rows.length === 0) return
     const segments = store.getTranscript(sessionId)
-    const materials = store.getMaterialsText(evId) ?? ''
+    const materials =
+      joinMaterials(store.getMaterialsText(evId), store.getSessionMaterialsBlock(sessionId)) ?? ''
     for (const p of rows) {
       try {
         const system = [

@@ -3,6 +3,7 @@ import { networkInterfaces } from 'os'
 import { randomUUID } from 'crypto'
 import type { ChatMessage, TranscriptSegment } from '@shared/types'
 import * as store from './store'
+import { joinMaterials } from '@shared/materialsLogic'
 import {
   completeText,
   extractJson,
@@ -286,7 +287,10 @@ function attendeeSystem(persona: string, lang: string, segments: TranscriptSegme
     persona,
     lang,
     segments,
-    materialsText: store.getMaterialsText(conf?.eventId),
+    materialsText: joinMaterials(
+      store.getMaterialsText(conf?.eventId),
+      store.getSessionMaterialsBlock(conf?.sessionId)
+    ),
     preEvent: conf?.sessionId === null
   })
 }

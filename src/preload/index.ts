@@ -19,6 +19,7 @@ import type {
   CaptureSource,
   ChatMessage,
   SessionData,
+  SessionMaterial,
   SessionMeta,
   SessionNotes,
   Settings,
@@ -103,6 +104,20 @@ const api = {
     ipcRenderer.invoke('transcribe:chunk', id, chunk, offsetSec),
 
   askAi: (req: AskRequest): Promise<void> => ipcRenderer.invoke('ai:ask', req),
+
+  // ---------- session materials: slides, notes, readings ----------
+  listSessionMaterials: (sessionId: string): Promise<SessionMaterial[]> =>
+    ipcRenderer.invoke('materials:list', sessionId),
+  addSessionMaterial: (sessionId: string, name: string, text: string): Promise<SessionMaterial[]> =>
+    ipcRenderer.invoke('materials:add', sessionId, name, text),
+  removeSessionMaterial: (sessionId: string, materialId: string): Promise<SessionMaterial[]> =>
+    ipcRenderer.invoke('materials:remove', sessionId, materialId),
+  /** Turn a picked file (PDF, TXT, MD, CSV…) into text. */
+  extractMaterial: (
+    name: string,
+    bytes: ArrayBuffer
+  ): Promise<{ name: string; text: string } | { error: string }> =>
+    ipcRenderer.invoke('materials:extract', name, bytes),
 
   // ---------- visual memory (key frames of the screen) ----------
   addSlide: (

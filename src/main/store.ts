@@ -11,12 +11,14 @@ import type {
   EventReport,
   ScheduledEvent,
   SessionData,
+  SessionMaterial,
   SessionMeta,
   SessionNotes,
   Settings,
   StudyPack,
   TranscriptSegment
 } from '@shared/types'
+import { materialsBlock } from '@shared/materialsLogic'
 
 const userData = (): string => app.getPath('userData')
 const settingsPath = (): string => join(userData(), 'settings.json')
@@ -232,6 +234,51 @@ const coachPath = (): string => join(userData(), 'coach-projects.json')
 const coachMaterialsDir = (): string => join(userData(), 'coach-materials')
 const coachMaterialsPath = (id: string): string => join(coachMaterialsDir(), `${id}.json`)
 const coachSimPath = (id: string): string => join(coachMaterialsDir(), `${id}-sim.json`)
+
+// ---------- session materials: slides, notes, readings the user shared ----------
+
+const sessionMaterialsPath = (id: string): string => join(sessionDir(id), 'materials.json')
+
+interface StoredSessionMaterial extends SessionMaterial {
+  text: string
+}
+
+export function getSessionMaterials(id: string): StoredSessionMaterial[] {
+  return readJson<StoredSessionMaterial[]>(sessionMaterialsPath(id), [])
+}
+
+export function listSessionMaterials(id: string): SessionMaterial[] {
+  return getSessionMaterials(id).map(({ id: mid, name, chars, addedAt }) => ({
+    id: mid,
+    name,
+    chars,
+    addedAt
+  }))
+}
+
+export function addSessionMaterial(id: string, name: string, text: string): SessionMaterial[] {
+  const all = getSessionMaterials(id)
+  const clean = text.slice(0, 200000)
+  all.push({ id: randomUUID(), name, text: clean, chars: clean.length, addedAt: Date.now() })
+  mkdirSync(sessionDir(id), { recursive: true })
+  writeJson(sessionMaterialsPath(id), all)
+  return listSessionMaterials(id)
+}
+
+export function removeSessionMaterial(id: string, materialId: string): SessionMaterial[] {
+  writeJson(
+    sessionMaterialsPath(id),
+    getSessionMaterials(id).filter((m) => m.id !== materialId)
+  )
+  return listSessionMaterials(id)
+}
+
+/** The prompt section for a session's materials, or null when there are none. */
+export function getSessionMaterialsBlock(id: string | null | undefined): string | null {
+  if (!id) return null
+  const block = materialsBlock(getSessionMaterials(id))
+  return block || null
+}
 
 // ---------- visual memory: key frames per session ----------
 

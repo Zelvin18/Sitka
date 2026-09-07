@@ -2,22 +2,22 @@ import { createRequire } from 'module'
 import { promises as fsp } from 'fs'
 import { basename, extname } from 'path'
 
-/** Extract plain text from an event material file. */
-export async function extractMaterialText(
-  filePath: string
+const TEXT_EXTS = ['.txt', '.md', '.csv', '.json', '.vtt', '.srt']
+
+/** Extract plain text from material bytes (used for files picked in the renderer). */
+export async function extractMaterialFromBuffer(
+  name: string,
+  buf: Buffer
 ): Promise<{ name: string; text: string } | { error: string }> {
-  const name = basename(filePath)
-  const ext = extname(filePath).toLowerCase()
+  const ext = extname(name).toLowerCase()
   try {
-    if (['.txt', '.md', '.csv', '.json', '.vtt', '.srt'].includes(ext)) {
-      const text = await fsp.readFile(filePath, 'utf-8')
-      return { name, text: text.slice(0, 200000) }
+    if (TEXT_EXTS.includes(ext)) {
+      return { name, text: buf.toString('utf-8').slice(0, 200000) }
     }
     if (ext === '.pdf') {
       try {
         const req = createRequire(__filename)
         const pdfParse = req('pdf-parse') as (b: Buffer) => Promise<{ text: string }>
-        const buf = await fsp.readFile(filePath)
         const parsed = await pdfParse(buf)
         const text = (parsed.text ?? '').trim()
         if (!text) return { error: `No extractable text in ${name} (scanned PDF?).` }
@@ -31,6 +31,17 @@ export async function extractMaterialText(
     return {
       error: `Unsupported file type ${ext || '(none)'} — use PDF, TXT, or MD, or paste the text.`
     }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/** Extract plain text from an event material file on disk. */
+export async function extractMaterialText(
+  filePath: string
+): Promise<{ name: string; text: string } | { error: string }> {
+  try {
+    return await extractMaterialFromBuffer(basename(filePath), await fsp.readFile(filePath))
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

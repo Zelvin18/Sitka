@@ -97,6 +97,8 @@ export interface AskParams {
   frame?: string
   /** relevant excerpts from the user's other sessions (teach-to-history) */
   priorContext?: string
+  /** the materials block for this session (slides, notes, readings), if any */
+  materials?: string | null
   onDelta: (text: string) => void
 }
 
@@ -131,6 +133,9 @@ export async function streamAsk(params: AskParams): Promise<string> {
 
   const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: askSystemPrompt(params.live) },
+    ...(params.materials
+      ? [{ type: 'text' as const, text: params.materials, cache_control: { type: 'ephemeral' as const } }]
+      : []),
     {
       type: 'text',
       text: transcriptBlock(params.segments),
@@ -186,10 +191,16 @@ function analysisSystem(kind: AnalysisKind = 'other'): string {
     .join('\n')
 }
 
+/** Materials first (so the model knows the plan), then what was actually said. */
+export function withMaterials(materials: string | null | undefined, body: string): string {
+  return materials ? `${materials}\n\nTranscript:\n${body}` : body
+}
+
 export async function analyzeSession(
   apiKey: string,
   segments: TranscriptSegment[],
-  kind: AnalysisKind = 'other'
+  kind: AnalysisKind = 'other',
+  materials?: string | null
 ): Promise<AnalysisResult | null> {
   if (segments.length === 0) return null
   const client = new Anthropic({ apiKey })
@@ -199,7 +210,7 @@ export async function analyzeSession(
     model: MODEL,
     max_tokens: 16000,
     system,
-    messages: [{ role: 'user', content: transcriptBlock(segments) }]
+    messages: [{ role: 'user', content: withMaterials(materials, transcriptBlock(segments)) }]
   })
 
   const text = response.content
@@ -392,7 +403,9 @@ export async function streamAskGroq(params: AskParams): Promise<string> {
     {
       role: 'system',
       content:
-        `${askSystemPrompt(params.live)}\n\n${transcriptBlock(params.segments)}` +
+        `${askSystemPrompt(params.live)}\n\n` +
+        (params.materials ? `${params.materials}\n\n` : '') +
+        transcriptBlock(params.segments) +
         (params.priorContext ? `\n\n${PRIOR_HEADER}\n${params.priorContext}` : '')
     },
     ...params.history.map(
@@ -406,12 +419,13 @@ export async function streamAskGroq(params: AskParams): Promise<string> {
 export async function analyzeSessionGroq(
   apiKey: string,
   segments: TranscriptSegment[],
-  kind: AnalysisKind = 'other'
+  kind: AnalysisKind = 'other',
+  materials?: string | null
 ): Promise<AnalysisResult | null> {
   if (segments.length === 0) return null
   const text = await groqChat(apiKey, [
     { role: 'system', content: analysisSystem(kind) },
-    { role: 'user', content: transcriptBlock(segments) }
+    { role: 'user', content: withMaterials(materials, transcriptBlock(segments)) }
   ])
   return parseAnalysis(text)
 }
@@ -574,17 +588,21 @@ interface NotesJson {
 export async function updateNotes(
   keys: AiKeys,
   segments: TranscriptSegment[],
-  previous: SessionNotes | null
+  previous: SessionNotes | null,
+  materials?: string | null
 ): Promise<SessionNotes | null> {
   if (segments.length === 0) return null
   const user = [
+    materials ? `${materials}\n` : '',
     previous?.markdown
       ? `Previous notes:\n${previous.markdown}`
       : 'Previous notes: (none yet)',
     '',
     'Transcript so far:',
     transcriptBlock(segments)
-  ].join('\n')
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
   // A model occasionally returns malformed JSON — retry once before giving up.
   let parsed: NotesJson | null = null
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
@@ -746,12 +764,17 @@ interface StudyJson {
 
 export async function generateStudyPack(
   keys: AiKeys,
-  segments: TranscriptSegment[]
+  segments: TranscriptSegment[],
+  materials?: string | null
 ): Promise<StudyPack | null> {
   if (segments.length === 0) return null
   let parsed: StudyJson | null = null
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-    const text = await completeText(keys, STUDY_SYSTEM, transcriptBlock(segments))
+    const text = await completeText(
+      keys,
+      STUDY_SYSTEM,
+      withMaterials(materials, transcriptBlock(segments))
+    )
     parsed = extractJson<StudyJson>(text)
   }
   if (!parsed) return null

@@ -323,6 +323,126 @@ body {
   min-width: 0;
 }
 
+/* ============ Session materials ============ */
+
+.mat-setup {
+  max-width: 560px;
+  margin-bottom: 22px;
+}
+
+.mat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mat-explain {
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.mat-drop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1.5px dashed var(--border-2);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.mat-drop.over {
+  border-color: var(--text);
+  background: var(--bg-hover);
+}
+
+.mat-drop-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-left: auto;
+}
+
+.mat-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.mat-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mat-paste textarea {
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.mat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.mat-row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--bg-soft);
+  color: var(--text-2);
+}
+
+.mat-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.mat-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mat-row-size {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.mat-knows {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  padding: 2px 2px 0;
+}
+
 /* ============ Visual memory: on-screen lines + filmstrip ============ */
 
 .transcript-seg.onscreen .transcript-text {

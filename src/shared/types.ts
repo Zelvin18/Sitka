@@ -299,6 +299,15 @@ export interface BrainConversation {
   messages: ChatMessage[]
 }
 
+// ---------- session materials: what the user shared so Sitka knows the plan ----------
+
+export interface SessionMaterial {
+  id: string
+  name: string
+  chars: number
+  addedAt: number
+}
+
 // ---------- visual memory: key frames of what was on screen ----------
 
 export interface Slide {

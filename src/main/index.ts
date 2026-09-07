@@ -75,7 +75,8 @@ import {
   updateCloudFrame
 } from './cloud'
 import { randomUUID } from 'crypto'
-import { extractMaterialText } from './materials'
+import { extractMaterialFromBuffer, extractMaterialText } from './materials'
+import { joinMaterials } from '@shared/materialsLogic'
 import { deleteMemoryObject, loadMemory, rememberSession, updateMemoryObject } from './memory'
 import {
   buildBrief,
@@ -709,7 +710,12 @@ function registerIpc(): void {
     try {
       const segments = store.getTranscript(id)
       const previous = store.getNotes(id)
-      const notes = await updateNotes({ anthropicApiKey, groqApiKey }, segments, previous)
+      const notes = await updateNotes(
+        { anthropicApiKey, groqApiKey },
+        segments,
+        previous,
+        store.getSessionMaterialsBlock(id)
+      )
       if (notes) {
         store.saveNotes(id, notes)
         return { notes }
@@ -726,7 +732,11 @@ function registerIpc(): void {
     if (!anthropicApiKey && !groqApiKey) return { error: 'missing-key' }
     try {
       const segments = store.getTranscript(id)
-      const study = await generateStudyPack({ anthropicApiKey, groqApiKey }, segments)
+      const study = await generateStudyPack(
+        { anthropicApiKey, groqApiKey },
+        segments,
+        store.getSessionMaterialsBlock(id)
+      )
       if (!study) return { error: 'Not enough transcript to build a study pack.' }
       store.saveStudy(id, study)
       return { study }
@@ -797,6 +807,19 @@ function registerIpc(): void {
     }
     return res
   })
+  // ---------- session materials: slides, notes, readings ----------
+
+  ipcMain.handle('materials:list', (_e, sessionId: string) => store.listSessionMaterials(sessionId))
+  ipcMain.handle('materials:add', (_e, sessionId: string, name: string, text: string) =>
+    store.addSessionMaterial(sessionId, name, text)
+  )
+  ipcMain.handle('materials:remove', (_e, sessionId: string, materialId: string) =>
+    store.removeSessionMaterial(sessionId, materialId)
+  )
+  ipcMain.handle('materials:extract', (_e, name: string, bytes: ArrayBuffer) =>
+    extractMaterialFromBuffer(name, Buffer.from(bytes))
+  )
+
   // ---------- visual memory: what was on screen, read by a vision model ----------
 
   ipcMain.handle('slides:add', async (_e, sessionId: string, time: number, dataUrl: string) => {
@@ -1139,7 +1162,10 @@ function registerIpc(): void {
               count: g.items.length
             }))
           },
-          store.getMaterialsText(meta?.eventId),
+          joinMaterials(
+            store.getMaterialsText(meta?.eventId),
+            store.getSessionMaterialsBlock(req.sessionId)
+          ),
           meta?.eventId ? practiceContext(meta.eventId) : null
         )
         await streamChatGeneric({
@@ -1160,6 +1186,7 @@ function registerIpc(): void {
         live: req.live,
         frame: req.frame,
         priorContext: priorLearningContext(req.question, req.sessionId) ?? undefined,
+        materials: store.getSessionMaterialsBlock(req.sessionId),
         onDelta: (text: string) =>
           send({ requestId: req.requestId, type: 'delta', text })
       }
@@ -1182,9 +1209,10 @@ async function runAnalysis(id: string): Promise<void> {
     if (!anthropicApiKey && !groqApiKey) return
     const segments = store.getTranscript(id)
     const kind = store.getMeta(id)?.kind ?? 'other'
+    const materials = store.getSessionMaterialsBlock(id)
     const result = anthropicApiKey
-      ? await analyzeSession(anthropicApiKey, segments, kind)
-      : await analyzeSessionGroq(groqApiKey, segments, kind)
+      ? await analyzeSession(anthropicApiKey, segments, kind, materials)
+      : await analyzeSessionGroq(groqApiKey, segments, kind, materials)
     if (!result) return
     const meta = store.getMeta(id)
     if (!meta) return

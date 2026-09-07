@@ -14,7 +14,8 @@ import NotesPane from './NotesPane'
 import Splitter from './Splitter'
 import QRCode from 'qrcode'
 import AudioLevel from './AudioLevel'
-import { ON_SCREEN_PREFIX } from '@shared/types'
+import MaterialsPanel from './MaterialsPanel'
+import { ON_SCREEN_PREFIX, type SessionMaterial } from '@shared/types'
 import { frameDifference } from '@shared/visionLogic'
 import {
   IconBroadcast,
@@ -122,6 +123,9 @@ export default function LiveSession({
   )
   const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
   const [audioOnlyRec, setAudioOnlyRec] = useState(false)
+  // ---- materials: slides/notes shared before the session exists (pending) and after ----
+  const [pendingMats, setPendingMats] = useState<(SessionMaterial & { text: string })[]>([])
+  const [materials, setMaterials] = useState<SessionMaterial[]>([])
   const micStreamRef = useRef<MediaStream | null>(null)
   useEffect(() => {
     if (phase !== 'picking' || captureMode !== 'audio') {
@@ -156,7 +160,9 @@ export default function LiveSession({
   const [sttError, setSttError] = useState<string | null>(null)
   const [notes, setNotes] = useState<SessionNotes | null>(null)
   const [notesUpdating, setNotesUpdating] = useState(false)
-  const [leftTab, setLeftTab] = useState<'transcript' | 'notes' | 'audience'>('transcript')
+  const [leftTab, setLeftTab] = useState<'transcript' | 'notes' | 'audience' | 'materials'>(
+    'transcript'
+  )
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
   const [markToast, setMarkToast] = useState<string | null>(null)
@@ -742,6 +748,20 @@ export default function LiveSession({
       sessionIdRef.current = meta.id
       onSessionCreated(meta)
 
+      // Materials added on the setup page now belong to the session.
+      if (pendingMats.length > 0) {
+        let list: SessionMaterial[] = []
+        for (const m of pendingMats) {
+          try {
+            list = await window.sitka.addSessionMaterial(meta.id, m.name, m.text)
+          } catch {
+            /* keep going — the session matters more than one document */
+          }
+        }
+        setMaterials(list)
+        setPendingMats([])
+      }
+
       // Screen (+ optional system audio). chromeMediaSource constraints are
       // Electron-specific; on the web build the browser shows its own picker.
       const isWeb = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
@@ -882,7 +902,7 @@ export default function LiveSession({
       setError(err instanceof Error ? err.message : String(err))
       setPhase('picking')
     }
-  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space])
+  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space, pendingMats])
 
   // Quick record: the floating button lands here already in audio mode and
   // starts on arrival — one tap, no setup.
@@ -1230,6 +1250,20 @@ export default function LiveSession({
             </>
           )}
 
+          <div className="section-title">Materials</div>
+          <div className="mat-setup">
+            <MaterialsPanel
+              materials={pendingMats}
+              onAdd={async (name, text) =>
+                setPendingMats((prev) => [
+                  ...prev,
+                  { id: `${Date.now()}-${prev.length}`, name, text, chars: text.length, addedAt: Date.now() }
+                ])
+              }
+              onRemove={async (id) => setPendingMats((prev) => prev.filter((m) => m.id !== id))}
+            />
+          </div>
+
           <div className="section-title">Capture</div>
           <div className="mode-switch">
             <button
@@ -1473,6 +1507,12 @@ export default function LiveSession({
             Notes
             {notes && notes.moments.length > 0 ? ` · ${notes.moments.length}` : ''}
           </button>
+          <button
+            className={`btn btn-sm ${leftTab === 'materials' ? '' : 'btn-ghost'}`}
+            onClick={() => setLeftTab('materials')}
+          >
+            Materials{materials.length > 0 ? ` · ${materials.length}` : ''}
+          </button>
           {confUrl && (
             <button
               className={`btn btn-sm ${leftTab === 'audience' ? '' : 'btn-ghost'}`}
@@ -1710,6 +1750,22 @@ export default function LiveSession({
                 ))}
               </div>
             ))}
+          </div>
+        ) : leftTab === 'materials' ? (
+          <div className="transcript">
+            <MaterialsPanel
+              materials={materials}
+              onAdd={async (name, text) => {
+                const id = sessionIdRef.current
+                if (!id) return
+                setMaterials(await window.sitka.addSessionMaterial(id, name, text))
+              }}
+              onRemove={async (mid) => {
+                const id = sessionIdRef.current
+                if (!id) return
+                setMaterials(await window.sitka.removeSessionMaterial(id, mid))
+              }}
+            />
           </div>
         ) : leftTab === 'transcript' ? (
           <TranscriptPane

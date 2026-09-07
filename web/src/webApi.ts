@@ -22,6 +22,7 @@ import {
 } from '../../src/shared/createLogic'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX } from '../../src/shared/types'
+import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -41,6 +42,7 @@ import type {
   MemoryObject,
   ScheduledEvent,
   SessionData,
+  SessionMaterial,
   SessionMeta,
   SessionNotes,
   Settings,
@@ -466,6 +468,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const { data } = await sb.from('events').select('materials_text').eq('id', eventId).single()
     return (data?.materials_text as string) || ''
   }
+
+  // ---------- session materials: slides, notes, readings the user shared ----------
+  interface StoredMaterial extends SessionMaterial {
+    text: string
+  }
+  async function readMaterials(sessionId: string): Promise<StoredMaterial[]> {
+    const { data } = await sb.from('sessions').select('materials').eq('id', sessionId).single()
+    return ((data?.materials as StoredMaterial[] | null) ?? []).filter(Boolean)
+  }
+  const stripText = (all: StoredMaterial[]): SessionMaterial[] =>
+    all.map(({ id, name, chars, addedAt }) => ({ id, name, chars, addedAt }))
+  /** The prompt section for a session's materials, or '' when there are none. */
+  async function sessionMaterialsBlock(sessionId: string | null | undefined): Promise<string> {
+    if (!sessionId) return ''
+    try {
+      return materialsBlock(await readMaterials(sessionId))
+    } catch {
+      return ''
+    }
+  }
   function confSegments(): TranscriptSegment[] {
     if (!conf) return []
     return cache.get(conf.sessionId)?.segments ?? []
@@ -523,7 +545,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             { role: 'user' as const, content: p.question as string },
             { role: 'assistant' as const, content: (p.answer as string) || '' }
           ])
-        const materials = await eventMaterialsText(c.eventId)
+        const materials =
+          joinMaterials(await eventMaterialsText(c.eventId), await sessionMaterialsBlock(c.sessionId)) ?? ''
         answer = await aiChat(attendeeSystemPrompt(persona, lang, segments, materials, false), [
           ...history,
           { role: 'user', content: question }
@@ -766,7 +789,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
-  async function generateProxyBriefs(evId: string, segments: TranscriptSegment[]): Promise<void> {
+  async function generateProxyBriefs(
+    evId: string,
+    segments: TranscriptSegment[],
+    sessionId?: string
+  ): Promise<void> {
     try {
       const { data: rows } = await sb
         .from('proxies')
@@ -775,7 +802,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         .eq('status', 'pending')
         .limit(40)
       if (!rows || rows.length === 0) return
-      const materials = await eventMaterialsText(evId)
+      const materials =
+        joinMaterials(await eventMaterialsText(evId), await sessionMaterialsBlock(sessionId)) ?? ''
       for (const p of rows) {
         try {
           const system = [
@@ -825,7 +853,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       .from('events')
       .update({ status: 'ended', updated_at: new Date().toISOString() })
       .eq('id', c.eventId)
-    void generateProxyBriefs(c.eventId, d?.segments ?? [])
+    void generateProxyBriefs(c.eventId, d?.segments ?? [], c.sessionId)
     conf = null
   }
 
@@ -1150,6 +1178,70 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.storage.from('recordings').remove(paths)
     },
 
+    // ---------- session materials ----------
+    listSessionMaterials: async (sessionId: string) => stripText(await readMaterials(sessionId)),
+    addSessionMaterial: async (sessionId: string, name: string, text: string) => {
+      const all = await readMaterials(sessionId)
+      const clean = text.slice(0, 200000)
+      all.push({ id: uid(), name, text: clean, chars: clean.length, addedAt: Date.now() })
+      const { error } = await sb
+        .from('sessions')
+        .update({ materials: all, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      if (error) {
+        throw new Error(
+          /column .* does not exist/i.test(error.message)
+            ? 'Materials are not set up yet — run supabase/wave8.sql in the Supabase SQL editor.'
+            : error.message
+        )
+      }
+      return stripText(all)
+    },
+    removeSessionMaterial: async (sessionId: string, materialId: string) => {
+      const all = (await readMaterials(sessionId)).filter((m) => m.id !== materialId)
+      await sb
+        .from('sessions')
+        .update({ materials: all, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      return stripText(all)
+    },
+    extractMaterial: async (name: string, bytes: ArrayBuffer) => {
+      const ext = (name.split('.').pop() ?? '').toLowerCase()
+      if (['txt', 'md', 'csv', 'json', 'vtt', 'srt'].includes(ext)) {
+        return { name, text: new TextDecoder().decode(bytes).slice(0, 200000) }
+      }
+      if (ext === 'pdf') {
+        try {
+          // pdf.js from a CDN, loaded only when a PDF is actually dropped in.
+          const url = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.min.mjs'
+          const pdfjs = (await import(/* @vite-ignore */ url)) as {
+            GlobalWorkerOptions: { workerSrc: string }
+            getDocument: (o: { data: ArrayBuffer }) => {
+              promise: Promise<{
+                numPages: number
+                getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: { str?: string }[] }> }>
+              }>
+            }
+          }
+          pdfjs.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs'
+          const doc = await pdfjs.getDocument({ data: bytes }).promise
+          const pages: string[] = []
+          for (let i = 1; i <= Math.min(doc.numPages, 300); i++) {
+            const page = await doc.getPage(i)
+            const content = await page.getTextContent()
+            pages.push(content.items.map((it) => it.str ?? '').join(' '))
+          }
+          const text = pages.join('\n\n').trim()
+          if (!text) return { error: `No readable text in ${name} (a scanned PDF?). Paste the text instead.` }
+          return { name, text: text.slice(0, 200000) }
+        } catch {
+          return { error: 'Could not read this PDF here — paste its text instead.' }
+        }
+      }
+      return { error: `Use a PDF, TXT, MD or CSV file, or paste the text.` }
+    },
+
     // ---------- visual memory: key frames of the screen ----------
     addSlide: async (sessionId: string, time: number, dataUrl: string) => {
       if (!hasChatKey()) return { text: '' }
@@ -1464,7 +1556,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
               '- "summary": 2-4 sentences capturing what the session was about and its most important points.',
               '- "highlights": 3-8 key moments worth revisiting, each with "time" copied exactly from a timestamp in the transcript (like "12:37") and a short label (max 10 words).'
             ].join('\n')
-            const out = await aiChat(system, [{ role: 'user', content: transcriptBlock(d.segments) }])
+            const materials = await sessionMaterialsBlock(id)
+            const out = await aiChat(system, [
+              {
+                role: 'user',
+                content: materials
+                  ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+                  : transcriptBlock(d.segments)
+              }
+            ])
             const parsed = extractJson<{
               title?: string
               summary?: string
@@ -1545,7 +1645,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             .filter(Boolean)
             .join('\n')
         } else {
-          system = `${askSystemPrompt(req.live)}\n${transcriptBlock(segments)}`
+          const materials = await sessionMaterialsBlock(req.sessionId)
+          system = `${askSystemPrompt(req.live)}\n${materials ? materials + '\n\n' : ''}${transcriptBlock(segments)}`
         }
         const history: ChatMsg[] = req.history
           .slice(-10)
@@ -2094,10 +2195,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           '{"notes": "<markdown string>", "moments": [{"time": "M:SS", "label": string, "kind": "important" | "question"}]}',
           'Keep the moments list complete for the whole session so far (carry earlier moments forward, do not drop them).'
         ].join('\n')
+        const materials = await sessionMaterialsBlock(id)
         const out = await aiChat(system, [
           {
             role: 'user',
-            content: `Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+            content: `${materials ? materials + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments)}`
           }
         ])
         const parsed = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
@@ -2127,7 +2229,19 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           '- 5-10 concepts (the ideas that matter), 6-12 flashcards, 4-8 quiz questions with exactly 4 options each.',
           '- Everything must come from the transcript content.'
         ].join('\n')
-        const out = await aiChat(system, [{ role: 'user', content: transcriptBlock(d.segments) }], 3000)
+        const materials = await sessionMaterialsBlock(id)
+        const out = await aiChat(
+          system,
+          [
+            {
+              role: 'user',
+              content: materials
+                ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+                : transcriptBlock(d.segments)
+            }
+          ],
+          3000
+        )
         const parsed = extractJson<Omit<StudyPack, 'generatedAt'>>(out)
         if (!parsed?.concepts) return { error: 'Could not build the study pack.' }
         const study: StudyPack = {

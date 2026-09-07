@@ -1,6 +1,7 @@
 import { IconMic } from '../lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { SessionData, SessionMeta, Slide } from '@shared/types'
+import type { SessionData, SessionMaterial, SessionMeta, Slide } from '@shared/types'
+import MaterialsPanel from './MaterialsPanel'
 import ChatPane from './ChatPane'
 import TranscriptPane from './TranscriptPane'
 import NotesPane from './NotesPane'
@@ -10,7 +11,15 @@ import Splitter from './Splitter'
 import { clamp, usePersistedNumber } from '../lib/persist'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
-import { IconCopy, IconDownload, IconEdit, IconNotes, IconShare, IconStar } from '../lib/icons'
+import {
+  IconCopy,
+  IconDoc,
+  IconDownload,
+  IconEdit,
+  IconNotes,
+  IconShare,
+  IconStar
+} from '../lib/icons'
 import ShareCard from './ShareCard'
 
 interface Props {
@@ -58,6 +67,18 @@ export default function SessionView({
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [slides, setSlides] = useState<Slide[]>([])
+  const [showMaterials, setShowMaterials] = useState(false)
+  const [materials, setMaterials] = useState<SessionMaterial[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.sitka.listSessionMaterials(sessionId).then((m) => {
+      if (!cancelled) setMaterials(m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
 
   // Visual memory: the key frames of what was on screen, as a filmstrip.
   useEffect(() => {
@@ -273,15 +294,31 @@ export default function SessionView({
             )}
             <span className="duration-chip">{formatDuration(meta.durationMs)}</span>
             {meta.status === 'complete' && (
-              <button
-                className={`btn btn-sm ${meta.recapUrl ? '' : 'btn-ghost'}`}
-                style={{ marginLeft: 'auto' }}
-                title="Share this session as a recap page"
-                onClick={() => setSharing((v) => !v)}
-              >
-                <IconShare size={13} />
-                {meta.recapUrl ? 'Shared' : 'Share'}
-              </button>
+              <>
+                <button
+                  className={`btn btn-sm ${showMaterials ? '' : 'btn-ghost'}`}
+                  style={{ marginLeft: 'auto' }}
+                  title="Slides, notes and readings Sitka uses for this session"
+                  onClick={() => {
+                    setShowMaterials((v) => !v)
+                    setSharing(false)
+                  }}
+                >
+                  <IconDoc size={13} />
+                  Materials{materials.length > 0 ? ` · ${materials.length}` : ''}
+                </button>
+                <button
+                  className={`btn btn-sm ${meta.recapUrl ? '' : 'btn-ghost'}`}
+                  title="Share this session as a recap page"
+                  onClick={() => {
+                    setSharing((v) => !v)
+                    setShowMaterials(false)
+                  }}
+                >
+                  <IconShare size={13} />
+                  {meta.recapUrl ? 'Shared' : 'Share'}
+                </button>
+              </>
             )}
           </div>
           <div className="session-meta-row">
@@ -290,6 +327,19 @@ export default function SessionView({
               <span>· generating summary…</span>
             )}
           </div>
+          {showMaterials && (
+            <div className="share-card" style={{ display: 'block' }}>
+              <MaterialsPanel
+                materials={materials}
+                onAdd={async (name, text) =>
+                  setMaterials(await window.sitka.addSessionMaterial(meta.id, name, text))
+                }
+                onRemove={async (mid) =>
+                  setMaterials(await window.sitka.removeSessionMaterial(meta.id, mid))
+                }
+              />
+            </div>
+          )}
           {sharing && (
             <ShareCard
               meta={meta}
