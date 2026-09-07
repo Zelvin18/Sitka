@@ -73,6 +73,7 @@ export function installBrowserMockIfNeeded(): void {
     deleteCreation: async () => undefined,
     generateCreation: async () => ({ error: 'missing-key' }),
     saveTextFile: async () => ({ error: 'unavailable in browser preview' }),
+    saveBinaryFile: async () => ({ error: 'unavailable in browser preview' }),
     roomMind: async () => ({ themes: [] }),
     roomRecap: async () => ({ error: 'unavailable in browser preview' }),
     pushRoomNote: async () => ({ error: 'unavailable in browser preview' }),

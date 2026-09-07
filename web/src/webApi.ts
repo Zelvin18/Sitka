@@ -1425,6 +1425,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       setTimeout(() => URL.revokeObjectURL(a.href), 4000)
       return { ok: true }
     },
+    saveBinaryFile: async (name: string, bytes: ArrayBuffer) => {
+      const type = name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([bytes], { type }))
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+      return { ok: true }
+    },
 
     saveChat: async (id, chat) => {
       const d = await loadSession(id)

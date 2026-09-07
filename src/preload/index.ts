@@ -143,6 +143,11 @@ const api = {
     content: string
   ): Promise<{ ok?: boolean; canceled?: boolean; error?: string }> =>
     ipcRenderer.invoke('file:saveText', name, content),
+  saveBinaryFile: (
+    name: string,
+    bytes: ArrayBuffer
+  ): Promise<{ ok?: boolean; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('file:saveBinary', name, bytes),
 
   askBrain: (req: BrainAskRequest): Promise<void> => ipcRenderer.invoke('brain:ask', req),
   searchLibrary: (query: string): Promise<BrainSearchHit[]> =>

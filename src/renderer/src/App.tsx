@@ -236,6 +236,9 @@ export default function App(): React.JSX.Element {
         />
       )}
       <div className="main">
+        {/* A solid strip along the top: Back on the left, the doors on the right.
+            Content scrolls beneath it, never through it. */}
+        <div className="main-bar" />
         <div className="main-drag" />
         {!sidebarOpen && (
           <button
@@ -257,7 +260,6 @@ export default function App(): React.JSX.Element {
         )}
         {/* The two doors, always in view at the top right. Tapping the open one leads home. */}
         <div className="space-switch" role="tablist" aria-label="Sitka for">
-          <span className="space-switch-label">Sitka for</span>
           <button
             role="tab"
             aria-selected={space === 'business'}
@@ -273,9 +275,12 @@ export default function App(): React.JSX.Element {
               }
             }}
           >
-            <IconBriefcase size={14} strokeWidth={1.8} />
-            <span>Business</span>
+            <span className="space-btn-icon">
+              <IconBriefcase size={13} strokeWidth={1.9} />
+            </span>
+            <span className="space-btn-text">Business</span>
           </button>
+          <span className="space-switch-sep" />
           <button
             role="tab"
             aria-selected={space === 'education'}
@@ -291,8 +296,10 @@ export default function App(): React.JSX.Element {
               }
             }}
           >
-            <IconCap size={14} strokeWidth={1.8} />
-            <span>Education</span>
+            <span className="space-btn-icon">
+              <IconCap size={13} strokeWidth={1.9} />
+            </span>
+            <span className="space-btn-text">Education</span>
           </button>
         </div>
         {view.name === 'homepage' && (

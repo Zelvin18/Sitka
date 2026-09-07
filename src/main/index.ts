@@ -893,6 +893,22 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('file:saveBinary', async (_e, name: string, bytes: ArrayBuffer) => {
+    const ext = name.includes('.') ? name.split('.').pop() ?? 'bin' : 'bin'
+    const result = await dialog.showSaveDialog({
+      title: 'Save',
+      defaultPath: name,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+    })
+    if (result.canceled || !result.filePath) return { canceled: true }
+    try {
+      await fsp.writeFile(result.filePath, Buffer.from(bytes))
+      return { ok: true }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('memory:list', () => loadMemory())
   ipcMain.handle(
     'memory:update',

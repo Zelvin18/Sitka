@@ -5413,84 +5413,112 @@ body.dragging-row .splitter-h {
   left: 56px;
 }
 
+/* ---- The top bar: a solid strip content scrolls beneath, never through ---- */
+
+.main-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 4;
+  -webkit-app-region: drag;
+}
+
 /* ---- Sitka for Business / Education: the two doors, top right of every page ---- */
 
 .space-switch {
   position: absolute;
-  top: 8px;
+  top: 7px;
   right: 16px;
   z-index: 7;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  height: 32px;
   padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  border-radius: 10px;
+  background: var(--bg-soft);
   -webkit-app-region: no-drag;
 }
 
-.space-switch-label {
-  padding: 0 8px 0 10px;
-  font-size: 10.5px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
+.space-switch-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--border);
 }
 
 .space-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 13px 6px 11px;
+  height: 26px;
+  padding: 0 11px 0 6px;
   border: none;
-  border-radius: 999px;
+  border-radius: 7px;
   background: none;
   color: var(--text-2);
   font: inherit;
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.005em;
   cursor: pointer;
   transition:
     background 0.14s ease,
     color 0.14s ease,
-    transform 0.14s ease;
+    box-shadow 0.14s ease;
+}
+
+.space-btn-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
 }
 
 .space-btn:hover {
-  background: var(--bg-hover);
   color: var(--text);
-}
-
-.space-btn:active {
-  transform: scale(0.97);
+  background: var(--bg-hover);
 }
 
 .space-btn.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.space-btn.on .space-btn-icon {
   background: var(--text);
+  border-color: var(--text);
   color: var(--bg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
 @media (max-width: 860px) {
+  .main-bar {
+    height: 44px;
+  }
   .space-switch {
     top: 6px;
     right: 10px;
   }
-  .space-switch-label {
-    display: none;
-  }
-  .space-btn span {
-    display: none;
-  }
   .space-btn {
-    padding: 8px 10px;
+    padding: 0 8px 0 5px;
   }
-  .space-btn.on span {
+  .space-btn-text {
+    display: none;
+  }
+  .space-btn.on .space-btn-text {
     display: inline;
   }
 }

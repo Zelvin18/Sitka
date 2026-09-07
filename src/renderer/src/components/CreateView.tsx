@@ -12,7 +12,8 @@ import ConfirmDialog from './ConfirmDialog'
 import SaveDialog, { type SaveFormat } from './SaveDialog'
 import { formatDate } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
-import { deckPage, documentPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
+import { deckPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
+import { deckToPdf, markdownToPdf } from '../lib/pdf'
 import {
   IconCode,
   IconCopy,
@@ -26,13 +27,13 @@ import {
 
 const DOC_FORMATS: SaveFormat[] = [
   { id: 'word', label: 'Word document', tag: '.doc', desc: 'Opens in Microsoft Word or Google Docs, ready to edit.' },
-  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'A fixed page to share or print. Your browser’s save window opens.' },
+  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'A finished, fixed page to share or print. Downloads straight away.' },
   { id: 'md', label: 'Markdown', tag: '.md', desc: 'Plain text with formatting marks, for Notion, Obsidian or a wiki.' }
 ]
 
 const DECK_FORMATS: SaveFormat[] = [
   { id: 'html', label: 'Slide deck', tag: '.html', desc: 'One file that opens in any browser. Arrow keys move between slides.' },
-  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'One page per slide with the speaker notes underneath. Your browser’s save window opens.' }
+  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'One page per slide with the speaker notes underneath. Downloads straight away.' }
 ]
 
 const CODE_FORMATS: SaveFormat[] = [
@@ -107,14 +108,10 @@ function parseCode(md: string): { prose: string; files: CodeFile[] } {
   return { prose: prose.trim(), files }
 }
 
-function printHtml(html: string): void {
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.open()
-  w.document.write(html)
-  w.document.close()
-  w.focus()
-  setTimeout(() => w.print(), 500)
+const saveBytes = (name: string, bytes: Uint8Array): void => {
+  const copy = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(copy).set(bytes)
+  void window.sitka.saveBinaryFile(name, copy)
 }
 
 const safeName = (t: string): string => t.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'sitka'
@@ -240,13 +237,16 @@ export default function CreateView({
     if (how === 'md') void window.sitka.saveTextFile(`${name}.md`, selected.content)
     else if (how === 'word')
       void window.sitka.saveTextFile(`${name}.doc`, wordDocument(selected.title, mdToHtml(selected.content)))
-    else printHtml(documentPage(selected.title, mdToHtml(selected.content)))
+    else saveBytes(`${name}.pdf`, markdownToPdf(selected.title, selected.content))
   }
   const exportDeck = (how: 'html' | 'pdf'): void => {
     if (!selected || !deck) return
-    const html = deckPage(deck.title, deck.subtitle, deck.slides)
-    if (how === 'html') void window.sitka.saveTextFile(`${safeName(deck.title)}.html`, html)
-    else printHtml(html)
+    if (how === 'html') {
+      void window.sitka.saveTextFile(
+        `${safeName(deck.title)}.html`,
+        deckPage(deck.title, deck.subtitle, deck.slides)
+      )
+    } else saveBytes(`${safeName(deck.title)}.pdf`, deckToPdf(deck.title, deck.subtitle, deck.slides))
   }
   const exportCode = (): void => {
     if (!code) return
