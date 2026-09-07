@@ -4343,6 +4343,95 @@ body.dragging-row .splitter-h {
   gap: 8px;
 }
 
+/* ---- Save dialog: pick a format, press Save ---- */
+
+.save-dialog {
+  width: 420px;
+}
+
+.save-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.save-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.save-option:hover {
+  border-color: var(--text-3);
+}
+
+.save-option.on {
+  border-color: var(--text);
+  background: var(--bg-soft);
+}
+
+.save-option-radio {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-2);
+  background: var(--bg);
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.save-option.on .save-option-radio {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 4px var(--text);
+}
+
+.save-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.save-option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.save-option-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.save-option-desc {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
 /* ============ Command palette ============ */
 
 .palette-overlay {

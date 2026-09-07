@@ -9,10 +9,35 @@ import type {
 import { parseDeck } from '@shared/createLogic'
 import AiText from './AiText'
 import ConfirmDialog from './ConfirmDialog'
+import SaveDialog, { type SaveFormat } from './SaveDialog'
 import { formatDate } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import { deckPage, documentPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
-import { IconCode, IconCopy, IconDoc, IconPlus, IconSlides, IconTrash, Mark } from '../lib/icons'
+import {
+  IconCode,
+  IconCopy,
+  IconDoc,
+  IconDownload,
+  IconPlus,
+  IconSlides,
+  IconTrash,
+  Mark
+} from '../lib/icons'
+
+const DOC_FORMATS: SaveFormat[] = [
+  { id: 'word', label: 'Word document', tag: '.doc', desc: 'Opens in Microsoft Word or Google Docs, ready to edit.' },
+  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'A fixed page to share or print. Your browser’s save window opens.' },
+  { id: 'md', label: 'Markdown', tag: '.md', desc: 'Plain text with formatting marks, for Notion, Obsidian or a wiki.' }
+]
+
+const DECK_FORMATS: SaveFormat[] = [
+  { id: 'html', label: 'Slide deck', tag: '.html', desc: 'One file that opens in any browser. Arrow keys move between slides.' },
+  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'One page per slide with the speaker notes underneath. Your browser’s save window opens.' }
+]
+
+const CODE_FORMATS: SaveFormat[] = [
+  { id: 'files', label: 'Code files', tag: 'files', desc: 'Each file saved with its own name, ready to drop into a project.' }
+]
 
 interface Props {
   sessions: SessionMeta[]
@@ -112,6 +137,7 @@ export default function CreateView({
   const [showNotes, setShowNotes] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<Creation | null>(null)
   const [copied, setCopied] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const refresh = useCallback(async (): Promise<void> => {
     setCreations(await window.sitka.listCreations())
@@ -225,6 +251,16 @@ export default function CreateView({
   const exportCode = (): void => {
     if (!code) return
     for (const f of code.files) void window.sitka.saveTextFile(f.name.split(/[\\/]/).pop() ?? f.name, f.code)
+  }
+
+  const saveFormats: SaveFormat[] =
+    selected?.kind === 'document' ? DOC_FORMATS : selected?.kind === 'presentation' ? DECK_FORMATS : CODE_FORMATS
+  const saveAs = (formatId: string): void => {
+    setSaving(false)
+    if (!selected) return
+    if (selected.kind === 'document') exportDoc(formatId as 'md' | 'word' | 'pdf')
+    else if (selected.kind === 'presentation') exportDeck(formatId as 'html' | 'pdf')
+    else exportCode()
   }
 
   return (
@@ -360,47 +396,21 @@ export default function CreateView({
               </span>
               <h1 className="create-title">{selected.title}</h1>
               <div className="create-tools">
-                {selected.kind === 'document' && (
-                  <>
-                    <button className="btn btn-ghost btn-sm" onClick={() => copy(selected.content)}>
-                      <IconCopy size={13} />
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => exportDoc('md')}>
-                      Markdown
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => exportDoc('word')}>
-                      Word
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => exportDoc('pdf')}>
-                      PDF
-                    </button>
-                  </>
-                )}
                 {selected.kind === 'presentation' && deck && (
-                  <>
-                    <button className="btn btn-sm" onClick={() => setPresentAt(0)}>
-                      Present
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => exportDeck('html')}>
-                      Deck file
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => exportDeck('pdf')}>
-                      PDF
-                    </button>
-                  </>
+                  <button className="btn btn-sm" onClick={() => setPresentAt(0)}>
+                    Present
+                  </button>
                 )}
-                {selected.kind === 'code' && code && (
-                  <>
-                    <button className="btn btn-ghost btn-sm" onClick={() => copy(selected.content)}>
-                      <IconCopy size={13} />
-                      {copied ? 'Copied' : 'Copy all'}
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={exportCode}>
-                      Save files
-                    </button>
-                  </>
+                {selected.kind !== 'presentation' && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => copy(selected.content)}>
+                    <IconCopy size={13} />
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
                 )}
+                <button className="btn btn-sm" onClick={() => setSaving(true)}>
+                  <IconDownload size={13} />
+                  Save
+                </button>
                 <button
                   className="btn btn-ghost btn-sm"
                   title="Delete"
@@ -538,6 +548,15 @@ export default function CreateView({
             </button>
           </div>
         </div>
+      )}
+
+      {saving && selected && (
+        <SaveDialog
+          title={selected.title}
+          formats={saveFormats}
+          onSave={saveAs}
+          onCancel={() => setSaving(false)}
+        />
       )}
 
       {pendingDelete && (
