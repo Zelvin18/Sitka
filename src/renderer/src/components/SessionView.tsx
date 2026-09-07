@@ -68,6 +68,7 @@ export default function SessionView({
   const [sharing, setSharing] = useState(false)
   const [slides, setSlides] = useState<Slide[]>([])
   const [showMaterials, setShowMaterials] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState(false)
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
 
   useEffect(() => {
@@ -324,7 +325,28 @@ export default function SessionView({
           <div className="session-meta-row">
             <span>{formatDate(meta.createdAt)}</span>
             {!meta.analyzed && meta.status === 'complete' && segments.length > 0 && (
-              <span>· generating summary…</span>
+              <>
+                {meta.analysisError ? (
+                  <span style={{ color: 'var(--danger)' }} title={meta.analysisError}>
+                    · summary failed: {meta.analysisError.slice(0, 90)}
+                  </span>
+                ) : (
+                  <span>· {reanalyzing ? 'generating summary…' : 'summary pending'}</span>
+                )}
+                <button
+                  className="link-btn"
+                  disabled={reanalyzing}
+                  onClick={() => {
+                    setReanalyzing(true)
+                    void window.sitka.reanalyzeSession(meta.id).then((m) => {
+                      setReanalyzing(false)
+                      if (m) setData((d) => (d ? { ...d, meta: m } : d))
+                    })
+                  }}
+                >
+                  {reanalyzing ? 'Working…' : 'Generate now'}
+                </button>
+              </>
             )}
           </div>
           {showMaterials && (

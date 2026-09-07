@@ -229,29 +229,23 @@ export default function CreateView({
 
   return (
     <div className="create-view">
+      {creations.length > 0 && (
       <aside className="create-list">
-        <button
-          className="side-new"
-          style={{ marginBottom: 10 }}
-          onClick={() => {
-            setSelected(null)
-            setError(null)
-          }}
-        >
-          <span className="side-new-icon">
-            <IconPlus size={15} strokeWidth={2.4} />
-          </span>
-          <span className="side-new-text">
-            <span className="side-new-name">New creation</span>
-            <span className="side-new-sub">Document, presentation or code</span>
-          </span>
-        </button>
-        {creations.length === 0 ? (
-          <div className="create-list-empty">
-            Everything Sitka makes for you is kept here, ready to export or refine.
-          </div>
-        ) : (
-          creations.map((c) => (
+        <div className="create-list-head">
+          <span className="side-label" style={{ padding: 0 }}>Your creations</span>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Start a new creation"
+            onClick={() => {
+              setSelected(null)
+              setError(null)
+            }}
+          >
+            <IconPlus size={13} strokeWidth={2.4} />
+            New
+          </button>
+        </div>
+        {creations.map((c) => (
             <button
               key={c.id}
               className={`create-item${selected?.id === c.id ? ' active' : ''}`}
@@ -266,9 +260,9 @@ export default function CreateView({
                 <span className="create-item-date">{formatDate(c.updatedAt)}</span>
               </span>
             </button>
-          ))
-        )}
+        ))}
       </aside>
+      )}
 
       <div className="create-main">
         {!selected ? (

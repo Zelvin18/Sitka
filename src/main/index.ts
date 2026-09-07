@@ -745,6 +745,11 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('session:reanalyze', async (_e, id: string) => {
+    await runAnalysis(id)
+    return store.getMeta(id)
+  })
+
   ipcMain.handle('session:finalize', async (_e, id: string, durationMs: number) => {
     if (currentRecording?.id === id) setRecording(null)
     const meta = store.getMeta(id)
@@ -1213,18 +1218,26 @@ async function runAnalysis(id: string): Promise<void> {
     const result = anthropicApiKey
       ? await analyzeSession(anthropicApiKey, segments, kind, materials)
       : await analyzeSessionGroq(groqApiKey, segments, kind, materials)
-    if (!result) return
+    if (!result) throw new Error('The model did not return a usable summary.')
     const meta = store.getMeta(id)
     if (!meta) return
     meta.title = result.title
     meta.summary = result.summary
     meta.highlights = result.highlights
+    delete meta.analysisError
     meta.analyzed = true
     store.saveMeta(meta)
     mainWindow?.webContents.send('session:updated', meta)
     // Memory: decisions, promises, people and concepts, pinned to their moments.
     await rememberSession({ anthropicApiKey, groqApiKey }, meta, segments).catch(() => undefined)
-  } catch {
-    // analysis is best-effort; the session itself is already saved
+  } catch (err) {
+    // The session itself is already saved; record why the summary failed so
+    // the session page can say so and offer a retry.
+    const meta = store.getMeta(id)
+    if (meta) {
+      meta.analysisError = err instanceof Error ? err.message : String(err)
+      store.saveMeta(meta)
+      mainWindow?.webContents.send('session:updated', meta)
+    }
   }
 }

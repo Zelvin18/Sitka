@@ -93,6 +93,9 @@ const api = {
   ): Promise<string | null> => ipcRenderer.invoke('session:exportText', id, kind),
   createSampleSession: (): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:sample'),
+  /** Re-run the title/summary/highlights analysis (after a failure). */
+  reanalyzeSession: (id: string): Promise<SessionMeta | null> =>
+    ipcRenderer.invoke('session:reanalyze', id),
   finalizeSession: (id: string, durationMs: number): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:finalize', id, durationMs),
 

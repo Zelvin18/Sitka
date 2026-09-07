@@ -470,6 +470,63 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return (data?.materials_text as string) || ''
   }
 
+  // ---------- after a session: title, summary, highlights, then memory ----------
+  // Failures are written to meta.analysisError so the session page can say what
+  // went wrong and offer a retry, instead of showing "generating summary…" forever.
+  async function analyzeWebSession(id: string): Promise<void> {
+    const d = await loadSession(id)
+    if (!d) return
+    try {
+      const kindFocus =
+        d.meta.kind === 'meeting'
+          ? 'Focus on decisions made, action items, and who committed to what.'
+          : d.meta.kind === 'lecture'
+            ? 'Focus on the core concepts taught and what is most likely to be examined.'
+            : 'Focus on the key messages and the moments that mattered.'
+      const system = [
+        'You analyze a timestamped transcript of a recorded session (lecture, meeting, presentation, or event).',
+        kindFocus,
+        'Return ONLY a JSON object, no prose and no code fences, with this exact shape:',
+        '{"title": string, "summary": string, "highlights": [{"time": "M:SS", "label": string}]}',
+        '- "title": a short, specific title for the session based on what it was about (max 8 words, no quotes inside).',
+        '- "summary": 2-4 sentences capturing what the session was about and its most important points.',
+        '- "highlights": 3-8 key moments worth revisiting, each with "time" copied exactly from a timestamp in the transcript (like "12:37") and a short label (max 10 words).'
+      ].join('\n')
+      const materials = await sessionMaterialsBlock(id)
+      const out = await aiChat(system, [
+        {
+          role: 'user',
+          content: materials
+            ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+            : transcriptBlock(d.segments)
+        }
+      ])
+      const parsed = extractJson<{
+        title?: string
+        summary?: string
+        highlights?: { time: string; label: string }[]
+      }>(out)
+      if (!parsed?.summary) throw new Error('The model did not return a usable summary.')
+      // Like the desktop app: the session is named after what it was about.
+      if (parsed.title && String(parsed.title).trim()) {
+        d.meta.title = String(parsed.title).trim().slice(0, 80)
+      }
+      d.meta.summary = parsed.summary
+      d.meta.highlights = (parsed.highlights ?? []).slice(0, 10)
+      d.meta.analyzed = true
+      delete d.meta.analysisError
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+      // Memory: decisions, promises, people and concepts, pinned to their moments.
+      await rememberSession(d.meta, d.segments).catch(() => undefined)
+    } catch (err) {
+      d.meta.analysisError = err instanceof Error ? err.message : String(err)
+      console.error('Sitka: session analysis failed', d.meta.analysisError)
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+    }
+  }
+
   // ---------- session materials: slides, notes, readings the user shared ----------
   interface StoredMaterial extends SessionMaterial {
     text: string
@@ -1409,8 +1466,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         }
       }
       // Legacy single-file recordings.
-      const { data } = await sb.storage.from('recordings').download(videoPath(id))
-      if (!data) return null
+      const { data, error } = await sb.storage.from('recordings').download(videoPath(id))
+      if (!data) {
+        console.error('Sitka: no recording found for session', id, error?.message ?? '')
+        return null
+      }
       return new Uint8Array(await data.arrayBuffer())
     },
 
@@ -1539,57 +1599,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       emitSession(d.meta)
 
       // analysis in the background
-      if (hasChatKey() && d.segments.length > 2) {
-        void (async () => {
-          try {
-            const kindFocus =
-              d.meta.kind === 'meeting'
-                ? 'Focus on decisions made, action items, and who committed to what.'
-                : d.meta.kind === 'lecture'
-                  ? 'Focus on the core concepts taught and what is most likely to be examined.'
-                  : 'Focus on the key messages and the moments that mattered.'
-            const system = [
-              'You analyze a timestamped transcript of a recorded session (lecture, meeting, presentation, or event).',
-              kindFocus,
-              'Return ONLY a JSON object, no prose and no code fences, with this exact shape:',
-              '{"title": string, "summary": string, "highlights": [{"time": "M:SS", "label": string}]}',
-              '- "title": a short, specific title for the session based on what it was about (max 8 words, no quotes inside).',
-              '- "summary": 2-4 sentences capturing what the session was about and its most important points.',
-              '- "highlights": 3-8 key moments worth revisiting, each with "time" copied exactly from a timestamp in the transcript (like "12:37") and a short label (max 10 words).'
-            ].join('\n')
-            const materials = await sessionMaterialsBlock(id)
-            const out = await aiChat(system, [
-              {
-                role: 'user',
-                content: materials
-                  ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
-                  : transcriptBlock(d.segments)
-              }
-            ])
-            const parsed = extractJson<{
-              title?: string
-              summary?: string
-              highlights?: { time: string; label: string }[]
-            }>(out)
-            if (parsed?.summary) {
-              // Like the desktop app: the session is named after what it was about.
-              if (parsed.title && String(parsed.title).trim()) {
-                d.meta.title = String(parsed.title).trim().slice(0, 80)
-              }
-              d.meta.summary = parsed.summary
-              d.meta.highlights = (parsed.highlights ?? []).slice(0, 10)
-              d.meta.analyzed = true
-              await patchSession(id, { meta: d.meta })
-              emitSession(d.meta)
-              // Memory: decisions, promises, people and concepts, pinned to their moments.
-              await rememberSession(d.meta, d.segments)
-            }
-          } catch {
-            /* analysis is best-effort */
-          }
-        })()
-      }
+      if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)
       return d.meta
+    },
+
+    reanalyzeSession: async (id: string) => {
+      if (!hasChatKey()) return null
+      await analyzeWebSession(id)
+      return (await loadSession(id))?.meta ?? null
     },
 
     transcribeChunk: async (id, chunk, offsetSec) => {

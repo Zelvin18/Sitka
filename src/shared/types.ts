@@ -60,6 +60,8 @@ export interface SessionMeta {
   sample?: boolean
   /** public recap page, set while the session is shared */
   recapUrl?: string
+  /** why the title/summary could not be generated (cleared on success) */
+  analysisError?: string
 }
 
 export interface ChatMessage {
