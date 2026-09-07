@@ -6,7 +6,7 @@ import HomeView from './components/HomeView'
 import EventsView from './components/EventsView'
 import CoachView from './components/CoachView'
 import CommandPalette from './components/CommandPalette'
-import { IconPanel } from './lib/icons'
+import { IconBriefcase, IconCap, IconPanel } from './lib/icons'
 import { usePersistedBool } from './lib/persist'
 import Home from './components/Home'
 import EcosystemView from './components/EcosystemView'
@@ -192,17 +192,6 @@ export default function App(): React.JSX.Element {
           activeView={view.name}
           activeSessionId={activeSessionId}
           recordingSessionId={recordingSessionId}
-          space={space}
-          onBusiness={() => {
-            setSpace('business')
-            setView({ name: 'business' })
-            closeDrawer()
-          }}
-          onEducation={() => {
-            setSpace('education')
-            setView({ name: 'education' })
-            closeDrawer()
-          }}
           onHomePage={() => {
             setSpace(undefined)
             setView({ name: 'homepage' })
@@ -266,11 +255,46 @@ export default function App(): React.JSX.Element {
             ‹ Back
           </button>
         )}
-        {space && view.name !== 'homepage' && (
-          <span className={`space-tag${sidebarOpen ? '' : ' shifted'}`}>
-            {space === 'business' ? 'Business' : 'Education'}
-          </span>
-        )}
+        {/* The two doors, always in view at the top right. Tapping the open one leads home. */}
+        <div className="space-switch" role="tablist" aria-label="Sitka for">
+          <span className="space-switch-label">Sitka for</span>
+          <button
+            role="tab"
+            aria-selected={space === 'business'}
+            className={`space-btn${space === 'business' ? ' on' : ''}`}
+            title="Sitka for Business — meetings, decisions, follow-through"
+            onClick={() => {
+              if (space === 'business') {
+                setSpace(undefined)
+                setView({ name: 'homepage' })
+              } else {
+                setSpace('business')
+                setView({ name: 'business' })
+              }
+            }}
+          >
+            <IconBriefcase size={14} strokeWidth={1.8} />
+            <span>Business</span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={space === 'education'}
+            className={`space-btn${space === 'education' ? ' on' : ''}`}
+            title="Sitka for Education — lectures, understanding, exams"
+            onClick={() => {
+              if (space === 'education') {
+                setSpace(undefined)
+                setView({ name: 'homepage' })
+              } else {
+                setSpace('education')
+                setView({ name: 'education' })
+              }
+            }}
+          >
+            <IconCap size={14} strokeWidth={1.8} />
+            <span>Education</span>
+          </button>
+        </div>
         {view.name === 'homepage' && (
           <HomeView
             sessions={sessions.filter((s) => !s.space)}
