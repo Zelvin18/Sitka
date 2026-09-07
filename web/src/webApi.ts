@@ -14,6 +14,14 @@ import {
   type MemoryExtraction
 } from '../../src/shared/memoryLogic'
 import { SAMPLE_TITLE, sampleDurationMs, sampleSegments } from '../../src/shared/sample'
+import {
+  createSystemPrompt,
+  createUserPrompt,
+  finishCreation,
+  type SessionContext
+} from '../../src/shared/createLogic'
+import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '../../src/shared/visionLogic'
+import { ON_SCREEN_PREFIX } from '../../src/shared/types'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -26,7 +34,10 @@ import type {
   CoachProject,
   CoachRehearsal,
   CoachScores,
+  CreateRequest,
+  Creation,
   EventReport,
+  Slide,
   MemoryObject,
   ScheduledEvent,
   SessionData,
@@ -158,11 +169,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return s
   }
 
-  async function aiChat(
-    system: string,
-    messages: { role: 'user' | 'assistant'; content: string }[],
-    maxTokens = 2000
-  ): Promise<string> {
+  // A message is plain text, or text with images (frames of the screen).
+  type ChatPart = { type: 'text'; text: string } | { type: 'image'; dataUrl: string }
+  interface ChatMsg {
+    role: 'user' | 'assistant'
+    content: string | ChatPart[]
+  }
+  async function aiChat(system: string, messages: ChatMsg[], maxTokens = 2000): Promise<string> {
     const k = storedSettings()
     const r = await fetch('/api/chat', {
       method: 'POST',
@@ -1130,7 +1143,137 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         .list(`${user.id}/${id}`, { limit: 1000 })
       const paths = (listing ?? []).map((f) => `${user.id}/${id}/${f.name}`)
       paths.push(videoPath(id))
+      const { data: slideFiles } = await sb.storage
+        .from('recordings')
+        .list(`${user.id}/${id}-slides`, { limit: 1000 })
+      paths.push(...(slideFiles ?? []).map((f) => `${user.id}/${id}-slides/${f.name}`))
       await sb.storage.from('recordings').remove(paths)
+    },
+
+    // ---------- visual memory: key frames of the screen ----------
+    addSlide: async (sessionId: string, time: number, dataUrl: string) => {
+      if (!hasChatKey()) return { text: '' }
+      const m = dataUrl.match(/^data:image\/jpeg;base64,(.+)$/)
+      if (!m) return { text: '' }
+      try {
+        const out = await aiChat(
+          DESCRIBE_SCREEN,
+          [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', dataUrl },
+                { type: 'text', text: DESCRIBE_ASK }
+              ]
+            }
+          ],
+          600
+        )
+        const text = cleanDescription(out)
+        if (!text) return { text: '' }
+        const bin = atob(m[1])
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        const path = `${user.id}/${sessionId}-slides/${String(Math.round(time * 10)).padStart(7, '0')}.jpg`
+        await sb.storage
+          .from('recordings')
+          .upload(path, new Blob([bytes], { type: 'image/jpeg' }), {
+            upsert: true,
+            contentType: 'image/jpeg'
+          })
+        const d = await loadSession(sessionId)
+        if (d) {
+          d.segments.push({ start: time, end: time + 1, text: ON_SCREEN_PREFIX + text })
+          d.segments.sort((a, b) => a.start - b.start)
+          const { data: row } = await sb.from('sessions').select('slides').eq('id', sessionId).single()
+          const slides = ((row?.slides as { time: number; text: string; path: string }[] | null) ?? []).concat({
+            time,
+            text,
+            path
+          })
+          await patchSession(sessionId, { transcript: d.segments, slides })
+        }
+        return { text }
+      } catch (err) {
+        return { text: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+    listSlides: async (sessionId: string): Promise<Slide[]> => {
+      const { data: row } = await sb.from('sessions').select('slides').eq('id', sessionId).single()
+      const stored = (row?.slides as { time: number; text: string; path: string }[] | null) ?? []
+      if (stored.length === 0) return []
+      const { data: signed } = await sb.storage
+        .from('recordings')
+        .createSignedUrls(
+          stored.map((s) => s.path),
+          3600
+        )
+      const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]))
+      return stored
+        .map((s) => ({ time: s.time, text: s.text, image: urlByPath.get(s.path) ?? '' }))
+        .filter((s) => s.image)
+        .sort((a, b) => a.time - b.time)
+    },
+
+    // ---------- Create: documents, presentations, code ----------
+    listCreations: async (): Promise<Creation[]> => {
+      const { data } = await sb
+        .from('creations')
+        .select('data')
+        .eq('owner', user.id)
+        .order('updated_at', { ascending: false })
+      return ((data ?? []) as { data: Creation }[]).map((r) => r.data)
+    },
+    saveCreation: async (c: Creation) => {
+      await sb
+        .from('creations')
+        .upsert({ id: c.id, owner: user.id, data: c, updated_at: new Date().toISOString() })
+    },
+    deleteCreation: async (id: string) => {
+      await sb.from('creations').delete().eq('id', id)
+    },
+    generateCreation: async (req: CreateRequest) => {
+      if (!hasChatKey()) return { error: 'missing-key' }
+      try {
+        const contexts: SessionContext[] = []
+        for (const id of req.sessionIds) {
+          const d = await loadSession(id)
+          if (d) contexts.push({ title: d.meta.title, segments: d.segments })
+        }
+        const raw = await aiChat(
+          createSystemPrompt(req.kind),
+          [{ role: 'user', content: createUserPrompt(req, contexts) }],
+          8000
+        )
+        let existing: Creation | undefined
+        if (req.previous) {
+          const { data } = await sb
+            .from('creations')
+            .select('data')
+            .eq('id', req.previous.id)
+            .single()
+          existing = (data?.data as Creation | undefined) ?? undefined
+        }
+        const creation = finishCreation(req, raw, existing)
+        if (!creation.id) creation.id = uid()
+        const { error } = await sb
+          .from('creations')
+          .upsert({ id: creation.id, owner: user.id, data: creation, updated_at: new Date().toISOString() })
+        if (error && /relation .* does not exist/i.test(error.message)) {
+          return { error: 'Create is not set up yet — run supabase/wave7.sql in the Supabase SQL editor.' }
+        }
+        return { creation }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+    saveTextFile: async (name: string, content: string) => {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }))
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+      return { ok: true }
     },
 
     saveChat: async (id, chat) => {
@@ -1404,8 +1547,25 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         } else {
           system = `${askSystemPrompt(req.live)}\n${transcriptBlock(segments)}`
         }
-        const history = req.history.slice(-10).map((m) => ({ role: m.role, content: m.content }))
-        const text = await aiChat(system, [...history, { role: 'user', content: req.question }])
+        const history: ChatMsg[] = req.history
+          .slice(-10)
+          .map((m) => ({ role: m.role, content: m.content }))
+        // Live sessions attach the current screen so Sitka can read what is
+        // being presented — graphs, slides, diagrams — not only what is said.
+        const last: ChatMsg =
+          req.frame && !req.host
+            ? {
+                role: 'user',
+                content: [
+                  { type: 'image', dataUrl: req.frame },
+                  {
+                    type: 'text',
+                    text: `(The attached image is what is currently on screen in the live session.)\n\n${req.question}`
+                  }
+                ]
+              }
+            : { role: 'user', content: req.question }
+        const text = await aiChat(system, [...history, last])
         emitAi({ requestId: req.requestId, type: 'delta', text })
         emitAi({ requestId: req.requestId, type: 'done' })
       } catch (err) {

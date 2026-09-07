@@ -12,6 +12,7 @@ import {
   IconPlus,
   IconSettings,
   IconSparkle,
+  IconWand,
   Mark
 } from '../lib/icons'
 import { formatDuration } from '../lib/format'
@@ -29,6 +30,7 @@ interface Props {
   onHomePage: () => void
   onEvents: () => void
   onCoach: () => void
+  onCreate: () => void
   onHome: () => void
   onNewSession: () => void
   onBrain: () => void
@@ -56,6 +58,7 @@ export default function Sidebar({
   onHomePage,
   onEvents,
   onCoach,
+  onCreate,
   onHome,
   onNewSession,
   onBrain,
@@ -190,6 +193,13 @@ export default function Sidebar({
         >
           <IconMic size={15} />
           Coach
+        </button>
+        <button
+          className={`side-item${activeView === 'create' ? ' active' : ''}`}
+          onClick={onCreate}
+        >
+          <IconWand size={15} />
+          Create
         </button>
         <button
           className={`side-item${activeView === 'home' ? ' active' : ''}`}

@@ -14,12 +14,14 @@ import SettingsView from './components/SettingsView'
 import LiveSession from './components/LiveSession'
 import SessionView from './components/SessionView'
 import QuickRecord from './components/QuickRecord'
+import CreateView from './components/CreateView'
 
 type View =
   | { name: 'homepage' }
   | { name: 'home' }
   | { name: 'events'; eventId?: string }
   | { name: 'coach' }
+  | { name: 'create' }
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
@@ -214,6 +216,10 @@ export default function App(): React.JSX.Element {
             setView({ name: 'coach' })
             closeDrawer()
           }}
+          onCreate={() => {
+            setView({ name: 'create' })
+            closeDrawer()
+          }}
           onHome={() => {
             setView({ name: 'home' })
             closeDrawer()
@@ -294,6 +300,14 @@ export default function App(): React.JSX.Element {
             hasChatKey={Boolean(settings?.anthropicApiKey || settings?.groqApiKey)}
             hasSttKey={Boolean(settings?.openaiApiKey || settings?.groqApiKey)}
             onOpenSettings={() => setView({ name: 'settings' })}
+          />
+        )}
+        {view.name === 'create' && (
+          <CreateView
+            sessions={sessions}
+            hasChatKey={Boolean(settings?.anthropicApiKey || settings?.groqApiKey)}
+            onOpenSettings={() => setView({ name: 'settings' })}
+            onOpenSessionAt={openSession}
           />
         )}
         {view.name === 'events' && (

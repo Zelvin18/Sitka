@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
-import type { TranscriptSegment } from '@shared/types'
+import { ON_SCREEN_PREFIX, type TranscriptSegment } from '@shared/types'
 import { formatTime } from '../lib/format'
+import { IconScreen } from '../lib/icons'
 
 interface Props {
   segments: TranscriptSegment[]
@@ -39,17 +40,28 @@ export default function TranscriptPane({
       {segments.length === 0 && !transcribing && (
         <div className="transcript-waiting">{emptyText}</div>
       )}
-      {segments.map((seg, i) => (
-        <div
-          key={`${seg.start}-${i}`}
-          className={`transcript-seg${i === activeIndex ? ' active' : ''}`}
-          data-seg-start={seg.start}
-          onClick={() => onSeek?.(seg.start)}
-        >
-          <span className="ts">{formatTime(seg.start)}</span>
-          <span className="transcript-text">{seg.text}</span>
-        </div>
-      ))}
+      {segments.map((seg, i) => {
+        const onScreen = seg.text.startsWith(ON_SCREEN_PREFIX)
+        return (
+          <div
+            key={`${seg.start}-${i}`}
+            className={`transcript-seg${i === activeIndex ? ' active' : ''}${onScreen ? ' onscreen' : ''}`}
+            data-seg-start={seg.start}
+            onClick={() => onSeek?.(seg.start)}
+          >
+            <span className="ts">{formatTime(seg.start)}</span>
+            <span className="transcript-text">
+              {onScreen && (
+                <span className="onscreen-tag">
+                  <IconScreen size={11} strokeWidth={2} />
+                  On screen
+                </span>
+              )}
+              {onScreen ? seg.text.slice(ON_SCREEN_PREFIX.length) : seg.text}
+            </span>
+          </div>
+        )
+      })}
       {transcribing && (
         <div className="transcript-waiting">
           <span className="dots">

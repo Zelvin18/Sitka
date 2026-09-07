@@ -7,6 +7,7 @@ import type {
   BrainConversation,
   ChatMessage,
   CoachProject,
+  Creation,
   EventReport,
   ScheduledEvent,
   SessionData,
@@ -231,6 +232,59 @@ const coachPath = (): string => join(userData(), 'coach-projects.json')
 const coachMaterialsDir = (): string => join(userData(), 'coach-materials')
 const coachMaterialsPath = (id: string): string => join(coachMaterialsDir(), `${id}.json`)
 const coachSimPath = (id: string): string => join(coachMaterialsDir(), `${id}-sim.json`)
+
+// ---------- visual memory: key frames per session ----------
+
+const slidesDir = (id: string): string => join(sessionDir(id), 'slides')
+const slidesPath = (id: string): string => join(sessionDir(id), 'slides.json')
+
+interface StoredSlide {
+  time: number
+  text: string
+  file: string
+}
+
+export function addSlide(id: string, time: number, text: string, jpeg: Buffer): void {
+  mkdirSync(slidesDir(id), { recursive: true })
+  const file = `${String(Math.round(time * 10)).padStart(7, '0')}.jpg`
+  writeFileSync(join(slidesDir(id), file), jpeg)
+  const all = readJson<StoredSlide[]>(slidesPath(id), [])
+  all.push({ time, text, file })
+  all.sort((a, b) => a.time - b.time)
+  writeJson(slidesPath(id), all)
+}
+
+/** Key frames with their images inlined as data URLs. */
+export function getSlides(id: string): { time: number; text: string; image: string }[] {
+  const all = readJson<StoredSlide[]>(slidesPath(id), [])
+  return all.flatMap((s) => {
+    const p = join(slidesDir(id), s.file)
+    if (!existsSync(p)) return []
+    const b64 = readFileSync(p).toString('base64')
+    return [{ time: s.time, text: s.text, image: `data:image/jpeg;base64,${b64}` }]
+  })
+}
+
+// ---------- Create: documents, presentations, code ----------
+
+const creationsPath = (): string => join(userData(), 'creations.json')
+
+export function listCreations(): Creation[] {
+  return readJson<Creation[]>(creationsPath(), []).sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export function saveCreation(c: Creation): void {
+  const all = listCreations().filter((x) => x.id !== c.id)
+  all.push(c)
+  writeJson(creationsPath(), all)
+}
+
+export function deleteCreation(id: string): void {
+  writeJson(
+    creationsPath(),
+    listCreations().filter((x) => x.id !== id)
+  )
+}
 
 export function listCoachProjects(): CoachProject[] {
   return readJson<CoachProject[]>(coachPath(), []).sort((a, b) => b.createdAt - a.createdAt)

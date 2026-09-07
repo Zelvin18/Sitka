@@ -61,6 +61,46 @@ export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
 export const IconPlus = (p: IconProps) =>
   base(p.size, p.strokeWidth, <path d="M12 5v14M5 12h14" />)
 
+export const IconWand = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M4 20 14.5 9.5" />
+      <path d="M13 8l3 3" />
+      <path d="M17.5 3v2.5M17.5 9.5V12M14 6.25h2.5M20.5 6.25H23" transform="translate(-2 0)" />
+    </>
+  )
+
+export const IconDoc = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M6 3h8l5 5v13H6z" />
+      <path d="M14 3v5h5M9 13h6M9 17h6" />
+    </>
+  )
+
+export const IconSlides = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M12 16v4M8.5 20h7M7 12l3-3 2.5 2.5L16 8" />
+    </>
+  )
+
+export const IconCode = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="m8 8-4.5 4L8 16M16 8l4.5 4L16 16M13.5 5l-3 14" />
+    </>
+  )
+
 export const IconBriefcase = (p: IconProps) =>
   base(
     p.size,

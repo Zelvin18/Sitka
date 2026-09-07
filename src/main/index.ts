@@ -29,12 +29,16 @@ import {
 import {
   checkCoverage,
   completeText,
+  describeImage,
   detectNudge,
   extractJson,
   hostSystemPrompt,
   streamChatGeneric,
   transcriptBlock
 } from './ai'
+import { createSystemPrompt, createUserPrompt, finishCreation } from '@shared/createLogic'
+import { ON_SCREEN_PREFIX } from '@shared/types'
+import type { CreateRequest, Creation } from '@shared/types'
 import * as store from './store'
 import { SAMPLE_TITLE, sampleDurationMs, sampleSegments } from '@shared/sample'
 import { remuxSession } from './remux'
@@ -793,6 +797,74 @@ function registerIpc(): void {
     }
     return res
   })
+  // ---------- visual memory: what was on screen, read by a vision model ----------
+
+  ipcMain.handle('slides:add', async (_e, sessionId: string, time: number, dataUrl: string) => {
+    const keys = aiKeys()
+    if (!keys.anthropicApiKey && !keys.groqApiKey) return { text: '' }
+    const m = dataUrl.match(/^data:image\/jpeg;base64,(.+)$/)
+    if (!m) return { text: '' }
+    try {
+      const text = await describeImage(keys, dataUrl)
+      if (!text) return { text: '' }
+      store.addSlide(sessionId, time, text, Buffer.from(m[1], 'base64'))
+      // The description joins the transcript, so search, notes, memory and
+      // shared recaps all know what was on screen at that moment.
+      store.appendTranscript(sessionId, [
+        { start: time, end: time + 1, text: ON_SCREEN_PREFIX + text }
+      ])
+      return { text }
+    } catch (err) {
+      return { text: '', error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('slides:list', (_e, sessionId: string) => store.getSlides(sessionId))
+
+  // ---------- Create: documents, presentations, code ----------
+
+  ipcMain.handle('create:list', () => store.listCreations())
+  ipcMain.handle('create:save', (_e, c: Creation) => store.saveCreation(c))
+  ipcMain.handle('create:delete', (_e, id: string) => store.deleteCreation(id))
+  ipcMain.handle('create:generate', async (_e, req: CreateRequest) => {
+    const keys = aiKeys()
+    if (!keys.anthropicApiKey && !keys.groqApiKey) return { error: 'missing-key' }
+    try {
+      const contexts = req.sessionIds.flatMap((id) => {
+        const meta = store.getMeta(id)
+        return meta ? [{ title: meta.title, segments: store.getTranscript(id) }] : []
+      })
+      const raw = await completeText(
+        keys,
+        createSystemPrompt(req.kind),
+        createUserPrompt(req, contexts)
+      )
+      const existing = req.previous
+        ? store.listCreations().find((c) => c.id === req.previous?.id)
+        : undefined
+      const creation = finishCreation(req, raw, existing)
+      if (!creation.id) creation.id = randomUUID()
+      store.saveCreation(creation)
+      return { creation }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('file:saveText', async (_e, name: string, content: string) => {
+    const ext = name.includes('.') ? name.split('.').pop() ?? 'txt' : 'txt'
+    const result = await dialog.showSaveDialog({
+      title: 'Save',
+      defaultPath: name,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+    })
+    if (result.canceled || !result.filePath) return { canceled: true }
+    try {
+      await fsp.writeFile(result.filePath, content, 'utf-8')
+      return { ok: true }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('memory:list', () => loadMemory())
   ipcMain.handle(
     'memory:update',

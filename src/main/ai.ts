@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '@shared/visionLogic'
 import type {
   ChatMessage,
   SessionHighlight,
@@ -481,6 +482,63 @@ export async function completeText(keys: AiKeys, system: string, user: string): 
     { role: 'system', content: system },
     { role: 'user', content: user }
   ])
+}
+
+/**
+ * Read a screen frame with a vision model. Returns '' when nothing informative
+ * is on screen or when no vision-capable model is available.
+ */
+export async function describeImage(keys: AiKeys, dataUrl: string): Promise<string> {
+  const frame = parseDataUrl(dataUrl)
+  if (!frame) return ''
+  let out = ''
+  if (keys.anthropicApiKey) {
+    const client = new Anthropic({ apiKey: keys.anthropicApiKey })
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: DESCRIBE_SCREEN,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: frame.mediaType as 'image/jpeg',
+                data: frame.data
+              }
+            },
+            { type: 'text', text: DESCRIBE_ASK }
+          ]
+        }
+      ]
+    })
+    out = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+  } else {
+    const model = await pickGroqVisionModel(keys.groqApiKey).catch(() => null)
+    if (!model) return ''
+    out = await groqChat(
+      keys.groqApiKey,
+      [
+        { role: 'system', content: DESCRIBE_SCREEN },
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: dataUrl } },
+            { type: 'text', text: DESCRIBE_ASK }
+          ]
+        }
+      ],
+      undefined,
+      model
+    )
+  }
+  return cleanDescription(out)
 }
 
 export function extractJson<T>(text: string): T | null {

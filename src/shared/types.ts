@@ -298,3 +298,56 @@ export interface BrainConversation {
   updatedAt: number
   messages: ChatMessage[]
 }
+
+// ---------- visual memory: key frames of what was on screen ----------
+
+export interface Slide {
+  /** seconds from session start */
+  time: number
+  /** what the vision model read off the screen (text, charts, diagrams) */
+  text: string
+  /** image source: a data URL (desktop) or a signed URL (web) */
+  image: string
+}
+
+/** Transcript lines that describe the screen start with this marker. */
+export const ON_SCREEN_PREFIX = '[On screen] '
+
+// ---------- Create: documents, presentations and code Sitka designs ----------
+
+export type CreationKind = 'document' | 'presentation' | 'code'
+
+export interface Creation {
+  id: string
+  kind: CreationKind
+  title: string
+  /** what the user asked for */
+  prompt: string
+  /** document: markdown · presentation: JSON (PresentationDeck) · code: markdown with fenced files */
+  content: string
+  /** sessions the work was grounded in */
+  sessionIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface PresentationSlide {
+  title: string
+  bullets: string[]
+  /** speaker notes */
+  notes?: string
+}
+
+export interface PresentationDeck {
+  title: string
+  subtitle?: string
+  slides: PresentationSlide[]
+}
+
+export interface CreateRequest {
+  kind: CreationKind
+  prompt: string
+  sessionIds: string[]
+  /** refine an existing creation instead of starting fresh */
+  previous?: { id: string; content: string; instruction: string }
+}

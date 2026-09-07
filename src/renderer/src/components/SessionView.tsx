@@ -1,6 +1,6 @@
 import { IconMic } from '../lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { SessionData, SessionMeta } from '@shared/types'
+import type { SessionData, SessionMeta, Slide } from '@shared/types'
 import ChatPane from './ChatPane'
 import TranscriptPane from './TranscriptPane'
 import NotesPane from './NotesPane'
@@ -57,6 +57,18 @@ export default function SessionView({
   const [exported, setExported] = useState(false)
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [slides, setSlides] = useState<Slide[]>([])
+
+  // Visual memory: the key frames of what was on screen, as a filmstrip.
+  useEffect(() => {
+    let cancelled = false
+    void window.sitka.listSlides(sessionId).then((s) => {
+      if (!cancelled) setSlides(s)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, refreshToken])
   const videoRef = useRef<HTMLVideoElement>(null)
   const durationFixedRef = useRef(false)
   const pendingSeekRef = useRef<number | null>(null)
@@ -340,6 +352,26 @@ export default function SessionView({
           }}
           onReset={() => setVideoH(320)}
         />
+
+        {slides.length > 0 && (
+          <div className="filmstrip" title="What was on screen — tap a frame to jump there">
+            {slides.map((s, i) => {
+              const next = slides[i + 1]?.time ?? Number.POSITIVE_INFINITY
+              const active = currentTime >= s.time && currentTime < next
+              return (
+                <button
+                  key={`${s.time}-${i}`}
+                  className={`film${active ? ' active' : ''}`}
+                  title={s.text}
+                  onClick={() => seek(s.time)}
+                >
+                  <img src={s.image} alt="" loading="lazy" />
+                  <span className="film-time">{formatTime(s.time)}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0' }}>
           <button

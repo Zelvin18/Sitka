@@ -14,6 +14,8 @@ import NotesPane from './NotesPane'
 import Splitter from './Splitter'
 import QRCode from 'qrcode'
 import AudioLevel from './AudioLevel'
+import { ON_SCREEN_PREFIX } from '@shared/types'
+import { frameDifference } from '@shared/visionLogic'
 import {
   IconBroadcast,
   IconMic,
@@ -545,11 +547,10 @@ export default function LiveSession({
     }
   }, [phase, hasChatKey, segments.length, refreshNotes])
 
-  // Capture the current screen frame as a JPEG data URL for vision questions.
-  const getFrame = useCallback((): string | null => {
+  // Capture the current screen frame as a JPEG data URL.
+  const captureFrame = useCallback((maxW: number, quality: number): string | null => {
     const v = previewRef.current
     if (!v || v.videoWidth === 0) return null
-    const maxW = 1280
     const scale = Math.min(1, maxW / v.videoWidth)
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(v.videoWidth * scale)
@@ -558,11 +559,66 @@ export default function LiveSession({
     if (!ctx) return null
     ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
     try {
-      return canvas.toDataURL('image/jpeg', 0.7)
+      return canvas.toDataURL('image/jpeg', quality)
     } catch {
       return null
     }
   }, [])
+  // Full-size frame for vision questions ("what does this graph show?").
+  const getFrame = useCallback((): string | null => captureFrame(1280, 0.7), [captureFrame])
+
+  // ---- visual memory: keep a key frame whenever the screen settles on something new ----
+  // A tiny grayscale thumbnail is compared every few seconds; when the screen
+  // has changed since the last kept frame and has stopped changing, the frame
+  // is read by the vision model and joins the transcript as an "On screen" line.
+  const lastSampleRef = useRef<Uint8ClampedArray | null>(null)
+  const lastKeptRef = useRef<Uint8ClampedArray | null>(null)
+  const lastKeptAtRef = useRef(0)
+  const slideBusyRef = useRef(false)
+  const slideCountRef = useRef(0)
+  useEffect(() => {
+    if (phase !== 'recording' || captureMode !== 'screen' || !hasChatKey) return undefined
+    const t = setInterval(() => {
+      const v = previewRef.current
+      if (!v || v.videoWidth === 0 || slideBusyRef.current || slideCountRef.current >= 150) return
+      const c = document.createElement('canvas')
+      c.width = 48
+      c.height = 27
+      const ctx = c.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(v, 0, 0, 48, 27)
+      const px = ctx.getImageData(0, 0, 48, 27).data
+      const prev = lastSampleRef.current
+      lastSampleRef.current = px
+      if (!prev) return
+      if (frameDifference(prev, px) > 0.02) return // still changing — wait for it to settle
+      const kept = lastKeptRef.current
+      if (kept && frameDifference(kept, px) < 0.1) return // same screen as the last key frame
+      if (Date.now() - lastKeptAtRef.current < 6000) return
+      const frame = captureFrame(960, 0.62)
+      const id = sessionIdRef.current
+      if (!frame || !id) return
+      lastKeptRef.current = px
+      lastKeptAtRef.current = Date.now()
+      slideBusyRef.current = true
+      const time = Math.max(0, (Date.now() - sessionStartRef.current) / 1000)
+      void window.sitka
+        .addSlide(id, time, frame)
+        .then((r) => {
+          if (!r.text) return
+          slideCountRef.current++
+          setSegments((all) =>
+            [...all, { start: time, end: time + 1, text: ON_SCREEN_PREFIX + r.text }].sort(
+              (a, b) => a.start - b.start
+            )
+          )
+        })
+        .finally(() => {
+          slideBusyRef.current = false
+        })
+    }, 3000)
+    return () => clearInterval(t)
+  }, [phase, captureMode, hasChatKey, captureFrame])
 
   // ---- live stage view: mirror the screen to attendee phones every 2s ----
   useEffect(() => {

@@ -8,7 +8,10 @@ import type {
   BrainStats,
   CoachProject,
   CoachRehearsal,
+  CreateRequest,
+  Creation,
   EventReport,
+  Slide,
   MemoryObject,
   ScheduledEvent,
   SimDifficulty,
@@ -100,6 +103,28 @@ const api = {
     ipcRenderer.invoke('transcribe:chunk', id, chunk, offsetSec),
 
   askAi: (req: AskRequest): Promise<void> => ipcRenderer.invoke('ai:ask', req),
+
+  // ---------- visual memory (key frames of the screen) ----------
+  addSlide: (
+    sessionId: string,
+    time: number,
+    dataUrl: string
+  ): Promise<{ text: string; error?: string }> =>
+    ipcRenderer.invoke('slides:add', sessionId, time, dataUrl),
+  listSlides: (sessionId: string): Promise<Slide[]> =>
+    ipcRenderer.invoke('slides:list', sessionId),
+
+  // ---------- Create: documents, presentations, code ----------
+  listCreations: (): Promise<Creation[]> => ipcRenderer.invoke('create:list'),
+  saveCreation: (c: Creation): Promise<void> => ipcRenderer.invoke('create:save', c),
+  deleteCreation: (id: string): Promise<void> => ipcRenderer.invoke('create:delete', id),
+  generateCreation: (req: CreateRequest): Promise<{ creation?: Creation; error?: string }> =>
+    ipcRenderer.invoke('create:generate', req),
+  saveTextFile: (
+    name: string,
+    content: string
+  ): Promise<{ ok?: boolean; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('file:saveText', name, content),
 
   askBrain: (req: BrainAskRequest): Promise<void> => ipcRenderer.invoke('brain:ask', req),
   searchLibrary: (query: string): Promise<BrainSearchHit[]> =>
