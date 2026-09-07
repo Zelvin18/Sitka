@@ -1107,6 +1107,27 @@ body {
   opacity: 0.85;
 }
 
+/* On pages with a chat box or a refine bar, the mic steps up above the input
+   row and fades back, so it never covers a send button. Hover brings it back. */
+.app:has(.chat-input-wrap) .quick-rec:not(.live),
+.app:has(.create-refine) .quick-rec:not(.live) {
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  width: 44px;
+  height: 44px;
+  opacity: 0.55;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.app:has(.chat-input-wrap) .quick-rec:not(.live):hover,
+.app:has(.create-refine) .quick-rec:not(.live):hover {
+  opacity: 1;
+}
+
+.app:has(.chat-input-wrap) .quick-rec.live,
+.app:has(.create-refine) .quick-rec.live {
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+}
+
 @media (max-width: 860px) {
   .quick-rec {
     right: 16px;
@@ -1116,6 +1137,12 @@ body {
   }
   .quick-rec.live {
     height: 48px;
+  }
+  .app:has(.chat-input-wrap) .quick-rec:not(.live),
+  .app:has(.create-refine) .quick-rec:not(.live) {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    width: 46px;
+    height: 46px;
   }
 }
 

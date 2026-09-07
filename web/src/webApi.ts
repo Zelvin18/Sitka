@@ -395,6 +395,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '',
       'Rules:',
       '- Ground every answer in the transcript. If something was not covered, say so plainly instead of guessing.',
+      '- If the question has nothing to do with this session, say so in one short clause and then answer briefly from general knowledge: a few plain sentences, no headings or long lists. The user is in the middle of a session and should not be pulled away from it; go deeper only if they ask again. Never present general knowledge as something the speaker said.',
       '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
       '- When you reference a specific moment, cite it inline with the exact format [[M:SS]] or [[H:MM:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Never cite a range — cite the moment it starts. The app turns these into clickable links that jump the recording to that moment.',
       '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
