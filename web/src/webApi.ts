@@ -1094,6 +1094,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // ---------- the API ----------
   const api: SitkaApi = {
     getSettings: async () => getSettings(),
+    getProfile: async () => {
+      const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
+      const name = (meta.full_name || meta.name || user.email?.split('@')[0] || 'You').trim()
+      return { name, email: user.email ?? undefined, cloud: true }
+    },
+    signOut: async () => {
+      await sb.auth.signOut()
+      location.href = '/app'
+    },
     setSettings: async (s: Settings) => {
       localStorage.setItem(
         SETTINGS_KEY,

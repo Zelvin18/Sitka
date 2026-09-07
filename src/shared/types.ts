@@ -301,6 +301,16 @@ export interface BrainConversation {
   messages: ChatMessage[]
 }
 
+// ---------- who is using Sitka (shown top right) ----------
+
+export interface Profile {
+  /** display name: the account name online, the computer's user offline */
+  name: string
+  email?: string
+  /** true when signed in to the online workspace; false on the desktop's local workspace */
+  cloud: boolean
+}
+
 // ---------- session materials: what the user shared so Sitka knows the plan ----------
 
 export interface SessionMaterial {

@@ -13,6 +13,7 @@ import type {
   EventReport,
   Slide,
   MemoryObject,
+  Profile,
   ScheduledEvent,
   SimDifficulty,
   TranscriptSegment,
@@ -29,6 +30,9 @@ import type {
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
+  getProfile: (): Promise<Profile> => ipcRenderer.invoke('profile:get'),
+  /** Online: sign out and return to the gate. Desktop: nothing to sign out of. */
+  signOut: (): Promise<void> => ipcRenderer.invoke('profile:signOut'),
   setSettings: (s: Settings): Promise<void> => ipcRenderer.invoke('settings:set', s),
 
   listSources: (): Promise<CaptureSource[]> => ipcRenderer.invoke('sources:list'),

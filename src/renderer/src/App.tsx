@@ -15,6 +15,7 @@ import LiveSession from './components/LiveSession'
 import SessionView from './components/SessionView'
 import QuickRecord from './components/QuickRecord'
 import CreateView from './components/CreateView'
+import ProfileMenu from './components/ProfileMenu'
 
 type View =
   | { name: 'homepage' }
@@ -259,6 +260,7 @@ export default function App(): React.JSX.Element {
           </button>
         )}
         {/* The two doors, always in view at the top right. Tapping the open one leads home. */}
+        <div className="top-right">
         <div className="space-switch" role="tablist" aria-label="Sitka for">
           <button
             role="tab"
@@ -280,7 +282,6 @@ export default function App(): React.JSX.Element {
             </span>
             <span className="space-btn-text">Business</span>
           </button>
-          <span className="space-switch-sep" />
           <button
             role="tab"
             aria-selected={space === 'education'}
@@ -301,6 +302,13 @@ export default function App(): React.JSX.Element {
             </span>
             <span className="space-btn-text">Education</span>
           </button>
+        </div>
+        <ProfileMenu
+          sessions={sessions}
+          onSettings={() => setView({ name: 'settings' })}
+          onLibrary={() => setView({ name: 'home' })}
+          onOverview={() => setView({ name: 'brain' })}
+        />
         </div>
         {view.name === 'homepage' && (
           <HomeView

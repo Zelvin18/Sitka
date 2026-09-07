@@ -33,6 +33,8 @@ export function installBrowserMockIfNeeded(): void {
     appendChunk: async () => undefined,
     finalizeSession: async () => null,
     createSampleSession: async () => null,
+    getProfile: async () => ({ name: 'Preview', cloud: false }),
+    signOut: async () => undefined,
     reanalyzeSession: async () => null,
     transcribeChunk: async () => ({ error: 'missing-key' }),
     readVideo: async () => null,

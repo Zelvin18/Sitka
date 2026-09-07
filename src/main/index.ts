@@ -9,6 +9,7 @@ import {
   shell
 } from 'electron'
 import { join } from 'path'
+import { userInfo } from 'os'
 import { createReadStream, existsSync, statSync, promises as fsp } from 'fs'
 import { Readable } from 'stream'
 import type {
@@ -908,6 +909,17 @@ function registerIpc(): void {
       return { error: err instanceof Error ? err.message : String(err) }
     }
   })
+
+  ipcMain.handle('profile:get', () => {
+    let name = 'You'
+    try {
+      name = userInfo().username || name
+    } catch {
+      /* some environments hide the user */
+    }
+    return { name, cloud: false }
+  })
+  ipcMain.handle('profile:signOut', () => undefined)
 
   ipcMain.handle('memory:list', () => loadMemory())
   ipcMain.handle(
