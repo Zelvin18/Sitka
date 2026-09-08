@@ -916,6 +916,217 @@ body {
   }
 }
 
+/* ============ Session setup: three quick choices ============ */
+
+.setup {
+  max-width: 760px;
+  padding-bottom: 0 !important;
+}
+
+.setup-back {
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.setup-hero {
+  margin-bottom: 26px;
+}
+
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+}
+
+.setup-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 16px;
+  padding-bottom: 30px;
+}
+
+/* the line that joins the numbers */
+.setup-step::before {
+  content: '';
+  position: absolute;
+  left: 14.5px;
+  top: 32px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+.setup-step:last-child::before {
+  display: none;
+}
+
+.setup-step-n {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-step-body {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.setup-step-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+
+.setup-optional {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  vertical-align: 2px;
+}
+
+.setup-step-hint {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: -6px 0 12px;
+  line-height: 1.45;
+}
+
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+
+.setup-card-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup .mode-switch,
+.setup .mic-card,
+.setup .web-pick {
+  max-width: none;
+}
+
+.setup .mic-card {
+  margin-top: 10px;
+}
+
+.audio-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.audio-chips-label {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+  margin-right: 2px;
+}
+
+.chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 11px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.chip-toggle:hover {
+  border-color: var(--text-3);
+}
+
+.chip-toggle.on {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* the sticky footer: what will happen, and the one button */
+.setup-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 6px -40px 0;
+  padding: 14px 40px 18px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.setup-foot-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  min-width: 0;
+}
+
+.setup-foot .btn-lg {
+  min-width: 150px;
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+@media (max-width: 860px) {
+  .setup-step {
+    grid-template-columns: 26px 1fr;
+    gap: 12px;
+  }
+  .setup-step::before {
+    left: 12.5px;
+  }
+  .setup-step-n {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+  .setup-foot {
+    margin: 6px -18px 0;
+    padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .setup-foot .btn-lg {
+    width: 100%;
+  }
+}
+
 /* ============ Session materials ============ */
 
 .mat-setup {

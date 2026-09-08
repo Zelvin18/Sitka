@@ -1112,45 +1112,48 @@ export default function LiveSession({
 
   // ============ picking UI ============
   if (phase === 'picking' || phase === 'starting') {
+    const ready = captureMode === 'audio' || Boolean(selectedSource)
+    const kindLabel = KIND_OPTIONS.find((k) => k.key === kind)?.label ?? 'Session'
+    const stepCount = hosting ? 4 : 3
+    let stepNo = 0
+    const step = (): number => ++stepNo
     return (
       <div className="content">
-        <div className="content-inner">
-          <button
-            className="btn btn-ghost btn-sm page-back"
-            onClick={() =>
-              eventLocked
-                ? onGoEvents(initialEventId)
-                : presetKind || presetAudio
-                  ? onCancel()
-                  : setPhase('intent')
-            }
-            disabled={phase === 'starting'}
-          >
-            {eventLocked ? '‹ Event dashboard' : '‹ Back'}
-          </button>
-          {space && !eventLocked && (
-            <div className="eco-kicker">
-              {orgSpaceName ? `Filed in ${orgSpaceName}` : SPACE_COPY[space].kicker}
-            </div>
+        <div className="content-inner setup">
+          {eventLocked && (
+            <button className="link-btn setup-back" onClick={() => onGoEvents(initialEventId)} disabled={phase === 'starting'}>
+              ‹ Event dashboard
+            </button>
           )}
-          <h1 className="page-title">
-            {eventLocked
-              ? `Launch — ${upcoming?.event.title ?? 'your event'}`
-              : hosting
-                ? 'Host a live event'
-                : space
-                  ? SPACE_COPY[space].title
-                  : 'New live session'}
-          </h1>
-          <p className="page-subtitle">
-            {eventLocked
-              ? 'Choose what your audience will follow. The QR you shared goes live the moment you start.'
-              : hosting
-                ? 'Choose what to capture and share with your audience. The join QR code appears as soon as you start.'
-                : space
-                  ? SPACE_COPY[space].subtitle
-                  : 'Choose what Sitka should watch. It will capture the screen and audio, and understand the session as it happens.'}
-          </p>
+          <div className="setup-hero">
+            <div className="eco-kicker">
+              {eventLocked
+                ? 'Launch event'
+                : orgSpaceName
+                  ? `Filed in ${orgSpaceName}`
+                  : space
+                    ? SPACE_COPY[space].kicker
+                    : hosting
+                      ? 'Host a live event'
+                      : 'New session'}
+            </div>
+            <h1 className="page-title">
+              {eventLocked
+                ? upcoming?.event.title ?? 'Your event'
+                : hosting
+                  ? 'Set up your event'
+                  : space
+                    ? SPACE_COPY[space].title
+                    : 'What are we capturing?'}
+            </h1>
+            <p className="page-subtitle" style={{ marginBottom: 0 }}>
+              {eventLocked
+                ? 'Choose what your audience will follow. The QR you shared goes live the moment you start.'
+                : hosting
+                  ? 'Pick what to capture and share. The join QR appears as soon as you start.'
+                  : `${stepCount} quick choices, then Sitka listens, writes, remembers and answers.`}
+            </p>
+          </div>
 
           {error && (
             <div className="notice notice-error">
@@ -1160,238 +1163,249 @@ export default function LiveSession({
           {!hasSttKey && (
             <div className="notice">
               <span>
-                <strong>Transcription is off.</strong> Add an OpenAI key — or a free
-                Groq key — in{' '}
+                <strong>Transcription is off.</strong> Add an OpenAI key — or a free Groq key — in{' '}
                 <span className="link" onClick={onOpenSettings}>
                   Settings
                 </span>{' '}
-                so Sitka can understand what is being said. You can still record without
-                it.
+                so Sitka can understand what is being said. You can still record without it.
               </span>
             </div>
           )}
 
-          {hosting && eventLocked && (
-            <div className="card-soft" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 4 }}>
-              <span className="ev-date" style={{ width: 34, height: 34 }}>
-                <IconBroadcast size={15} />
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 650 }}>{upcoming?.event.title ?? 'Your event'}</div>
-                <div className="field-hint">
-                  {(upcoming?.event.materials?.length ?? 0) > 0
-                    ? `AI briefed with ${upcoming!.event.materials!.length} material${upcoming!.event.materials!.length > 1 ? 's' : ''} · `
-                    : ''}
-                  the QR you shared stays valid — waiting phones connect automatically.
+          <div className="setup-steps">
+            {hosting && (
+              <section className="setup-step">
+                <span className="setup-step-n">{step()}</span>
+                <div className="setup-step-body">
+                  <div className="setup-step-title">The event</div>
+                  {eventLocked ? (
+                    <div className="setup-card setup-card-row">
+                      <span className="ev-date" style={{ width: 34, height: 34 }}>
+                        <IconBroadcast size={15} />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 650 }}>{upcoming?.event.title ?? 'Your event'}</div>
+                        <div className="field-hint">
+                          {(upcoming?.event.materials?.length ?? 0) > 0
+                            ? `AI briefed with ${upcoming!.event.materials!.length} material${upcoming!.event.materials!.length > 1 ? 's' : ''} · `
+                            : ''}
+                          the QR you shared stays valid — waiting phones connect automatically.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="setup-card">
+                      <select
+                        className="input"
+                        value={upcoming?.event.id ?? ''}
+                        onChange={(e) => {
+                          const ev = availableEvents.find((x) => x.id === e.target.value) ?? null
+                          selectEvent(ev)
+                        }}
+                      >
+                        <option value="">Quick event (no preparation)</option>
+                        {availableEvents.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.title}
+                            {e.startsAt
+                              ? ` — ${new Date(e.startsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                              : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="field-hint">
+                        {upcoming ? (
+                          'Going live activates the QR already shared for this event, with its materials briefing the AI.'
+                        ) : (
+                          <>
+                            Prepared events carry documents, an early QR, and a briefed AI —{' '}
+                            <span className="link" onClick={() => onGoEvents()}>
+                              manage events
+                            </span>
+                            .
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  <textarea
+                    className="textarea"
+                    style={{ marginTop: 10 }}
+                    rows={3}
+                    placeholder={'Planned topics, one per line (optional). Sitka ticks them off live and flags what you have not covered.'}
+                    value={agendaText}
+                    onChange={(e) => setAgendaText(e.target.value)}
+                    spellCheck={false}
+                  />
                 </div>
-              </div>
-            </div>
-          )}
-          {hosting && !eventLocked && (
-            <>
-              <div className="section-title">Event</div>
-              <div className="card-soft" style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                <select
-                  className="input"
-                  style={{ flex: 1, minWidth: 220 }}
-                  value={upcoming?.event.id ?? ''}
-                  onChange={(e) => {
-                    const ev = availableEvents.find((x) => x.id === e.target.value) ?? null
-                    selectEvent(ev)
-                  }}
-                >
-                  <option value="">Quick event (no preparation)</option>
-                  {availableEvents.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.title}
-                      {e.startsAt
-                        ? ` — ${new Date(e.startsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-                        : ''}
-                    </option>
-                  ))}
-                </select>
-                <span className="field-hint" style={{ flexBasis: '100%' }}>
-                  {upcoming
-                    ? 'Going live activates the QR already shared for this event, with its materials briefing the AI.'
-                    : (
-                        <>
-                          Prepared events carry documents, an early QR, and a briefed AI —{' '}
-                          <span className="link" onClick={onGoEvents}>
-                            manage events
-                          </span>
-                          .
-                        </>
-                      )}
-                </span>
-              </div>
-            </>
-          )}
+              </section>
+            )}
 
-          {hosting && (
-            <>
-              <div className="section-title">Planned topics (optional)</div>
-              <textarea
-                className="textarea"
-                rows={4}
-                placeholder={
-                  'One topic per line — Sitka ticks them off live and flags what you haven’t covered.\ne.g.\nWhy limits matter\nThe formal definition\nWorked example'
-                }
-                value={agendaText}
-                onChange={(e) => setAgendaText(e.target.value)}
-                spellCheck={false}
-              />
-            </>
-          )}
-
-          {!eventLocked && (
-            <>
-              <div className="section-title">This is a…</div>
-              <div className="kind-row">
-                {KIND_OPTIONS.map((k) => (
-                  <button
-                    key={k.key}
-                    className={`kind-chip${kind === k.key ? ' sel' : ''}`}
-                    onClick={() => setKind(k.key)}
-                  >
-                    {k.label}
-                    {k.hint && <span className="kind-hint">{k.hint}</span>}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="section-title">Materials</div>
-          <div className="mat-setup">
-            <MaterialsPanel
-              materials={pendingMats}
-              onAdd={async (name, text) =>
-                setPendingMats((prev) => [
-                  ...prev,
-                  { id: `${Date.now()}-${prev.length}`, name, text, chars: text.length, addedAt: Date.now() }
-                ])
-              }
-              onRemove={async (id) => setPendingMats((prev) => prev.filter((m) => m.id !== id))}
-            />
-          </div>
-
-          <div className="section-title">Capture</div>
-          <div className="mode-switch">
-            <button
-              type="button"
-              className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
-              onClick={() => setCaptureMode('screen')}
-            >
-              <IconScreen size={18} strokeWidth={1.7} />
-              <span className="mode-title">Screen + audio</span>
-              <span className="mode-desc">Slides, a call, a video — with the sound.</span>
-            </button>
-            <button
-              type="button"
-              className={`mode-tile${captureMode === 'audio' ? ' on' : ''}`}
-              onClick={() => setCaptureMode('audio')}
-            >
-              <IconMic size={18} strokeWidth={1.7} />
-              <span className="mode-title">Audio only</span>
-              <span className="mode-desc">Just listen — in person, quick and simple.</span>
-            </button>
-          </div>
-          {captureMode === 'audio' ? (
-            <div className="mic-card">
-              <div className="mic-card-top">
-                <span className={`mic-dot${micPreview ? ' live' : ''}`} />
-                <span>{micPreview ? 'Microphone ready — say something' : 'Waiting for microphone access…'}</span>
-              </div>
-              <AudioLevel stream={micPreview} />
-              <div className="field-hint">
-                Sitka listens, transcribes, takes notes and answers exactly as it does with video.
-              </div>
-            </div>
-          ) : IS_WEB ? (
-            <button
-              type="button"
-              className={`web-pick${webStream ? ' has-stream' : ''}`}
-              onClick={() => void pickWebScreen()}
-              title="Choose a screen, window or tab"
-            >
-              {webStream ? (
-                <>
-                  <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
-                  <div className="web-pick-bar">
-                    <span className="web-pick-live" />
-                    <span className="web-pick-label">{webLabel(webStream)}</span>
-                    <span className="web-pick-change">Tap to change</span>
+            {!eventLocked && (
+              <section className="setup-step">
+                <span className="setup-step-n">{step()}</span>
+                <div className="setup-step-body">
+                  <div className="setup-step-title">This is a…</div>
+                  <div className="kind-row">
+                    {KIND_OPTIONS.map((k) => (
+                      <button
+                        key={k.key}
+                        className={`kind-chip${kind === k.key ? ' sel' : ''}`}
+                        onClick={() => setKind(k.key)}
+                      >
+                        {k.label}
+                        {k.hint && <span className="kind-hint">{k.hint}</span>}
+                      </button>
+                    ))}
                   </div>
+                </div>
+              </section>
+            )}
+
+            <section className="setup-step">
+              <span className="setup-step-n">{step()}</span>
+              <div className="setup-step-body">
+                <div className="setup-step-title">What should Sitka watch?</div>
+                <div className="mode-switch">
+                  <button
+                    type="button"
+                    className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
+                    onClick={() => setCaptureMode('screen')}
+                  >
+                    <IconScreen size={18} strokeWidth={1.7} />
+                    <span className="mode-title">Screen + audio</span>
+                    <span className="mode-desc">Slides, a call, a video — with the sound.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`mode-tile${captureMode === 'audio' ? ' on' : ''}`}
+                    onClick={() => setCaptureMode('audio')}
+                  >
+                    <IconMic size={18} strokeWidth={1.7} />
+                    <span className="mode-title">Audio only</span>
+                    <span className="mode-desc">Just listen — in person, quick and simple.</span>
+                  </button>
+                </div>
+                {captureMode === 'audio' ? (
+                  <div className="mic-card">
+                    <div className="mic-card-top">
+                      <span className={`mic-dot${micPreview ? ' live' : ''}`} />
+                      <span>{micPreview ? 'Microphone ready — say something' : 'Waiting for microphone access…'}</span>
+                    </div>
+                    <AudioLevel stream={micPreview} />
+                  </div>
+                ) : IS_WEB ? (
+                  <button
+                    type="button"
+                    className={`web-pick${webStream ? ' has-stream' : ''}`}
+                    onClick={() => void pickWebScreen()}
+                    title="Choose a screen, window or tab"
+                  >
+                    {webStream ? (
+                      <>
+                        <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
+                        <div className="web-pick-bar">
+                          <span className="web-pick-live" />
+                          <span className="web-pick-label">{webLabel(webStream)}</span>
+                          <span className="web-pick-change">Tap to change</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="web-pick-empty">
+                        <div className="web-pick-icon">
+                          <IconScreen size={26} strokeWidth={1.5} />
+                        </div>
+                        <div className="web-pick-title">Tap to choose your screen</div>
+                        <div className="web-pick-sub">
+                          Your entire screen, one window, or a browser tab — like sharing in a call.
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                ) : (
+                  <div className="source-grid">
+                    {sources.map((s) => (
+                      <button
+                        key={s.id}
+                        className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
+                        onClick={() => setSelectedSource(s.id)}
+                      >
+                        <img className="source-thumb" src={s.thumbnail} alt="" />
+                        <div className="source-name">{s.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {captureMode === 'screen' && (
+                  <div className="audio-chips">
+                    <span className="audio-chips-label">Sound from</span>
+                    <button
+                      type="button"
+                      className={`chip-toggle${systemAudioOn ? ' on' : ''}`}
+                      onClick={() => setSystemAudioOn((v) => !v)}
+                      title="What you hear — the speaker in a call, a video, the lecture audio"
+                    >
+                      <IconScreen size={13} strokeWidth={1.9} />
+                      The screen
+                    </button>
+                    <button
+                      type="button"
+                      className={`chip-toggle${micOn ? ' on' : ''}`}
+                      onClick={() => setMicOn((v) => !v)}
+                      title="Your own voice — for in-person lectures and meetings"
+                    >
+                      <IconMic size={13} strokeWidth={1.9} />
+                      My microphone
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="setup-step">
+              <span className="setup-step-n">{step()}</span>
+              <div className="setup-step-body">
+                <div className="setup-step-title">
+                  Anything Sitka should read first? <span className="setup-optional">optional</span>
+                </div>
+                <div className="setup-step-hint">
+                  Slides, notes or an agenda. Sitka reads them before it listens, so it knows where the session is heading.
+                </div>
+                <MaterialsPanel
+                  compact
+                  materials={pendingMats}
+                  onAdd={async (name, text) =>
+                    setPendingMats((prev) => [
+                      ...prev,
+                      { id: `${Date.now()}-${prev.length}`, name, text, chars: text.length, addedAt: Date.now() }
+                    ])
+                  }
+                  onRemove={async (id) => setPendingMats((prev) => prev.filter((m) => m.id !== id))}
+                />
+              </div>
+            </section>
+          </div>
+
+          <div className="setup-foot">
+            <div className="setup-foot-text">
+              {phase === 'starting' ? (
+                <>
+                  <Mark size={15} live /> Starting…
+                </>
+              ) : ready ? (
+                <>
+                  <Mark size={15} />
+                  {captureMode === 'audio' ? 'Listening through your microphone' : 'Watching your screen'} ·{' '}
+                  {kindLabel.toLowerCase()}
+                  {pendingMats.length > 0 ? ` · ${pendingMats.length} ${pendingMats.length === 1 ? 'document' : 'documents'} read` : ''}
                 </>
               ) : (
-                <div className="web-pick-empty">
-                  <div className="web-pick-icon">
-                    <IconScreen size={26} strokeWidth={1.5} />
-                  </div>
-                  <div className="web-pick-title">Tap to choose your screen</div>
-                  <div className="web-pick-sub">
-                    Your entire screen, one window, or a browser tab — like sharing in a call.
-                  </div>
-                </div>
+                'Choose a screen to continue'
               )}
-            </button>
-          ) : (
-            <div className="source-grid">
-              {sources.map((s) => (
-                <button
-                  key={s.id}
-                  className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
-                  onClick={() => setSelectedSource(s.id)}
-                >
-                  <img className="source-thumb" src={s.thumbnail} alt="" />
-                  <div className="source-name">{s.name}</div>
-                </button>
-              ))}
             </div>
-          )}
-
-          {captureMode === 'screen' && (
-          <>
-          <div className="section-title">Audio</div>
-          <div className="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
-            <div className="toggle-row">
-              <div>
-                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <IconScreen size={14} /> System audio
-                </div>
-                <div className="field-hint">
-                  What you hear — the speaker in a call, a video, the lecture audio.
-                </div>
-              </div>
-              <button
-                className={`switch${systemAudioOn ? ' on' : ''}`}
-                onClick={() => setSystemAudioOn((v) => !v)}
-                aria-label="Toggle system audio"
-              />
-            </div>
-            <div className="toggle-row">
-              <div>
-                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <IconMic size={14} /> Microphone
-                </div>
-                <div className="field-hint">
-                  Your own voice — useful for in-person lectures and meetings.
-                </div>
-              </div>
-              <button
-                className={`switch${micOn ? ' on' : ''}`}
-                onClick={() => setMicOn((v) => !v)}
-                aria-label="Toggle microphone"
-              />
-            </div>
-          </div>
-          </>
-          )}
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 28 }}>
             <button
               className="btn btn-primary btn-lg"
-              disabled={(captureMode === 'screen' && !selectedSource) || phase === 'starting'}
+              disabled={!ready || phase === 'starting'}
               onClick={() => void start()}
             >
               {phase === 'starting' ? (
@@ -1403,7 +1417,7 @@ export default function LiveSession({
               ) : hosting ? (
                 'Start & show QR'
               ) : (
-                'Start session'
+                'Start'
               )}
             </button>
           </div>
