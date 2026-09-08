@@ -7023,3 +7023,188 @@ body.dragging-row .splitter-h {
     padding: 58px 14px 80px;
   }
 }
+
+/* ============ The fixed frame ============
+   The app never scrolls as a page and never pans sideways: the window is a
+   frame, every panel scrolls inside it, and nothing can be wider than the
+   screen. This is what makes the phone feel like an app, not a web page. */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app {
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.main {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.content,
+.brain-results,
+.brain-body,
+.create-main,
+.create-body,
+.transcript,
+.chat-scroll {
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.content-inner,
+.brain-hero,
+.brain-searchwrap,
+.brain-recents,
+.org-space-head,
+.session-header,
+.create-head {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+img,
+video {
+  max-width: 100%;
+}
+
+/* tab rows never widen the page: they scroll inside themselves */
+.seg {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.seg::-webkit-scrollbar {
+  display: none;
+}
+
+.seg-btn {
+  white-space: nowrap;
+  flex: none;
+}
+
+@media (max-width: 860px) {
+  /* the top bar respects the phone's notch */
+  .main-bar {
+    height: calc(44px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .top-right {
+    top: env(safe-area-inset-top, 0px);
+  }
+  .global-back {
+    top: calc(9px + env(safe-area-inset-top, 0px));
+  }
+  .content-inner {
+    padding-top: calc(60px + env(safe-area-inset-top, 0px));
+  }
+  .brain-hero,
+  .org-space-head {
+    padding: calc(58px + env(safe-area-inset-top, 0px)) 16px 0;
+  }
+  .brain-searchwrap,
+  .brain-recents,
+  .brain-results {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .session-header {
+    padding: calc(52px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+  .chat-header {
+    padding: calc(52px + env(safe-area-inset-top, 0px)) 16px 10px;
+  }
+  .session-layout .session-right .chat-header {
+    padding-top: 10px;
+  }
+  .chat-input-wrap {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .create-head {
+    padding: calc(56px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+  .create-body {
+    padding: 16px;
+  }
+  .create-refine {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .transcript {
+    padding: 14px 16px 20px;
+  }
+  .filmstrip,
+  .pending-bar {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  /* headers: one column, buttons in a row beneath */
+  .org-head {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .org-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    margin-top: 0;
+  }
+  .org-meta {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .org-section-row {
+    flex-wrap: wrap;
+  }
+  .org-space-title-row .btn {
+    flex: 1;
+  }
+  .session-meta-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .session-header-row .btn {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .brain-modes {
+    gap: 8px;
+  }
+  .share-card,
+  .mat-drop {
+    padding: 12px;
+  }
+  .mat-drop-hint {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .setup-hero .page-title {
+    font-size: 24px;
+  }
+  .eco-pillars {
+    grid-template-columns: 1fr;
+  }
+  .home-recent {
+    grid-template-columns: 1fr 1fr;
+  }
+  .deck-grid {
+    grid-template-columns: 1fr;
+  }
+}

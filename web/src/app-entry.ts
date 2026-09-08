@@ -10,9 +10,44 @@ const sb = createClient(SUPA_URL, SUPA_KEY)
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 
+/**
+ * The app is a fixed frame: it never zooms and never pans sideways. Phones
+ * ignore the viewport's user-scalable flag, so pinch and double-tap zoom are
+ * stopped here as well; scrolling stays inside the app's own panels.
+ */
+function lockFrame(): void {
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false })
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      if ((e as TouchEvent & { scale?: number }).scale !== undefined && (e as TouchEvent & { scale?: number }).scale !== 1) {
+        e.preventDefault()
+      }
+    },
+    { passive: false }
+  )
+  let lastTap = 0
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      const now = Date.now()
+      if (now - lastTap < 320) e.preventDefault()
+      lastTap = now
+    },
+    { passive: false }
+  )
+  document.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) e.preventDefault()
+  }, { passive: false })
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) e.preventDefault()
+  })
+}
+
 async function launch(): Promise<void> {
   el('gatecard').classList.add('hidden')
   el('gateload').classList.remove('hidden')
+  lockFrame()
   const { installWebApi } = await import('./webApi')
   await installWebApi(sb)
   await import('../../src/renderer/src/main')
