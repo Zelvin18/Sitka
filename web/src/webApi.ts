@@ -40,7 +40,16 @@ import type {
   EventReport,
   Slide,
   MemoryObject,
+  OrgMember,
+  OrgRole,
+  OrgSpace,
+  OrgSpaceKind,
+  Organization,
   ScheduledEvent,
+  Space,
+  SpaceAskRequest,
+  SpaceInsight,
+  SpaceMaterial,
   SessionData,
   SessionMaterial,
   SessionMeta,
@@ -240,7 +249,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (c) return c
     const { data } = await sb.from('sessions').select('*').eq('id', id).single()
     const row = (data as Row | null) ?? readBackups().find((b) => b.id === id) ?? null
-    if (!row) return null
+    if (!row) {
+      // Not mine: it may be shared with me through an organisation space.
+      // That path returns transcript, notes, study and slides — never the
+      // owner's chat or recording.
+      const { data: shared } = await sb.rpc('sitka_space_session', { p_id: id })
+      const s = (Array.isArray(shared) ? shared[0] : shared) as
+        | { id: string; owner: string; meta: SessionMeta; transcript: TranscriptSegment[]; notes: SessionNotes | null; study: StudyPack | null }
+        | undefined
+      if (!s || s.owner === user.id) return null
+      const d: SessionData = {
+        meta: { ...s.meta, readOnly: true },
+        segments: s.transcript || [],
+        chat: [],
+        notes: s.notes || null,
+        study: s.study || null,
+        marks: [],
+        report: null
+      }
+      cache.set(id, d)
+      return d
+    }
     const d = rowToData(row)
     cache.set(id, d)
     return d
@@ -1133,7 +1162,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return (data?.thumb as string) || null
     },
 
-    createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly) => {
+    createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
       const meta: SessionMeta = {
         id: uid(),
         title: title || 'Untitled session',
@@ -1145,7 +1174,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         agenda,
         eventId,
         space,
-        audioOnly: audioOnly || undefined
+        audioOnly: audioOnly || undefined,
+        spaceId: spaceId || undefined
       }
       const { error } = await sb.from('sessions').insert({
         id: meta.id,
@@ -1153,7 +1183,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         meta,
         transcript: [],
         chat: [],
-        marks: []
+        marks: [],
+        ...(spaceId ? { space_id: spaceId } : {})
       })
       if (error) storageProblem(error.message)
       cache.set(meta.id, {
@@ -1748,6 +1779,277 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           error: err instanceof Error ? err.message : String(err)
         })
       }
+    },
+
+    // ---------- organisations: a university or a company, with spaces inside ----------
+    listOrgs: async (): Promise<Organization[]> => {
+      const { data: rows, error } = await sb
+        .from('organizations')
+        .select('id,name,kind,owner,code,lead_code,created_at')
+        .order('created_at', { ascending: true })
+      if (error || !rows) return []
+      const ids = rows.map((r) => r.id as string)
+      if (ids.length === 0) return []
+      const [{ data: members }, { data: spaces }] = await Promise.all([
+        sb.from('org_members').select('org_id,user_id,role').in('org_id', ids),
+        sb.from('org_spaces').select('id,org_id').in('org_id', ids)
+      ])
+      return rows.map((r) => {
+        const mine = (members ?? []).find((m) => m.org_id === r.id && m.user_id === user.id)
+        const role = ((mine?.role as OrgRole) ?? 'member') as OrgRole
+        const lead = role === 'owner' || role === 'lead'
+        return {
+          id: r.id as string,
+          name: r.name as string,
+          kind: r.kind as Space,
+          role,
+          code: lead ? (r.code as string) : undefined,
+          leadCode: role === 'owner' ? (r.lead_code as string) : undefined,
+          members: (members ?? []).filter((m) => m.org_id === r.id).length,
+          spaces: (spaces ?? []).filter((s) => s.org_id === r.id).length,
+          createdAt: new Date(r.created_at as string).getTime()
+        }
+      })
+    },
+    createOrg: async (name: string, kind: Space) => {
+      const clean = name.trim()
+      if (!clean) return { error: 'Give the organisation a name.' }
+      const code = (): string =>
+        Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
+      const id = uid()
+      const { error } = await sb.from('organizations').insert({
+        id,
+        name: clean,
+        kind,
+        owner: user.id,
+        code: code(),
+        lead_code: code()
+      })
+      if (error) {
+        return {
+          error: /relation .* does not exist/i.test(error.message)
+            ? 'Organisations are not set up yet — run supabase/wave9.sql in the Supabase SQL editor.'
+            : error.message
+        }
+      }
+      const profile = await api.getProfile()
+      await sb.from('org_members').insert({
+        org_id: id,
+        user_id: user.id,
+        role: 'owner',
+        name: profile.name,
+        email: profile.email ?? ''
+      })
+      const org = (await api.listOrgs()).find((o) => o.id === id)
+      return org ? { org } : { error: 'The organisation was created but could not be read back.' }
+    },
+    joinOrg: async (code: string) => {
+      const { data, error } = await sb.rpc('sitka_join_org', { p_code: code.trim() })
+      if (error) return { error: error.message.replace(/^.*?:\s*/, '') || 'Could not join.' }
+      const row = (Array.isArray(data) ? data[0] : data) as { id: string } | null
+      if (!row) return { error: 'No organisation has that code.' }
+      const org = (await api.listOrgs()).find((o) => o.id === row.id)
+      return org ? { org } : { error: 'Joined, but the organisation could not be read back.' }
+    },
+    leaveOrg: async (orgId: string) => {
+      await sb.from('org_members').delete().eq('org_id', orgId).eq('user_id', user.id)
+    },
+    listOrgMembers: async (orgId: string): Promise<OrgMember[]> => {
+      const { data } = await sb
+        .from('org_members')
+        .select('user_id,name,email,role,joined_at')
+        .eq('org_id', orgId)
+        .order('joined_at', { ascending: true })
+      return (data ?? []).map((m) => ({
+        userId: m.user_id as string,
+        name: (m.name as string) || (m.email as string).split('@')[0] || 'Member',
+        email: m.email as string,
+        role: m.role as OrgRole,
+        joinedAt: new Date(m.joined_at as string).getTime()
+      }))
+    },
+    listSpaces: async (orgId: string): Promise<OrgSpace[]> => {
+      const { data: spaces } = await sb
+        .from('org_spaces')
+        .select('id,org_id,name,kind,description,created_at')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: true })
+      if (!spaces || spaces.length === 0) return []
+      const ids = spaces.map((s) => s.id as string)
+      const [{ data: mats }, sessionCounts] = await Promise.all([
+        sb.from('org_materials').select('space_id').in('space_id', ids),
+        Promise.all(
+          ids.map(async (sid) => {
+            const { data } = await sb.rpc('sitka_space_sessions', { p_space: sid })
+            return [sid, Array.isArray(data) ? data.length : 0] as const
+          })
+        )
+      ])
+      const sessionsBy = new Map(sessionCounts)
+      return spaces.map((s) => ({
+        id: s.id as string,
+        orgId: s.org_id as string,
+        name: s.name as string,
+        kind: s.kind as OrgSpaceKind,
+        description: (s.description as string) || '',
+        sessions: sessionsBy.get(s.id as string) ?? 0,
+        materials: (mats ?? []).filter((m) => m.space_id === s.id).length,
+        createdAt: new Date(s.created_at as string).getTime()
+      }))
+    },
+    createSpace: async (orgId: string, name: string, kind: OrgSpaceKind, description: string) => {
+      const clean = name.trim()
+      if (!clean) return { error: 'Give it a name.' }
+      const id = uid()
+      const { error } = await sb.from('org_spaces').insert({
+        id,
+        org_id: orgId,
+        name: clean,
+        kind,
+        description: description.trim(),
+        created_by: user.id
+      })
+      if (error) {
+        return {
+          error: /row-level security/i.test(error.message)
+            ? 'Only leads and the owner can create spaces here.'
+            : error.message
+        }
+      }
+      const space = (await api.listSpaces(orgId)).find((s) => s.id === id)
+      return space ? { space } : { error: 'Created, but could not be read back.' }
+    },
+    deleteSpace: async (spaceId: string) => {
+      await sb.from('org_spaces').delete().eq('id', spaceId)
+    },
+    listSpaceMaterials: async (spaceId: string): Promise<SpaceMaterial[]> => {
+      const { data } = await sb
+        .from('org_materials')
+        .select('id,name,chars,added_by_name,created_at')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: true })
+      return (data ?? []).map((m) => ({
+        id: m.id as string,
+        name: m.name as string,
+        chars: m.chars as number,
+        addedBy: (m.added_by_name as string) || '',
+        addedAt: new Date(m.created_at as string).getTime()
+      }))
+    },
+    addSpaceMaterial: async (spaceId: string, name: string, text: string) => {
+      const clean = text.slice(0, 200000)
+      const profile = await api.getProfile()
+      const { error } = await sb.from('org_materials').insert({
+        id: uid(),
+        space_id: spaceId,
+        name,
+        text: clean,
+        chars: clean.length,
+        added_by: user.id,
+        added_by_name: profile.name
+      })
+      if (error) {
+        throw new Error(
+          /row-level security/i.test(error.message)
+            ? 'Only leads and the owner can add materials here.'
+            : error.message
+        )
+      }
+      return api.listSpaceMaterials(spaceId)
+    },
+    removeSpaceMaterial: async (spaceId: string, materialId: string) => {
+      await sb.from('org_materials').delete().eq('id', materialId)
+      return api.listSpaceMaterials(spaceId)
+    },
+    listSpaceSessions: async (spaceId: string): Promise<SessionMeta[]> => {
+      const { data } = await sb.rpc('sitka_space_sessions', { p_space: spaceId })
+      const rows = (Array.isArray(data) ? data : []) as { id: string; meta: SessionMeta }[]
+      return rows.map((r) => r.meta).filter((m) => m && m.status === 'complete')
+    },
+    assignSessionToSpace: async (sessionId: string, spaceId: string | null) => {
+      const d = await loadSession(sessionId)
+      if (!d || d.meta.readOnly) return
+      d.meta.spaceId = spaceId ?? undefined
+      await patchSession(sessionId, { meta: d.meta, space_id: spaceId })
+      emitSession(d.meta)
+    },
+    askSpace: async (req: SpaceAskRequest) => {
+      try {
+        const [{ data: spaceRow }, { data: mats }, { data: sessRows }] = await Promise.all([
+          sb.from('org_spaces').select('name,kind,description').eq('id', req.spaceId).single(),
+          sb.from('org_materials').select('name,text').eq('space_id', req.spaceId),
+          sb.rpc('sitka_space_sessions', { p_space: req.spaceId })
+        ])
+        const space = spaceRow as { name: string; kind: string; description: string } | null
+        const sessions = (Array.isArray(sessRows) ? sessRows : []) as { id: string; meta: SessionMeta }[]
+        // Newest sessions first, trimmed so a whole term still fits one request.
+        const ids = sessions.filter((s) => s.meta?.status === 'complete').slice(0, 12).map((s) => s.id)
+        const full = await Promise.all(
+          ids.map(async (id) => {
+            const { data } = await sb.rpc('sitka_space_session', { p_id: id })
+            const s = (Array.isArray(data) ? data[0] : data) as { meta: SessionMeta; transcript: TranscriptSegment[] } | undefined
+            return s ? { title: s.meta.title, segments: s.transcript || [] } : null
+          })
+        )
+        const per = Math.floor(70000 / Math.max(1, ids.length))
+        const sessionsBlock = full
+          .filter((s): s is { title: string; segments: TranscriptSegment[] } => Boolean(s))
+          .map((s) => {
+            const id8 = ids[full.indexOf(s)]?.slice(0, 8) ?? ''
+            let t = s.segments.map((seg) => `[[${id8}@${formatTime(seg.start)}]] ${seg.text.trim()}`).join('\n')
+            if (t.length > per) t = t.slice(0, per) + '\n… (trimmed)'
+            return `=== "${s.title}" ===\n${t}`
+          })
+          .join('\n\n')
+        const materials = materialsBlock(
+          ((mats ?? []) as { name: string; text: string }[]).map((m) => ({ name: m.name, text: m.text })),
+          30000
+        )
+        const noun = space?.kind === 'course' ? 'course' : space?.kind === 'team' ? 'team' : 'project'
+        const system = [
+          `You are Sitka for the ${noun} "${space?.name ?? ''}"${space?.description ? ` — ${space.description}` : ''}.`,
+          noun === 'course'
+            ? 'You are the teaching assistant for this course: you answer from what the lecturer actually taught in these sessions and from the materials they shared, in the terms they used. This is what will be examined.'
+            : 'You are the memory of this team: you answer from what was actually said in these meetings and from the shared materials — decisions, reasons, promises and who made them.',
+          'Rules:',
+          '- Ground answers in the sessions and materials below. If something was not covered, say so plainly.',
+          '- Cite moments as [[<id>@M:SS]] exactly as they appear below (plain ASCII double brackets); the app turns them into links into the recording.',
+          '- When asked what you think, give a reasoned view and make clear it is yours rather than the speaker’s.',
+          '- Keep answers direct; use headings, lists or a table only when they genuinely help.',
+          materials || '',
+          `\nSessions (newest first):\n${sessionsBlock || '(No sessions in this space yet.)'}`
+        ]
+          .filter(Boolean)
+          .join('\n')
+        const history: ChatMsg[] = req.history.slice(-10).map((m) => ({ role: m.role, content: m.content }))
+        let text = await aiChat(system, [...history, { role: 'user', content: req.question }])
+        const idMap = new Map(ids.map((id) => [id.slice(0, 8).toLowerCase(), id]))
+        text = text.replace(/\[\[([a-fA-F0-9]{8})@/g, (_m, short: string) => `[[${idMap.get(short.toLowerCase()) ?? short}@`)
+        emitAi({ requestId: req.requestId, type: 'delta', text })
+        emitAi({ requestId: req.requestId, type: 'done' })
+      } catch (err) {
+        emitAi({ requestId: req.requestId, type: 'error', error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+    spaceInsights: async (spaceId: string): Promise<SpaceInsight[]> => {
+      const { data } = await sb.rpc('sitka_space_insights', { p_space: spaceId })
+      const rows = (Array.isArray(data) ? data : []) as {
+        session_id: string
+        meta: SessionMeta
+        created_at: string
+        lost: number
+        asks: number
+        questions: string[]
+      }[]
+      return rows.map((r) => ({
+        sessionId: r.session_id,
+        title: r.meta?.title ?? 'Session',
+        createdAt: r.meta?.createdAt ?? new Date(r.created_at).getTime(),
+        durationMs: r.meta?.durationMs ?? 0,
+        lost: Number(r.lost) || 0,
+        asks: Number(r.asks) || 0,
+        questions: Array.isArray(r.questions) ? r.questions.map(String) : []
+      }))
     },
 
     searchLibrary: async (query: string) => rankHits(await allSessions(), query, 24),

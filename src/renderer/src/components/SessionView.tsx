@@ -294,7 +294,8 @@ export default function SessionView({
               </div>
             )}
             <span className="duration-chip">{formatDuration(meta.durationMs)}</span>
-            {meta.status === 'complete' && (
+            {meta.readOnly && <span className="lib-badge" title="Shared with you through an organisation space">Shared</span>}
+            {meta.status === 'complete' && !meta.readOnly && (
               <>
                 <button
                   className={`btn btn-sm ${showMaterials ? '' : 'btn-ghost'}`}
@@ -411,7 +412,11 @@ export default function SessionView({
                 width: '100%'
               }}
             >
-              {videoError ? 'Could not load this recording.' : 'Loading recording…'}
+              {meta.readOnly
+                ? 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
+                : videoError
+                  ? 'Could not load this recording.'
+                  : 'Loading recording…'}
             </div>
           )}
         </div>

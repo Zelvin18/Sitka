@@ -58,6 +58,10 @@ interface Props {
   presetAudio?: boolean
   /** quick record: begin the audio session immediately, no setup screen */
   autoStart?: boolean
+  /** file the session in an organisation space (course, team, project) */
+  orgSpaceId?: string
+  /** shown in the header when filing into a space */
+  orgSpaceName?: string
 }
 
 const SPACE_COPY: Record<
@@ -112,7 +116,9 @@ export default function LiveSession({
   space,
   presetKind,
   presetAudio,
-  autoStart
+  autoStart,
+  orgSpaceId,
+  orgSpaceName
 }: Props): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
@@ -742,7 +748,8 @@ export default function LiveSession({
         hosting ? agenda : undefined,
         hosting ? upcoming?.event.id : undefined,
         space,
-        captureMode === 'audio'
+        captureMode === 'audio',
+        orgSpaceId
       )
       setSession(meta)
       sessionIdRef.current = meta.id
@@ -902,7 +909,7 @@ export default function LiveSession({
       setError(err instanceof Error ? err.message : String(err))
       setPhase('picking')
     }
-  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space, pendingMats])
+  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])
 
   // Quick record: the floating button lands here already in audio mode and
   // starts on arrival — one tap, no setup.
@@ -1121,7 +1128,11 @@ export default function LiveSession({
           >
             {eventLocked ? '‹ Event dashboard' : '‹ Back'}
           </button>
-          {space && !eventLocked && <div className="eco-kicker">{SPACE_COPY[space].kicker}</div>}
+          {space && !eventLocked && (
+            <div className="eco-kicker">
+              {orgSpaceName ? `Filed in ${orgSpaceName}` : SPACE_COPY[space].kicker}
+            </div>
+          )}
           <h1 className="page-title">
             {eventLocked
               ? `Launch — ${upcoming?.event.title ?? 'your event'}`

@@ -62,6 +62,10 @@ export interface SessionMeta {
   recapUrl?: string
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
+  /** the organisation space (course, team, project) this session is filed in */
+  spaceId?: string
+  /** true when opened from a space you do not own: read-only, recording stays with its owner */
+  readOnly?: boolean
 }
 
 export interface ChatMessage {
@@ -299,6 +303,74 @@ export interface BrainConversation {
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
+}
+
+// ---------- organisations: a university or a company, with spaces inside ----------
+
+export type OrgRole = 'owner' | 'lead' | 'member'
+
+export interface Organization {
+  id: string
+  name: string
+  kind: Space
+  /** the current user's role in it */
+  role: OrgRole
+  /** join codes; only leads and owners receive them */
+  code?: string
+  leadCode?: string
+  members: number
+  spaces: number
+  createdAt: number
+}
+
+export type OrgSpaceKind = 'course' | 'team' | 'project'
+
+export interface OrgSpace {
+  id: string
+  orgId: string
+  name: string
+  kind: OrgSpaceKind
+  description: string
+  sessions: number
+  materials: number
+  createdAt: number
+}
+
+export interface OrgMember {
+  userId: string
+  name: string
+  email: string
+  role: OrgRole
+  joinedAt: number
+}
+
+export interface SpaceMaterial {
+  id: string
+  name: string
+  chars: number
+  addedBy: string
+  addedAt: number
+}
+
+export interface SpaceAskRequest {
+  spaceId: string
+  requestId: string
+  question: string
+  history: ChatMessage[]
+}
+
+/** How a space's sessions landed with the room — real counts only. */
+export interface SpaceInsight {
+  sessionId: string
+  title: string
+  createdAt: number
+  durationMs: number
+  /** attendees who tapped "lost me" */
+  lost: number
+  /** private questions asked of Sitka */
+  asks: number
+  /** a sample of what was asked, newest first */
+  questions: string[]
 }
 
 // ---------- who is using Sitka (shown top right) ----------

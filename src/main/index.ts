@@ -288,16 +288,42 @@ function registerIpc(): void {
       agenda?: string[],
       eventId?: string,
       space?: 'business' | 'education',
-      audioOnly?: boolean
+      audioOnly?: boolean,
+      spaceId?: string
     ) => {
       const meta = store.createSession(title, kind, hosted, agenda)
       if (eventId) meta.eventId = eventId
       if (space) meta.space = space
       if (audioOnly) meta.audioOnly = true
-      if (eventId || space || audioOnly) store.saveMeta(meta)
+      if (spaceId) meta.spaceId = spaceId
+      if (eventId || space || audioOnly || spaceId) store.saveMeta(meta)
       return meta
     }
   )
+
+  // ---------- organisations live in the online workspace ----------
+  const ONLINE_ONLY = {
+    error: 'Organisations live in the online workspace. Open Sitka in your browser to create or join one.'
+  }
+  ipcMain.handle('org:list', () => [])
+  ipcMain.handle('org:create', () => ONLINE_ONLY)
+  ipcMain.handle('org:join', () => ONLINE_ONLY)
+  ipcMain.handle('org:leave', () => undefined)
+  ipcMain.handle('org:members', () => [])
+  ipcMain.handle('org:spaces', () => [])
+  ipcMain.handle('org:createSpace', () => ONLINE_ONLY)
+  ipcMain.handle('org:deleteSpace', () => undefined)
+  ipcMain.handle('org:materials', () => [])
+  ipcMain.handle('org:addMaterial', () => [])
+  ipcMain.handle('org:removeMaterial', () => [])
+  ipcMain.handle('org:spaceSessions', () => [])
+  ipcMain.handle('org:assignSession', () => undefined)
+  ipcMain.handle('org:ask', (e, req: { requestId: string }) => {
+    if (!e.sender.isDestroyed()) {
+      e.sender.send('ai:stream', { requestId: req.requestId, type: 'error', error: ONLINE_ONLY.error })
+    }
+  })
+  ipcMain.handle('org:insights', () => [])
 
   // The built-in sample lecture: a complete session with a transcript, so the
   // very first screen already shows what Sitka does. Analysis runs like any session.

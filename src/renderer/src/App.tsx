@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { SessionKind, SessionMeta, Settings, Space } from '@shared/types'
+import type { Organization, SessionKind, SessionMeta, Settings, Space } from '@shared/types'
+import OrgView from './components/OrgView'
 import Sidebar from './components/Sidebar'
 import BrainView from './components/BrainView'
 import HomeView from './components/HomeView'
@@ -26,6 +27,7 @@ type View =
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
+  | { name: 'org'; id: string }
   | {
       name: 'live'
       eventId?: string
@@ -34,6 +36,9 @@ type View =
       audioOnly?: boolean
       /** quick record: start the audio session immediately */
       quick?: boolean
+      /** file the session into an organisation space */
+      orgSpaceId?: string
+      orgSpaceName?: string
     }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
@@ -136,6 +141,15 @@ export default function App(): React.JSX.Element {
   const refreshSessions = useCallback(async (): Promise<void> => {
     setSessions(await window.sitka.listSessions())
   }, [])
+
+  // Organisations: a university or a company the user belongs to.
+  const [orgs, setOrgs] = useState<Organization[]>([])
+  const refreshOrgs = useCallback(async (): Promise<void> => {
+    setOrgs(await window.sitka.listOrgs())
+  }, [])
+  useEffect(() => {
+    void refreshOrgs()
+  }, [refreshOrgs])
 
   useEffect(() => {
     void refreshSessions()
@@ -332,8 +346,41 @@ export default function App(): React.JSX.Element {
             onGoCoach={() => setView({ name: 'coach' })}
             onGoOverview={() => setView({ name: 'brain' })}
             onOpenSession={openSession}
+            orgs={orgs.filter((o) => o.kind === view.name)}
+            onJoinedOrg={(org) => {
+              void refreshOrgs()
+              setView({ name: 'org', id: org.id })
+            }}
+            onOpenOrg={(org) => setView({ name: 'org', id: org.id })}
           />
         )}
+        {view.name === 'org' &&
+          (() => {
+            const org = orgs.find((o) => o.id === (view as { id: string }).id)
+            if (!org) return null
+            return (
+              <OrgView
+                key={org.id}
+                org={org}
+                mySessions={sessions.filter((s) => s.space === org.kind || s.spaceId)}
+                hasChatKey={Boolean(settings?.anthropicApiKey || settings?.groqApiKey)}
+                onStartSession={(presetKind, audioOnly, orgSpaceId, orgSpaceName) => {
+                  setSpace(org.kind)
+                  setView({ name: 'live', space: org.kind, presetKind, audioOnly, orgSpaceId, orgSpaceName })
+                }}
+                onOpenSession={openSession}
+                onOpenSettings={() => setView({ name: 'settings' })}
+                onLeft={() => {
+                  void refreshOrgs()
+                  setView(org.kind === 'business' ? { name: 'business' } : { name: 'education' })
+                }}
+                onChanged={() => {
+                  void refreshOrgs()
+                  void refreshSessions()
+                }}
+              />
+            )
+          })()}
         {view.name === 'coach' && (
           <CoachView
             hasChatKey={Boolean(settings?.anthropicApiKey || settings?.groqApiKey)}
@@ -396,6 +443,8 @@ export default function App(): React.JSX.Element {
               presetKind={view.name === 'live' ? view.presetKind : undefined}
               presetAudio={view.name === 'live' ? view.audioOnly : undefined}
               autoStart={view.name === 'live' ? view.quick : undefined}
+              orgSpaceId={view.name === 'live' ? view.orgSpaceId : undefined}
+              orgSpaceName={view.name === 'live' ? view.orgSpaceName : undefined}
               onGoEvents={(eventId) => setView({ name: 'events', eventId })}
               onSessionCreated={(meta) => {
                 setRecordingSessionId(meta.id)

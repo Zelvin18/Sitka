@@ -13,8 +13,16 @@ import type {
   EventReport,
   Slide,
   MemoryObject,
+  OrgMember,
+  OrgSpace,
+  OrgSpaceKind,
+  Organization,
   Profile,
   ScheduledEvent,
+  Space,
+  SpaceAskRequest,
+  SpaceInsight,
+  SpaceMaterial,
   SimDifficulty,
   TranscriptSegment,
   CaptureSource,
@@ -46,9 +54,41 @@ const api = {
     agenda?: string[],
     eventId?: string,
     space?: 'business' | 'education',
-    audioOnly?: boolean
+    audioOnly?: boolean,
+    spaceId?: string
   ): Promise<SessionMeta> =>
-    ipcRenderer.invoke('session:create', title, kind, hosted, agenda, eventId, space, audioOnly),
+    ipcRenderer.invoke('session:create', title, kind, hosted, agenda, eventId, space, audioOnly, spaceId),
+
+  // ---------- organisations (online workspace) ----------
+  listOrgs: (): Promise<Organization[]> => ipcRenderer.invoke('org:list'),
+  createOrg: (name: string, kind: Space): Promise<{ org?: Organization; error?: string }> =>
+    ipcRenderer.invoke('org:create', name, kind),
+  joinOrg: (code: string): Promise<{ org?: Organization; error?: string }> =>
+    ipcRenderer.invoke('org:join', code),
+  leaveOrg: (orgId: string): Promise<void> => ipcRenderer.invoke('org:leave', orgId),
+  listOrgMembers: (orgId: string): Promise<OrgMember[]> => ipcRenderer.invoke('org:members', orgId),
+  listSpaces: (orgId: string): Promise<OrgSpace[]> => ipcRenderer.invoke('org:spaces', orgId),
+  createSpace: (
+    orgId: string,
+    name: string,
+    kind: OrgSpaceKind,
+    description: string
+  ): Promise<{ space?: OrgSpace; error?: string }> =>
+    ipcRenderer.invoke('org:createSpace', orgId, name, kind, description),
+  deleteSpace: (spaceId: string): Promise<void> => ipcRenderer.invoke('org:deleteSpace', spaceId),
+  listSpaceMaterials: (spaceId: string): Promise<SpaceMaterial[]> =>
+    ipcRenderer.invoke('org:materials', spaceId),
+  addSpaceMaterial: (spaceId: string, name: string, text: string): Promise<SpaceMaterial[]> =>
+    ipcRenderer.invoke('org:addMaterial', spaceId, name, text),
+  removeSpaceMaterial: (spaceId: string, materialId: string): Promise<SpaceMaterial[]> =>
+    ipcRenderer.invoke('org:removeMaterial', spaceId, materialId),
+  listSpaceSessions: (spaceId: string): Promise<SessionMeta[]> =>
+    ipcRenderer.invoke('org:spaceSessions', spaceId),
+  assignSessionToSpace: (sessionId: string, spaceId: string | null): Promise<void> =>
+    ipcRenderer.invoke('org:assignSession', sessionId, spaceId),
+  askSpace: (req: SpaceAskRequest): Promise<void> => ipcRenderer.invoke('org:ask', req),
+  spaceInsights: (spaceId: string): Promise<SpaceInsight[]> =>
+    ipcRenderer.invoke('org:insights', spaceId),
   hostCoverage: (id: string): Promise<{ covered: boolean[] }> =>
     ipcRenderer.invoke('host:coverage', id),
   reportInsights: (id: string): Promise<{ report?: EventReport; error?: string }> =>

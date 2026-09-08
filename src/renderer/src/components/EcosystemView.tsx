@@ -1,5 +1,6 @@
 import React from 'react'
-import type { SessionKind, SessionMeta } from '@shared/types'
+import type { Organization, SessionKind, SessionMeta } from '@shared/types'
+import OrgGate from './OrgGate'
 import {
   IconBroadcast,
   IconCalendar,
@@ -20,6 +21,10 @@ interface Props {
   onGoCoach: () => void
   onGoOverview: () => void
   onOpenSession: (id: string) => void
+  /** organisations of this kind the user belongs to (none → the join door shows) */
+  orgs: Organization[]
+  onJoinedOrg: (org: Organization) => void
+  onOpenOrg: (org: Organization) => void
 }
 
 /**
@@ -35,7 +40,10 @@ export default function EcosystemView({
   onGoEvents,
   onGoCoach,
   onGoOverview,
-  onOpenSession
+  onOpenSession,
+  orgs,
+  onJoinedOrg,
+  onOpenOrg
 }: Props): React.JSX.Element {
   const business = kind === 'business'
   const done = sessions.filter((s) => s.status === 'complete')
@@ -156,6 +164,23 @@ export default function EcosystemView({
               : 'Before class, during class, after class, before the exam — an AI that stays with you through your whole education.'}
           </p>
         </div>
+
+        {orgs.length === 0 ? (
+          <OrgGate kind={kind} onJoined={onJoinedOrg} />
+        ) : (
+          <div className="org-list">
+            {orgs.map((o) => (
+              <button key={o.id} className="org-row" onClick={() => onOpenOrg(o)}>
+                <span className="org-row-name">{o.name}</span>
+                <span className="org-row-meta">
+                  {o.members} {o.members === 1 ? 'member' : 'members'} · {o.spaces}{' '}
+                  {business ? (o.spaces === 1 ? 'space' : 'spaces') : o.spaces === 1 ? 'course' : 'courses'}
+                </span>
+                <span className="home-door-arrow">→</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="section-title">Start here</div>
         <div className="home-actions">
