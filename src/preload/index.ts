@@ -137,6 +137,9 @@ const api = {
   ): Promise<string | null> => ipcRenderer.invoke('session:exportText', id, kind),
   createSampleSession: (): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:sample'),
+  /** Push any recording parts still on this device to the cloud (web). */
+  retryUploads: (sessionId: string): Promise<{ pending: number }> =>
+    ipcRenderer.invoke('session:retryUploads', sessionId),
   /** Re-run the title/summary/highlights analysis (after a failure). */
   reanalyzeSession: (id: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:reanalyze', id),

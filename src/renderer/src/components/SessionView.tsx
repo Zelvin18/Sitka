@@ -18,7 +18,8 @@ import {
   IconEdit,
   IconNotes,
   IconShare,
-  IconStar
+  IconStar,
+  Mark
 } from '../lib/icons'
 import ShareCard from './ShareCard'
 
@@ -69,6 +70,7 @@ export default function SessionView({
   const [slides, setSlides] = useState<Slide[]>([])
   const [showMaterials, setShowMaterials] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
 
   useEffect(() => {
@@ -376,6 +378,42 @@ export default function SessionView({
           )}
         </div>
 
+        {meta.recordingPending && (
+          <div className="pending-bar">
+            <Mark size={14} live={uploading} />
+            <span>
+              {uploading
+                ? 'Uploading the rest of this recording…'
+                : 'Part of this recording is still on this device. It uploads on its own when the connection allows.'}
+            </span>
+            {!uploading && (
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setUploading(true)
+                  void window.sitka.retryUploads(meta.id).then((r) => {
+                    setUploading(false)
+                    if (r.pending === 0) {
+                      setData((d) => {
+                        if (!d) return d
+                        const next = { ...d.meta }
+                        delete next.recordingPending
+                        return { ...d, meta: next }
+                      })
+                    }
+                  })
+                }}
+              >
+                Upload now
+              </button>
+            )}
+            {videoSrc && (
+              <a className="btn btn-ghost btn-sm" href={videoSrc} download={`${meta.title.replace(/[^\w-]+/g, '-')}.webm`}>
+                Save a copy
+              </a>
+            )}
+          </div>
+        )}
         <div
           className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}`}
           ref={videoWrapRef}

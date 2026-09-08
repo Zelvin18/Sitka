@@ -325,12 +325,97 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
-  // Recording buffers: chunks are uploaded as rolling ~8MB parts DURING the
-  // recording, so a crashed tab loses seconds — not the session — and no
-  // single file ever hits the storage size cap.
+  // ---------- the recording never leaves the device until the cloud has it ----------
+  // Every chunk the recorder produces is written to IndexedDB first. Chunks are
+  // grouped into ~8MB parts that upload in order during the recording; a part
+  // is only forgotten locally once the cloud confirms it. Anything that fails
+  // (offline, a closed tab, a storage error) retries on its own, and a session
+  // cut off mid-way is recovered on the next visit.
+  interface LocalChunk {
+    sessionId: string
+    seq: number
+    at: number
+    buf: ArrayBuffer
+  }
+  interface LocalPart {
+    sessionId: string
+    partNo: number
+    fromSeq: number
+    toSeq: number
+  }
+  const DB_NAME = 'sitka-recordings'
+  let dbPromise: Promise<IDBDatabase | null> | null = null
+  function openDb(): Promise<IDBDatabase | null> {
+    if (dbPromise) return dbPromise
+    dbPromise = new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(DB_NAME, 1)
+        req.onupgradeneeded = () => {
+          const db = req.result
+          db.createObjectStore('chunks', { keyPath: ['sessionId', 'seq'] }).createIndex('bySession', 'sessionId')
+          db.createObjectStore('parts', { keyPath: ['sessionId', 'partNo'] }).createIndex('bySession', 'sessionId')
+        }
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => resolve(null)
+        req.onblocked = () => resolve(null)
+      } catch {
+        resolve(null)
+      }
+    })
+    return dbPromise
+  }
+  async function idb<T>(
+    store: 'chunks' | 'parts',
+    mode: IDBTransactionMode,
+    run: (s: IDBObjectStore) => IDBRequest<T> | void
+  ): Promise<T | undefined> {
+    const db = await openDb()
+    if (!db) return undefined
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(store, mode)
+        const req = run(tx.objectStore(store))
+        let out: T | undefined
+        if (req) req.onsuccess = () => (out = req.result)
+        tx.oncomplete = () => resolve(out)
+        tx.onerror = () => resolve(undefined)
+        tx.onabort = () => resolve(undefined)
+      } catch {
+        resolve(undefined)
+      }
+    })
+  }
+  const localChunks = async (sessionId: string): Promise<LocalChunk[]> =>
+    ((await idb<LocalChunk[]>('chunks', 'readonly', (s) => s.index('bySession').getAll(sessionId))) ?? []).sort(
+      (a, b) => a.seq - b.seq
+    )
+  const localParts = async (sessionId: string): Promise<LocalPart[]> =>
+    ((await idb<LocalPart[]>('parts', 'readonly', (s) => s.index('bySession').getAll(sessionId))) ?? []).sort(
+      (a, b) => a.partNo - b.partNo
+    )
+  const allLocalParts = async (): Promise<LocalPart[]> =>
+    (await idb<LocalPart[]>('parts', 'readonly', (s) => s.getAll())) ?? []
+  async function forgetPart(p: LocalPart): Promise<void> {
+    await idb('chunks', 'readwrite', (s) => {
+      s.delete(IDBKeyRange.bound([p.sessionId, p.fromSeq], [p.sessionId, p.toSeq]))
+    })
+    await idb('parts', 'readwrite', (s) => {
+      s.delete([p.sessionId, p.partNo])
+    })
+  }
+  async function forgetSession(sessionId: string): Promise<void> {
+    await idb('chunks', 'readwrite', (s) => {
+      s.delete(IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]))
+    })
+    await idb('parts', 'readwrite', (s) => {
+      s.delete(IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]))
+    })
+  }
+
   interface RecBuf {
     parts: number
-    chunks: ArrayBuffer[]
+    seq: number
+    chunks: { seq: number; buf: ArrayBuffer }[]
     bytes: number
     thumbDone: boolean
     chain: Promise<void>
@@ -338,6 +423,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const recBuf = new Map<string, RecBuf>()
   const PART_BYTES = 8 * 1024 * 1024
   let recordingState: { id: string; startedAt: number } | null = null
+  /** parts whose data lives only in memory because IndexedDB was unavailable */
+  const memParts = new Map<string, ArrayBuffer[]>()
 
   function videoPath(id: string): string {
     return `${user.id}/${id}.webm`
@@ -345,36 +432,137 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   function partPath(id: string, n: number): string {
     return `${user.id}/${id}/part-${String(n).padStart(4, '0')}.webm`
   }
+  const partKey = (id: string, n: number): string => `${id}:${n}`
+
+  /** Upload one part from local storage (or memory). True once the cloud has it. */
+  async function uploadPart(p: LocalPart): Promise<boolean> {
+    const chunks = (await localChunks(p.sessionId)).filter((c) => c.seq >= p.fromSeq && c.seq <= p.toSeq)
+    const bufs = chunks.length > 0 ? chunks.map((c) => c.buf) : (memParts.get(partKey(p.sessionId, p.partNo)) ?? [])
+    if (bufs.length === 0) {
+      await forgetPart(p) // nothing to send: the record is stale
+      return true
+    }
+    const blob = new Blob(bufs, { type: 'video/webm' })
+    const { error } = await sb.storage
+      .from('recordings')
+      .upload(partPath(p.sessionId, p.partNo), blob, { upsert: true, contentType: 'video/webm' })
+    if (error) {
+      console.error('Sitka: part upload failed', p.sessionId, p.partNo, error.message)
+      return false
+    }
+    const b = recBuf.get(p.sessionId)
+    if (p.partNo === 0 && (!b || !b.thumbDone)) {
+      if (b) b.thumbDone = true
+      const thumb = await makeThumb(blob)
+      if (thumb) await patchSession(p.sessionId, { thumb })
+    }
+    memParts.delete(partKey(p.sessionId, p.partNo))
+    await forgetPart(p)
+    return true
+  }
 
   function flushPart(id: string, force: boolean): void {
     const b = recBuf.get(id)
     if (!b || b.chunks.length === 0) return
     if (!force && b.bytes < PART_BYTES) return
     const chunks = b.chunks
-    const bytes = b.bytes
     const partNo = b.parts
+    const part: LocalPart = { sessionId: id, partNo, fromSeq: chunks[0].seq, toSeq: chunks[chunks.length - 1].seq }
     b.chunks = []
     b.bytes = 0
     b.parts++
+    memParts.set(partKey(id, partNo), chunks.map((c) => c.buf))
     b.chain = b.chain.then(async () => {
-      const blob = new Blob(chunks, { type: 'video/webm' })
-      try {
-        const { error } = await sb.storage
-          .from('recordings')
-          .upload(partPath(id, partNo), blob, { upsert: true, contentType: 'video/webm' })
-        if (error) throw error
-        if (!b.thumbDone && partNo === 0) {
-          b.thumbDone = true
-          const thumb = await makeThumb(blob)
-          if (thumb) await patchSession(id, { thumb })
-        }
-      } catch {
-        // Upload failed (offline blip): put the data back for the next flush.
-        b.chunks = chunks.concat(b.chunks)
-        b.bytes += bytes
-        b.parts = partNo
-      }
+      await idb('parts', 'readwrite', (s) => {
+        s.put(part)
+      })
+      const ok = await uploadPart(part).catch(() => false)
+      if (!ok) schedulePendingUploads()
     })
+  }
+
+  // ---- retry anything the cloud does not have yet ----
+  let pendingTimer: number | null = null
+  let pendingBusy = false
+  function schedulePendingUploads(delayMs = 20000): void {
+    if (pendingTimer !== null) return
+    pendingTimer = window.setTimeout(() => {
+      pendingTimer = null
+      void retryPendingUploads()
+    }, delayMs)
+  }
+  /** Returns how many parts are still waiting. */
+  async function retryPendingUploads(onlySession?: string): Promise<number> {
+    if (pendingBusy) return -1
+    pendingBusy = true
+    let left = 0
+    try {
+      const parts = (await allLocalParts()).filter((p) => !onlySession || p.sessionId === onlySession)
+      const active = recordingState?.id
+      for (const p of parts) {
+        // the live recording's own chain handles its parts; only retry finished ones
+        if (p.sessionId === active) continue
+        const ok = navigator.onLine ? await uploadPart(p).catch(() => false) : false
+        if (!ok) left++
+      }
+      // sessions that were waiting on uploads: tell them when they are complete
+      const done = new Set(parts.map((p) => p.sessionId))
+      for (const sid of done) {
+        if (sid === active) continue
+        const remaining = (await localParts(sid)).length
+        const d = cache.get(sid) ?? (await loadSession(sid))
+        if (d && !d.meta.readOnly && Boolean(d.meta.recordingPending) !== remaining > 0) {
+          d.meta.recordingPending = remaining > 0 ? true : undefined
+          if (!remaining) delete d.meta.recordingPending
+          await patchSession(sid, { meta: d.meta })
+          emitSession(d.meta)
+        }
+      }
+    } finally {
+      pendingBusy = false
+    }
+    if (left > 0) schedulePendingUploads(60000)
+    return left
+  }
+  window.addEventListener('online', () => schedulePendingUploads(1500))
+
+  /**
+   * A session left in "recording" by a closed tab or a crash: close it out
+   * from what the device kept, then upload and analyse it like any other.
+   */
+  async function recoverInterrupted(): Promise<void> {
+    try {
+      const rows = await allSessions()
+      for (const r of rows) {
+        if (r.meta.status !== 'recording' || r.id === recordingState?.id) continue
+        const chunks = await localChunks(r.id)
+        const parts = await localParts(r.id)
+        // chunks that never made it into a part become the final part
+        const covered = new Set<number>()
+        for (const p of parts) for (let s = p.fromSeq; s <= p.toSeq; s++) covered.add(s)
+        const loose = chunks.filter((c) => !covered.has(c.seq))
+        if (loose.length > 0) {
+          const partNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) + 1 : 0
+          await idb('parts', 'readwrite', (s) => {
+            s.put({ sessionId: r.id, partNo, fromSeq: loose[0].seq, toSeq: loose[loose.length - 1].seq } as LocalPart)
+          })
+        }
+        const lastAt = chunks.length ? chunks[chunks.length - 1].at : 0
+        const d = await loadSession(r.id)
+        if (!d) continue
+        d.meta.status = 'complete'
+        if (!d.meta.durationMs || d.meta.durationMs <= 0) {
+          d.meta.durationMs = lastAt > d.meta.createdAt ? lastAt - d.meta.createdAt : 0
+        }
+        d.meta.recordingPending = true
+        await patchSession(r.id, { meta: d.meta })
+        emitSession(d.meta)
+        if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(r.id)
+      }
+      void retryPendingUploads()
+    } catch (err) {
+      console.error('Sitka: recovery failed', err)
+    }
   }
 
   async function makeThumb(blob: Blob): Promise<string | null> {
@@ -1199,6 +1387,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (error) backupSession(meta.id)
       recBuf.set(meta.id, {
         parts: 0,
+        seq: 0,
         chunks: [],
         bytes: 0,
         thumbDone: false,
@@ -1264,6 +1453,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     deleteSession: async (id: string) => {
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
+      await forgetSession(id)
       const { data: listing } = await sb.storage
         .from('recordings')
         .list(`${user.id}/${id}`, { limit: 1000 })
@@ -1484,24 +1674,53 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     appendChunk: async (id, chunk) => {
       const b = recBuf.get(id)
       if (!b) return
-      b.chunks.push(chunk)
+      const seq = b.seq++
+      // The device keeps it first; the cloud gets it next.
+      await idb('chunks', 'readwrite', (s) => {
+        s.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk)
+      })
+      b.chunks.push({ seq, buf: chunk })
       b.bytes += chunk.byteLength
       flushPart(id, false)
     },
 
+    retryUploads: async (sessionId: string) => {
+      const left = await retryPendingUploads(sessionId)
+      return { pending: left < 0 ? (await localParts(sessionId)).length : left }
+    },
+
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null
-      // Part-based recordings: download every part and stitch them together.
+      // Parts live in the cloud, or still on this device, or both: stitch them in order.
       const { data: listing } = await sb.storage
         .from('recordings')
         .list(`${user.id}/${id}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
-      if (listing && listing.length > 0) {
+      const cloud = new Map<number, string>()
+      for (const f of listing ?? []) {
+        const m = /^part-(\d+)\.webm$/.exec(f.name)
+        if (m) cloud.set(Number(m[1]), f.name)
+      }
+      const local = await localParts(id)
+      const localBy = new Map(local.map((p) => [p.partNo, p]))
+      const chunks = local.length > 0 ? await localChunks(id) : []
+      const partNos = [...new Set([...cloud.keys(), ...localBy.keys()])].sort((a, b) => a - b)
+      if (partNos.length > 0) {
         const buffers: ArrayBuffer[] = []
-        for (const f of listing) {
-          const { data } = await sb.storage
-            .from('recordings')
-            .download(`${user.id}/${id}/${f.name}`)
-          if (data) buffers.push(await data.arrayBuffer())
+        for (const n of partNos) {
+          const name = cloud.get(n)
+          if (name) {
+            const { data } = await sb.storage.from('recordings').download(`${user.id}/${id}/${name}`)
+            if (data) {
+              buffers.push(await data.arrayBuffer())
+              continue
+            }
+          }
+          const p = localBy.get(n)
+          if (p) {
+            for (const c of chunks) if (c.seq >= p.fromSeq && c.seq <= p.toSeq) buffers.push(c.buf)
+            const mem = memParts.get(partKey(id, n))
+            if (mem && !chunks.some((c) => c.seq >= p.fromSeq && c.seq <= p.toSeq)) buffers.push(...mem)
+          }
         }
         const total = buffers.reduce((n, b) => n + b.byteLength, 0)
         if (total > 0) {
@@ -1616,7 +1835,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (d) d.segments = sampleSegments()
       await patchSession(meta.id, { meta, transcript: sampleSegments() })
       // Finalize like a real session: names it, summarises, extracts memory.
-      recBuf.set(meta.id, { parts: 0, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve() })
+      recBuf.set(meta.id, { parts: 0, seq: 0, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve() })
       return api.finalizeSession(meta.id, sampleDurationMs())
     },
 
@@ -1633,15 +1852,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (b) {
         flushPart(id, true)
         await b.chain
-        if (b.chunks.length > 0) {
-          // A part failed even after retry queuing — save it locally so nothing is lost.
-          const blob = new Blob(b.chunks, { type: 'video/webm' })
-          const a = document.createElement('a')
-          a.href = URL.createObjectURL(blob)
-          a.download = `${d.meta.title.replace(/[^\w-]+/g, '-')}-partial.webm`
-          a.click()
-        }
         recBuf.delete(id)
+        // Anything the cloud refused stays on this device and keeps retrying;
+        // the session says so until the last part lands.
+        let left = await retryPendingUploads(id)
+        if (left < 0) left = (await localParts(id)).length
+        if (left > 0) d.meta.recordingPending = true
+        else delete d.meta.recordingPending
       }
       await patchSession(id, { meta: d.meta })
       backupSession(id) // belt-and-braces: text survives even if the row write above failed
@@ -2785,4 +3002,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   ;(window as unknown as { sitka: SitkaApi; sitkaWeb: boolean }).sitka = api
   ;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
+
+  // Close out anything a crash left open, and finish uploads the cloud is missing.
+  setTimeout(() => void recoverInterrupted(), 2500)
 }

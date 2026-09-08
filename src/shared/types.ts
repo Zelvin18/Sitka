@@ -64,6 +64,8 @@ export interface SessionMeta {
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */
   spaceId?: string
+  /** part of the recording is still on this device, waiting to upload */
+  recordingPending?: boolean
   /** true when opened from a space you do not own: read-only, recording stays with its owner */
   readOnly?: boolean
 }

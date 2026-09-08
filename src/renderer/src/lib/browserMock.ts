@@ -51,6 +51,7 @@ export function installBrowserMockIfNeeded(): void {
     spaceInsights: async () => [],
     signOut: async () => undefined,
     reanalyzeSession: async () => null,
+    retryUploads: async () => ({ pending: 0 }),
     transcribeChunk: async () => ({ error: 'missing-key' }),
     readVideo: async () => null,
     setRecordingState: async () => undefined,

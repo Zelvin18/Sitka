@@ -1247,6 +1247,26 @@ body {
   padding: 2px 2px 0;
 }
 
+/* the recording is still partly on this device */
+.pending-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 24px 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.pending-bar span {
+  flex: 1;
+  min-width: 200px;
+}
+
 /* ============ Visual memory: on-screen lines + filmstrip ============ */
 
 .transcript-seg.onscreen .transcript-text {

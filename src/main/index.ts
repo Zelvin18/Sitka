@@ -772,6 +772,7 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('session:retryUploads', () => ({ pending: 0 })) // desktop recordings are already local
   ipcMain.handle('session:reanalyze', async (_e, id: string) => {
     await runAnalysis(id)
     return store.getMeta(id)
