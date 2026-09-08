@@ -34,6 +34,10 @@ interface Props {
   headerExtra?: React.ReactNode
   /** fully custom ask transport (Coach simulations) — still streams on ai:stream */
   askOverride?: (requestId: string, question: string, history: ChatMessage[]) => void
+  /** custom empty state and input placeholder (organisation spaces) */
+  emptyTitle?: string
+  emptyDesc?: string
+  placeholder?: string
 }
 
 export interface ChatPaneHandle {
@@ -58,7 +62,10 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     headerTitle,
     onPersist,
     headerExtra,
-    askOverride
+    askOverride,
+    emptyTitle,
+    emptyDesc,
+    placeholder
   }: Props,
   ref
 ): React.JSX.Element {
@@ -263,18 +270,20 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           <div className="chat-empty">
             <IconSparkle size={22} />
             <div className="chat-empty-title">
-              {brain
-                ? 'Ask across everything'
-                : live
-                  ? 'Sitka is listening with you'
-                  : 'Ask about this session'}
+              {emptyTitle ??
+                (brain
+                  ? 'Ask across everything'
+                  : live
+                    ? 'Sitka is listening with you'
+                    : 'Ask about this session')}
             </div>
             <div style={{ fontSize: 13 }}>
-              {brain
-                ? 'One question searches every session you have ever captured — answers link straight to the exact moments.'
-                : live
-                  ? 'Ask anything about what is being said or shown — explanations, summaries, or "what did I miss?".'
-                  : 'Ask what was covered, or find the exact moment something was said.'}
+              {emptyDesc ??
+                (brain
+                  ? 'One question searches every session you have ever captured — answers link straight to the exact moments.'
+                  : live
+                    ? 'Ask anything about what is being said or shown — explanations, summaries, or "what did I miss?".'
+                    : 'Ask what was covered, or find the exact moment something was said.')}
             </div>
           </div>
         )}
@@ -362,11 +371,12 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
             className="chat-input"
             rows={1}
             placeholder={
-              brain
+              placeholder ??
+              (brain
                 ? 'Ask across all your sessions…'
                 : hasTranscript || live
                   ? 'Ask about this session…'
-                  : 'No transcript yet — nothing to ask about'
+                  : 'No transcript yet — nothing to ask about')
             }
             value={input}
             onChange={(e) => {

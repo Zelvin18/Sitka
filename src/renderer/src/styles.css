@@ -466,45 +466,145 @@ body {
   margin: 0 2px;
 }
 
-.org-codes {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+/* getting started: four real steps that tick themselves off */
+.org-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 30px;
 }
 
-.org-code {
+.org-step {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 7px 10px 7px 12px;
+  padding: 12px 12px 12px 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-soft);
   color: var(--text);
   font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 
-.org-code:hover {
+.org-step:hover:not(:disabled) {
   border-color: var(--text-3);
+  background: var(--bg);
 }
 
-.org-code-label {
-  font-size: 11px;
+.org-step:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.org-step.done {
+  background: var(--bg);
+}
+
+.org-step-n {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.org-step.done .org-step-n {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.org-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.org-step-label {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.org-step-desc {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
+.org-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 26px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* invite dialog */
+.invite-dialog {
+  width: 440px;
+}
+
+.invite-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  margin-bottom: 10px;
+}
+
+.invite-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.invite-card-who {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.invite-card-desc {
+  font-size: 12.5px;
   color: var(--text-3);
 }
 
-.org-code-value {
+.invite-code {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 24px;
   font-weight: 700;
-  letter-spacing: 0.16em;
-  min-width: 84px;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  user-select: all;
+}
+
+.invite-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .org-section-row {
@@ -810,6 +910,9 @@ body {
   }
   .org-space-head {
     padding: 58px 18px 0;
+  }
+  .org-steps {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

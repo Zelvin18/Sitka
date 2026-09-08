@@ -152,6 +152,49 @@ export default function OrgView({
   const kindIcon = (k: OrgSpaceKind): React.JSX.Element =>
     k === 'course' ? <IconCap size={16} strokeWidth={1.7} /> : k === 'team' ? <IconBriefcase size={16} strokeWidth={1.7} /> : <IconFolder size={16} strokeWidth={1.7} />
 
+  // Getting started, for the person who set things up. Each step is real:
+  // it ticks itself off from what actually exists.
+  const [inviting, setInviting] = useState(false)
+  const hasMaterials = spaces.some((s) => s.materials > 0)
+  const hasSessions = spaces.some((s) => s.sessions > 0)
+  const firstSpace = spaces[0] ?? null
+  const steps: { label: string; desc: string; done: boolean; go?: () => void }[] = [
+    {
+      label: education ? 'Create a course' : 'Create a space',
+      desc: education ? 'One per module you teach.' : 'A team, or a project.',
+      done: spaces.length > 0,
+      go: () => setCreating(true)
+    },
+    {
+      label: 'Add the materials',
+      desc: education ? 'Slides, readings, the syllabus.' : 'Briefs, plans, the agenda.',
+      done: hasMaterials,
+      go: firstSpace
+        ? () => {
+            setActive(firstSpace)
+            setTab('materials')
+          }
+        : undefined
+    },
+    {
+      label: education ? 'Capture a lecture' : 'Capture a meeting',
+      desc: 'Sitka listens and remembers it for everyone.',
+      done: hasSessions,
+      go: firstSpace
+        ? () => onStartSession(firstSpace.kind === 'course' ? 'lecture' : 'meeting', false, firstSpace.id, firstSpace.name)
+        : undefined
+    },
+    {
+      label: 'Invite people',
+      desc: education ? 'Students and fellow lecturers.' : 'Your team and other leads.',
+      done: org.members > 1,
+      go: () => setInviting(true)
+    }
+  ]
+
+  const joinSteps = (code: string, who: string): string =>
+    `Join ${org.name} on Sitka\n\n1. Open ${location.origin}/app and sign in (it's free).\n2. Go to ${education ? 'Education' : 'Business'} at the top right.\n3. Choose "Join with a code" and enter ${code}.\n\nYou'll join as ${who}.`
+
   // ---------------- organisation home ----------------
   if (!active) {
     return (
@@ -177,22 +220,42 @@ export default function OrgView({
               </div>
             </div>
             {lead && org.code && (
-              <div className="org-codes">
-                <button className="org-code" onClick={() => copy(org.code!, 'code')} title="Copy the join code for students and members">
-                  <span className="org-code-label">{education ? 'Students join with' : 'Members join with'}</span>
-                  <span className="org-code-value">{copied === 'code' ? 'Copied' : org.code}</span>
-                  <IconCopy size={12} />
-                </button>
-                {org.leadCode && (
-                  <button className="org-code" onClick={() => copy(org.leadCode!, 'lead')} title="Copy the join code for lecturers and leads">
-                    <span className="org-code-label">{education ? 'Lecturers join with' : 'Leads join with'}</span>
-                    <span className="org-code-value">{copied === 'lead' ? 'Copied' : org.leadCode}</span>
-                    <IconCopy size={12} />
-                  </button>
-                )}
-              </div>
+              <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={() => setInviting(true)}>
+                <IconPlus size={13} strokeWidth={2.2} />
+                Invite people
+              </button>
             )}
           </div>
+
+          {lead && (
+            <div className="org-steps">
+              {steps.map((s, i) => (
+                <button
+                  key={s.label}
+                  className={`org-step${s.done ? ' done' : ''}`}
+                  onClick={s.go}
+                  disabled={!s.go}
+                >
+                  <span className="org-step-n">{s.done ? '✓' : i + 1}</span>
+                  <span className="org-step-text">
+                    <span className="org-step-label">{s.label}</span>
+                    <span className="org-step-desc">{s.desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!lead && (
+            <div className="org-intro">
+              <Mark size={16} />
+              <span>
+                {education
+                  ? `Every course below has its own Sitka. Open one to ask about the lectures and the readings your lecturer shared, in their words. What you ask stays yours.`
+                  : `Every space below has its own Sitka. Open one to ask what was decided, why, and who promised what. What you ask stays yours.`}
+              </span>
+            </div>
+          )}
 
           <div className="org-section-row">
             <div className="section-title" style={{ margin: 0 }}>
@@ -314,6 +377,70 @@ export default function OrgView({
           </div>
         </div>
 
+        {inviting && org.code && (
+          <div className="dialog-overlay" onMouseDown={() => setInviting(false)}>
+            <div className="dialog invite-dialog" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="dialog-title">Invite people to {org.name}</div>
+              <div className="dialog-message">
+                Send a code. People sign in to Sitka, open {education ? 'Education' : 'Business'} at the top right,
+                choose “Join with a code”, and they are in.
+              </div>
+
+              <div className="invite-card">
+                <div className="invite-card-head">
+                  <span className="invite-card-who">{education ? 'Students' : 'Members'}</span>
+                  <span className="invite-card-desc">
+                    {education ? 'Can ask, read materials and follow lectures.' : 'Can ask, read materials and follow meetings.'}
+                  </span>
+                </div>
+                <div className="invite-code">{org.code}</div>
+                <div className="invite-actions">
+                  <button className="btn btn-sm" onClick={() => copy(org.code!, 'code')}>
+                    <IconCopy size={12} />
+                    {copied === 'code' ? 'Copied' : 'Copy code'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => copy(joinSteps(org.code!, education ? 'a student' : 'a member'), 'msg')}
+                  >
+                    {copied === 'msg' ? 'Copied' : 'Copy invitation'}
+                  </button>
+                </div>
+              </div>
+
+              {org.leadCode && (
+                <div className="invite-card">
+                  <div className="invite-card-head">
+                    <span className="invite-card-who">{education ? 'Lecturers' : 'Leads'}</span>
+                    <span className="invite-card-desc">
+                      {education ? 'Can also create courses and upload materials.' : 'Can also create spaces and upload materials.'}
+                    </span>
+                  </div>
+                  <div className="invite-code">{org.leadCode}</div>
+                  <div className="invite-actions">
+                    <button className="btn btn-sm" onClick={() => copy(org.leadCode!, 'lead')}>
+                      <IconCopy size={12} />
+                      {copied === 'lead' ? 'Copied' : 'Copy code'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => copy(joinSteps(org.leadCode!, education ? 'a lecturer' : 'a lead'), 'leadmsg')}
+                    >
+                      {copied === 'leadmsg' ? 'Copied' : 'Copy invitation'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="dialog-actions">
+                <button className="btn" onClick={() => setInviting(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {confirmLeave && (
           <ConfirmDialog
             title={`Leave ${org.name}?`}
@@ -345,7 +472,11 @@ export default function OrgView({
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {active.name}
             </h1>
-            {active.description && <div className="org-space-desc">{active.description}</div>}
+            <div className="org-space-desc">
+              {active.description ? `${active.description} · ` : ''}
+              Sitka answers from {materials.length} {materials.length === 1 ? 'document' : 'documents'} and{' '}
+              {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} here
+            </div>
           </div>
           <button
             className="btn btn-primary btn-sm"
@@ -396,6 +527,17 @@ export default function OrgView({
               hasChatKey={hasChatKey}
               hasTranscript
               headerTitle={active.kind === 'course' ? `Ask the course` : `Ask ${active.name}`}
+              emptyTitle={active.kind === 'course' ? `Ask anything about ${active.name}` : `Ask ${active.name} anything`}
+              emptyDesc={
+                materials.length + sessions.length === 0
+                  ? lead
+                    ? 'Nothing here yet. Add the materials and capture a session, and Sitka will answer from them.'
+                    : 'Nothing here yet. Once materials are added and a session is captured, Sitka will answer from them.'
+                  : active.kind === 'course'
+                    ? 'Answers come from what was taught in the lectures and what your lecturer shared, in their words, with the exact moment linked.'
+                    : 'Answers come from what was said in the meetings and the shared documents, with the exact moment linked.'
+              }
+              placeholder={`Ask about ${active.name}…`}
               askOverride={(requestId, question, history) =>
                 void window.sitka.askSpace({ spaceId: active.id, requestId, question, history })
               }
