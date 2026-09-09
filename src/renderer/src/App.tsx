@@ -9,6 +9,10 @@ import CoachView from './components/CoachView'
 import CommandPalette from './components/CommandPalette'
 import { IconMenu } from './lib/icons'
 import SpaceMenu from './components/SpaceMenu'
+import { applyAppearance } from './lib/prefs'
+
+const PHONE_QUERY = '(max-width: 859px)'
+const drawerWidth = (): number => Math.min(330, Math.round(window.innerWidth * 0.88))
 import { usePersistedBool } from './lib/persist'
 import Home from './components/Home'
 import EcosystemView from './components/EcosystemView'
@@ -106,38 +110,93 @@ export default function App(): React.JSX.Element {
     if (isPhone()) setSidebarOpen(false)
   }, [setSidebarOpen])
 
-  // Phone: a swipe to the right opens the drawer, a swipe to the left closes
-  // it. Only clearly sideways swipes count, so scrolling is never hijacked.
+  // Phone: the page is a drawer. The sidebar waits underneath on the left;
+  // dragging the page to the right slides it open and follows the finger,
+  // dragging it back closes it, with a small tick of haptic feedback.
+  const [phone, setPhone] = useState(() => window.matchMedia(PHONE_QUERY).matches)
   useEffect(() => {
-    let startX = 0
-    let startY = 0
-    let tracking = false
+    const mq = window.matchMedia(PHONE_QUERY)
+    const on = (): void => setPhone(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  const [dragX, setDragX] = useState<number | null>(null)
+  const sidebarOpenRef = useRef(sidebarOpen)
+  sidebarOpenRef.current = sidebarOpen
+  useEffect(() => {
+    let sx = 0
+    let sy = 0
+    let base = 0
+    let active = false
+    let horizontal = false
+    const clamp = (v: number): number => Math.max(0, Math.min(drawerWidth(), v))
     const onStart = (e: TouchEvent): void => {
       if (!isPhone() || e.touches.length !== 1) return
       const t = e.target as HTMLElement
-      // a horizontal drag inside a scrolling row (tabs, filmstrip) is that row's
-      if (t.closest('.seg, .tab-row, .filmstrip, input, textarea')) return
-      startX = e.touches[0].clientX
-      startY = e.touches[0].clientY
-      tracking = true
+      // a sideways drag inside a scrolling row or a text field belongs to it
+      if (t.closest('.seg, .tab-row, .filmstrip, input, textarea, .tour-stage, .dialog-overlay')) return
+      sx = e.touches[0].clientX
+      sy = e.touches[0].clientY
+      base = sidebarOpenRef.current ? drawerWidth() : 0
+      active = true
+      horizontal = false
+    }
+    const onMove = (e: TouchEvent): void => {
+      if (!active) return
+      const dx = e.touches[0].clientX - sx
+      const dy = e.touches[0].clientY - sy
+      if (!horizontal) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+        if (Math.abs(dy) > Math.abs(dx)) {
+          active = false // a scroll, not a drawer gesture
+          return
+        }
+        horizontal = true
+      }
+      e.preventDefault()
+      setDragX(clamp(base + dx))
     }
     const onEnd = (e: TouchEvent): void => {
-      if (!tracking) return
-      tracking = false
-      const t = e.changedTouches[0]
-      const dx = t.clientX - startX
-      const dy = t.clientY - startY
-      if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return
-      if (dx > 0) setSidebarOpen(true)
-      else setSidebarOpen(false)
+      if (!active) return
+      active = false
+      if (!horizontal) return
+      const dx = e.changedTouches[0].clientX - sx
+      const w = drawerWidth()
+      // a decisive flick wins; otherwise wherever the page came to rest
+      const open = Math.abs(dx) > 90 ? dx > 0 : clamp(base + dx) > w / 2
+      setDragX(null)
+      if (open !== sidebarOpenRef.current) {
+        setSidebarOpen(open)
+        try {
+          navigator.vibrate?.(open ? 12 : 8)
+        } catch {
+          /* not every phone can */
+        }
+      }
     }
     document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: false })
     document.addEventListener('touchend', onEnd, { passive: true })
+    document.addEventListener('touchcancel', onEnd, { passive: true })
     return () => {
       document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
       document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onEnd)
     }
   }, [setSidebarOpen])
+  const mainX = phone ? (dragX ?? (sidebarOpen ? drawerWidth() : 0)) : 0
+  const mainStyle: React.CSSProperties | undefined = phone
+    ? {
+        transform: mainX ? `translateX(${mainX}px)` : undefined,
+        transition: dragX === null ? 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none'
+      }
+    : undefined
+
+  // Appearance follows the saved preferences.
+  useEffect(() => {
+    if (settings) applyAppearance(settings.theme, settings.textSize)
+  }, [settings])
 
   // Quick record: one tap (or Ctrl+Shift+R) starts an audio session right now,
   // filed under whichever ecosystem the user is standing in.
@@ -235,7 +294,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      {sidebarOpen && (
+      {(sidebarOpen || phone) && (
         <Sidebar
           sessions={scopedSessions}
           activeView={view.name}
@@ -284,9 +343,15 @@ export default function App(): React.JSX.Element {
           onDeleteSession={(id) => void deleteSession(id)}
         />
       )}
-      {/* Phone: the dimmed page behind the drawer; tapping it closes the drawer. */}
-      {sidebarOpen && <div className="drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
-      <div className="main">
+      <div className={`main${mainX ? ' shifted' : ''}`} style={mainStyle}>
+        {/* Phone: while the page is slid aside, a tap on it closes the drawer. */}
+        {phone && mainX > 0 && (
+          <div
+            className="drawer-backdrop"
+            style={{ opacity: Math.min(1, mainX / drawerWidth()) }}
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         {/* A solid strip along the top: Back on the left, the doors on the right.
             Content scrolls beneath it, never through it. */}
         <div className="main-bar" />
@@ -454,6 +519,9 @@ export default function App(): React.JSX.Element {
               autoStart={view.name === 'live' ? view.quick : undefined}
               orgSpaceId={view.name === 'live' ? view.orgSpaceId : undefined}
               orgSpaceName={view.name === 'live' ? view.orgSpaceName : undefined}
+              defaultCapture={settings?.defaultCapture}
+              notesOn={settings?.notes !== false}
+              readScreen={settings?.readScreen !== false}
               onGoEvents={(eventId) => setView({ name: 'events', eventId })}
               onSessionCreated={(meta) => {
                 setRecordingSessionId(meta.id)

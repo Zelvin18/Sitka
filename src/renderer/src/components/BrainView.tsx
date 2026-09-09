@@ -256,7 +256,7 @@ export default function BrainView({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 spellCheck={false}
-                autoFocus
+                autoFocus={window.innerWidth >= 860}
               />
             </div>
             <div className="brain-results">

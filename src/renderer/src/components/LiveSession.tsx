@@ -74,6 +74,10 @@ interface Props {
   orgSpaceId?: string
   /** shown in the header when filing into a space */
   orgSpaceName?: string
+  /** preferences from Settings */
+  defaultCapture?: 'screen' | 'camera' | 'audio'
+  notesOn?: boolean
+  readScreen?: boolean
 }
 
 const SPACE_COPY: Record<
@@ -130,15 +134,29 @@ export default function LiveSession({
   presetAudio,
   autoStart,
   orgSpaceId,
-  orgSpaceName
+  orgSpaceName,
+  defaultCapture,
+  notesOn,
+  readScreen
 }: Props): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
   const [kind, setKind] = useState<SessionKind>(presetKind ?? 'other')
   // ---- capture mode: the screen with its sound, the camera, or the microphone alone ----
-  const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(
-    presetAudio ? 'audio' : CAN_SHARE_SCREEN ? 'screen' : 'camera'
-  )
+  const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(() => {
+    if (presetAudio) return 'audio'
+    const wanted = defaultCapture ?? 'screen'
+    if (wanted === 'screen' && !CAN_SHARE_SCREEN) return 'camera'
+    return wanted
+  })
+  // The page may be left before start() finishes; nothing must linger.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
   const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
   const [audioOnlyRec, setAudioOnlyRec] = useState(false)
   // ---- materials: slides/notes shared before the session exists (pending) and after ----
@@ -539,7 +557,7 @@ export default function LiveSession({
     if (phase !== 'recording' || !hasChatKey || hosting) return undefined
     const t = setInterval(() => {
       const id = sessionIdRef.current
-      if (!id || nudgeBusyRef.current) return
+      if (!id || nudgeBusyRef.current || notesOn === false) return
       const count = segmentsRef.current.length
       if (count < 6 || count === lastNudgeCountRef.current) return
       lastNudgeCountRef.current = count
@@ -627,7 +645,7 @@ export default function LiveSession({
   const slideBusyRef = useRef(false)
   const slideCountRef = useRef(0)
   useEffect(() => {
-    if (phase !== 'recording' || captureMode === 'audio' || !hasChatKey) return undefined
+    if (phase !== 'recording' || captureMode === 'audio' || !hasChatKey || readScreen === false) return undefined
     // A handheld camera never sits perfectly still, so it gets looser
     // "settled" and "changed" thresholds and a longer gap between frames.
     const settled = captureMode === 'camera' ? 0.06 : 0.02
@@ -769,6 +787,7 @@ export default function LiveSession({
     if (captureMode === 'screen' && !selectedSource) return
     setPhase('starting')
     setError(null)
+    let created: SessionMeta | null = null
     try {
       const agenda = agendaText
         .split('\n')
@@ -794,9 +813,10 @@ export default function LiveSession({
         captureMode === 'audio',
         orgSpaceId
       )
+      created = meta
+      if (!mountedRef.current) throw new Error('left')
       setSession(meta)
       sessionIdRef.current = meta.id
-      onSessionCreated(meta)
 
       // Materials added on the setup page now belong to the session.
       if (pendingMats.length > 0) {
@@ -951,14 +971,28 @@ export default function LiveSession({
         startedAt: sessionStartRef.current
       })
 
+      if (!mountedRef.current) throw new Error('left')
       setPhase('recording')
+      // Only now is there a recording: the app's timer and the sidebar dot start here.
+      onSessionCreated(meta)
 
       // Hosted events broadcast immediately — the QR is the first thing shown.
       if (hosting) {
         void goLive().then(() => setLeftTab('audience'))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      // Nothing was recorded: release the devices and remove the empty session
+      // so it never shows up as a phantom recording.
+      streamsRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()))
+      streamsRef.current = []
+      if (created) {
+        void window.sitka.deleteSession(created.id).catch(() => undefined)
+        setSession(null)
+        sessionIdRef.current = null
+      }
+      if (!mountedRef.current) return
+      const message = err instanceof Error ? err.message : String(err)
+      if (message !== 'left') setError(message)
       setPhase('picking')
     }
   }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])

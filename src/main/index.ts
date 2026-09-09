@@ -1247,6 +1247,7 @@ function registerIpc(): void {
         frame: req.frame,
         priorContext: priorLearningContext(req.question, req.sessionId) ?? undefined,
         materials: store.getSessionMaterialsBlock(req.sessionId),
+        answerLanguage: store.getSettings().answerLanguage,
         onDelta: (text: string) =>
           send({ requestId: req.requestId, type: 'delta', text })
       }

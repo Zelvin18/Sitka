@@ -2073,7 +2073,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             req.live && lastScreen
               ? `\nMost recent reading of the screen (at ${formatTime(lastScreen.start)}): ${lastScreen.text.slice(ON_SCREEN_PREFIX.length)}\n`
               : ''
-          system = `${askSystemPrompt(req.live)}\n${materials ? materials + '\n\n' : ''}${screenNow}${transcriptBlock(segments)}`
+          const lang = storedSettings().answerLanguage
+          const langRule = lang
+            ? `\n- Always answer in ${lang}, whatever language the session or the question is in, unless the user explicitly asks for another language.\n`
+            : ''
+          system = `${askSystemPrompt(req.live)}${langRule}\n${materials ? materials + '\n\n' : ''}${screenNow}${transcriptBlock(segments)}`
         }
         const history: ChatMsg[] = req.history
           .slice(-10)

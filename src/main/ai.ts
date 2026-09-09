@@ -64,6 +64,12 @@ export function transcriptBlock(segments: TranscriptSegment[]): string {
   return segments.map((s) => `[${formatTime(s.start)}] ${s.text.trim()}`).join('\n')
 }
 
+function languageRule(lang?: string): string {
+  return lang
+    ? `\n- Always answer in ${lang}, whatever language the session or the question is in, unless the user explicitly asks for another language.`
+    : ''
+}
+
 function askSystemPrompt(live: boolean): string {
   return [
     'You are Sitka, an AI assistant that is attending a live session (a lecture, meeting, presentation, or event) together with the user.',
@@ -94,6 +100,8 @@ function askSystemPrompt(live: boolean): string {
 
 export interface AskParams {
   apiKey: string
+  /** language Sitka must answer in ('' = the user's own) */
+  answerLanguage?: string
   segments: TranscriptSegment[]
   history: ChatMessage[]
   question: string
@@ -137,7 +145,7 @@ export async function streamAsk(params: AskParams): Promise<string> {
   ]
 
   const system: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: askSystemPrompt(params.live) },
+    { type: 'text', text: askSystemPrompt(params.live) + languageRule(params.answerLanguage) },
     ...(params.materials
       ? [{ type: 'text' as const, text: params.materials, cache_control: { type: 'ephemeral' as const } }]
       : []),
@@ -409,7 +417,7 @@ export async function streamAskGroq(params: AskParams): Promise<string> {
     {
       role: 'system',
       content:
-        `${askSystemPrompt(params.live)}\n\n` +
+        `${askSystemPrompt(params.live)}${languageRule(params.answerLanguage)}\n\n` +
         (params.materials ? `${params.materials}\n\n` : '') +
         transcriptBlock(params.segments) +
         (params.priorContext ? `\n\n${PRIOR_HEADER}\n${params.priorContext}` : '')

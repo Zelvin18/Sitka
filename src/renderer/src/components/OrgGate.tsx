@@ -80,7 +80,7 @@ export default function OrgGate({ kind, onJoined }: Props): React.JSX.Element {
             placeholder="Six-character code"
             value={code}
             maxLength={8}
-            autoFocus
+            autoFocus={window.innerWidth >= 860}
             spellCheck={false}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
@@ -103,7 +103,7 @@ export default function OrgGate({ kind, onJoined }: Props): React.JSX.Element {
             style={{ flex: 1, minWidth: 220 }}
             placeholder={education ? 'Institution name, e.g. University of Zimbabwe' : 'Organisation name'}
             value={name}
-            autoFocus
+            autoFocus={window.innerWidth >= 860}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void create()

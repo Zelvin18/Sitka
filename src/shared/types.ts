@@ -9,6 +9,18 @@ export interface Settings {
   supabaseServiceKey: string
   /** Deployed attendee web app, e.g. https://sitka.vercel.app */
   webAppUrl: string
+  // ---- preferences (optional: older settings files simply lack them) ----
+  /** appearance: follow the device, or force light or dark */
+  theme?: 'system' | 'light' | 'dark'
+  textSize?: 'normal' | 'large'
+  /** language Sitka answers in; '' = the language the user writes in */
+  answerLanguage?: string
+  /** "Sitka noticed" notes during a live session */
+  notes?: boolean
+  /** read the screen (key frames) during a live session */
+  readScreen?: boolean
+  /** what a new session watches unless chosen otherwise */
+  defaultCapture?: 'screen' | 'camera' | 'audio'
 }
 
 export interface TranscriptSegment {

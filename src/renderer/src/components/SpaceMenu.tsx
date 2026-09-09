@@ -17,6 +17,13 @@ const LABEL: Record<string, string> = { business: 'Business', education: 'Educat
 export default function SpaceMenu({ space, onPick }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  // On a phone the "Sitka for" kicker is hidden, so the label must stand alone.
+  const [phone, setPhone] = useState(() => window.innerWidth < 860)
+  useEffect(() => {
+    const on = (): void => setPhone(window.innerWidth < 860)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
 
   useEffect(() => {
     if (!open) return undefined
@@ -51,7 +58,7 @@ export default function SpaceMenu({ space, onPick }: Props): React.JSX.Element {
         title="Choose where you are using Sitka"
       >
         <span className="space-menu-kicker">Sitka for</span>
-        <span className="space-menu-current">{space ? LABEL[space] : 'you'}</span>
+        <span className="space-menu-current">{space ? LABEL[space] : phone ? 'For you' : 'you'}</span>
         <IconChevron size={15} strokeWidth={2.2} />
       </button>
       {open && (
@@ -61,7 +68,7 @@ export default function SpaceMenu({ space, onPick }: Props): React.JSX.Element {
               <Mark size={16} />
             </span>
             <span className="space-item-text">
-              <b>Personal</b>
+              <b>For you</b>
               <small>Your own sessions, notes and memory.</small>
             </span>
           </button>

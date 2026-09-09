@@ -3,8 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles.css'
 import { installBrowserMockIfNeeded } from './lib/browserMock'
+import { applyCachedAppearance } from './lib/prefs'
 
 installBrowserMockIfNeeded()
+applyCachedAppearance()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
