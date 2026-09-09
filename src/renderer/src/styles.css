@@ -5870,6 +5870,78 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+/* ---- Phone: the sidebar reads like a native menu ----
+   Bigger type, brighter labels, taller rows, larger icons. */
+@media (max-width: 860px) {
+  .sidebar {
+    width: min(330px, 88vw);
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .wordmark {
+    font-size: 19px;
+  }
+  .wordmark .mark {
+    width: 22px;
+    height: 22px;
+  }
+  .side-new {
+    padding: 12px 14px 12px 12px;
+    border-radius: 15px;
+    margin-bottom: 6px;
+  }
+  .side-new-name {
+    font-size: 17px;
+  }
+  .side-new-sub {
+    font-size: 13.5px;
+    margin-top: 3px;
+  }
+  .side-section {
+    gap: 2px;
+  }
+  .side-item {
+    padding: 12px 12px;
+    gap: 14px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    border-radius: 12px;
+  }
+  .side-item .icon {
+    width: 21px;
+    height: 21px;
+    opacity: 0.9;
+  }
+  .side-item.active {
+    background: var(--bg-softer);
+  }
+  .side-label {
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    padding: 22px 12px 8px;
+  }
+  .side-sessions .side-item {
+    font-size: 16px;
+    font-weight: 500;
+    padding: 11px 12px;
+  }
+  .side-item-time {
+    font-size: 13px;
+  }
+  .side-dots {
+    width: 28px;
+    height: 28px;
+  }
+  .side-footer {
+    padding-top: 12px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 /* ---- Phone: Ask Sitka is a tab beside Transcript ----
    The screen shows one thing at a time: the chat, or the transcript, notes
    and study material. Ask is the default. On a desktop the chat keeps its
