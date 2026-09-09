@@ -189,9 +189,41 @@ async function groqOnce(key, modelId, system, messages, maxTokens, keepImages) {
   }
   const msg = j.error?.message || `HTTP ${r.status}`
   if (r.status === 401 || r.status === 403) return { error: msg, kind: 'key' }
-  if (r.status === 429 || r.status >= 500) return { error: msg, kind: 'transient' }
+  if (r.status === 429) {
+    // Limits are per account: rest this key for as long as Groq asks
+    // (retry-after header, or "try again in 2m3.5s" in the message).
+    let wait = Number(r.headers.get('retry-after')) || 0
+    if (!wait) {
+      const mm = msg.match(/try again in (?:(\d+)m)?([\d.]+)s/i)
+      if (mm) wait = Number(mm[1] || 0) * 60 + Number(mm[2] || 0)
+    }
+    return { error: msg, kind: 'ratelimit', wait: Math.min(Math.max(wait, 20), 3600) }
+  }
+  if (r.status >= 500) return { error: msg, kind: 'transient' }
   if (r.status === 404 || MODEL_ERROR_RE.test(msg)) return { error: msg, kind: 'model' }
   return { error: msg, kind: 'request' }
+}
+
+// Keys that were rate limited rest until this time, so the next request
+// goes straight to a key that can answer instead of asking Groq again.
+const keyRest = new Map() // key tail -> until (ms)
+let roundRobin = 0
+
+/**
+ * Order keys for this request: a user's own key first, then the platform's
+ * keys in rotation so every account carries a share of the load. Keys that
+ * are resting after a rate limit go last.
+ */
+function orderKeys(keys, ownKey) {
+  const now = Date.now()
+  const platform = keys.filter((k) => k !== ownKey)
+  const start = platform.length ? roundRobin++ % platform.length : 0
+  const rotated = [...platform.slice(start), ...platform.slice(0, start)]
+  const ready = rotated.filter((k) => (keyRest.get(k.slice(-8)) || 0) <= now)
+  const resting = rotated
+    .filter((k) => (keyRest.get(k.slice(-8)) || 0) > now)
+    .sort((a, b) => keyRest.get(a.slice(-8)) - keyRest.get(b.slice(-8)))
+  return [...(ownKey ? [ownKey] : []), ...ready, ...resting]
 }
 
 /**
@@ -235,7 +267,11 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
         break
       }
       if (out.kind === 'model') markDead(step.id)
-      if (out.kind === 'transient' && ++transientOnThisKey >= 2) break // rate limited: move to the next key
+      if (out.kind === 'ratelimit') {
+        keyRest.set(key.slice(-8), Date.now() + out.wait * 1000)
+        break // this account is out of quota for now: the next key takes over
+      }
+      if (out.kind === 'transient' && ++transientOnThisKey >= 2) break
     }
   }
   return { error: lastError, keyErrors }
@@ -286,14 +322,18 @@ export default async function handler(req, res) {
     // invisible characters from copy-paste) so headers can never crash.
     const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
     const anthropicKey = clean(keys.anthropicApiKey) || clean(process.env.ANTHROPIC_API_KEY)
-    const groqKeys = [
-      clean(keys.groqApiKey),
-      clean(process.env.GROQ_API_KEY),
-      ...String(process.env.GROQ_API_KEYS || '')
-        .split(/[,\s]+/)
-        .map(clean),
-      ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GROQ_API_KEY_${n}`]))
-    ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i)
+    const ownGroqKey = clean(keys.groqApiKey)
+    const groqKeys = orderKeys(
+      [
+        ownGroqKey,
+        clean(process.env.GROQ_API_KEY),
+        ...String(process.env.GROQ_API_KEYS || '')
+          .split(/[,\s]+/)
+          .map(clean),
+        ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GROQ_API_KEY_${n}`]))
+      ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
+      ownGroqKey.length > 10 ? ownGroqKey : ''
+    )
     const withImages = hasImages(messages)
     const errors = []
 
