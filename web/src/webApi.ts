@@ -180,6 +180,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return s
   }
 
+  /**
+   * Download one object from the recordings bucket, surviving a broken
+   * browser cache (Chrome's ERR_CACHE_READ_FAILURE) and a flaky connection:
+   * the SDK download first, then a signed URL fetched with the cache
+   * bypassed, three tries in all.
+   */
+  async function fetchObject(path: string): Promise<ArrayBuffer | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt === 0) {
+          const { data } = await sb.storage.from('recordings').download(path)
+          if (data) return await data.arrayBuffer()
+        } else {
+          const { data: signed } = await sb.storage.from('recordings').createSignedUrl(path, 600)
+          if (signed?.signedUrl) {
+            const r = await fetch(signed.signedUrl, { cache: 'no-store' })
+            if (r.ok) return await r.arrayBuffer()
+          }
+        }
+      } catch (err) {
+        console.warn('Sitka: recording part fetch failed, retrying', path, err)
+      }
+      await sleep(400 * (attempt + 1))
+    }
+    return null
+  }
+
   /** A key frame as stored in sessions.slides; `read` = captioned by a model that saw it. */
   interface StoredSlide {
     time: number
@@ -1815,9 +1842,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         for (const n of partNos) {
           const name = cloud.get(n)
           if (name) {
-            const { data } = await sb.storage.from('recordings').download(`${user.id}/${id}/${name}`)
-            if (data) {
-              buffers.push(await data.arrayBuffer())
+            const buf = await fetchObject(`${user.id}/${id}/${name}`)
+            if (buf) {
+              buffers.push(buf)
               continue
             }
           }
@@ -1840,12 +1867,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         }
       }
       // Legacy single-file recordings.
-      const { data, error } = await sb.storage.from('recordings').download(videoPath(id))
-      if (!data) {
-        console.error('Sitka: no recording found for session', id, error?.message ?? '')
+      const whole = await fetchObject(videoPath(id))
+      if (!whole) {
+        console.error('Sitka: no recording found for session', id)
         return null
       }
-      return new Uint8Array(await data.arrayBuffer())
+      return new Uint8Array(whole)
     },
 
     setRecordingState: async (state) => {

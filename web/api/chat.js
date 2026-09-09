@@ -318,41 +318,57 @@ function toGemini(messages) {
   })
 }
 
-async function geminiChain(key, system, messages, maxTokens) {
-  let lastError = 'no Gemini model'
-  for (const model of (await geminiCandidates(key)).filter((id) => !isDead('gemini:' + id))) {
-    let r
-    try {
-      r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: system }] },
-            contents: toGemini(messages),
-            generationConfig: { maxOutputTokens: maxTokens }
-          })
+/**
+ * Every Gemini key (each a separate Google account, so a separate free
+ * quota), then every model on it. A key that is out of quota rests for as
+ * long as Google asks and the next key takes over.
+ */
+async function geminiChain(keys, system, messages, maxTokens) {
+  let lastError = 'no Gemini key'
+  for (const key of keys) {
+    let limited = 0
+    for (const model of (await geminiCandidates(key)).filter((id) => !isDead('gemini:' + id))) {
+      let r
+      try {
+        r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: system }] },
+              contents: toGemini(messages),
+              generationConfig: { maxOutputTokens: maxTokens }
+            })
+          }
+        )
+      } catch (err) {
+        lastError = String((err && err.message) || err)
+        continue
+      }
+      const j = await r.json().catch(() => ({}))
+      if (r.ok) {
+        const text = stripThinking(
+          ((j.candidates || [])[0]?.content?.parts || []).map((p) => p.text || '').join('')
+        )
+        if (text) return { text, model }
+        lastError = `${model}: empty answer`
+        continue
+      }
+      const msg = j.error?.message || `HTTP ${r.status}`
+      lastError = `${model}: ${msg}`
+      if ((r.status === 400 || r.status === 403) && /API key|permission|denied/i.test(msg)) break // bad key: next one
+      if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead('gemini:' + model)
+      if (r.status === 429) {
+        // Quota is per model per account: try the next model once, then rest the key.
+        const mm = msg.match(/retry in ([\d.]+)s/i)
+        const wait = mm ? Number(mm[1]) : 60
+        if (++limited >= 2) {
+          keyRest.set(key.slice(-8), Date.now() + Math.min(Math.max(wait, 20), 3600) * 1000)
+          break
         }
-      )
-    } catch (err) {
-      lastError = String((err && err.message) || err)
-      continue
+      }
     }
-    const j = await r.json().catch(() => ({}))
-    if (r.ok) {
-      const text = stripThinking(
-        ((j.candidates || [])[0]?.content?.parts || []).map((p) => p.text || '').join('')
-      )
-      if (text) return { text, model }
-      lastError = `${model}: empty answer`
-      continue
-    }
-    const msg = j.error?.message || `HTTP ${r.status}`
-    lastError = `${model}: ${msg}`
-    if (r.status === 400 && /API key/i.test(msg)) break
-    if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead('gemini:' + model)
-    // 429: the free quota is counted per model, so the next model may still answer
   }
   return { error: lastError }
 }
@@ -414,7 +430,19 @@ export default async function handler(req, res) {
       ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
       ownGroqKey.length > 10 ? ownGroqKey : ''
     )
-    const geminiKey = clean(keys.geminiApiKey) || clean(process.env.GEMINI_API_KEY)
+    // Gemini keys rotate across accounts exactly like the Groq keys.
+    const geminiKeys = orderKeys(
+      [
+        clean(keys.geminiApiKey),
+        clean(process.env.GEMINI_API_KEY),
+        ...String(process.env.GEMINI_API_KEYS || '')
+          .split(/[,\s]+/)
+          .map(clean),
+        ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GEMINI_API_KEY_${n}`]))
+      ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
+      ''
+    )
+    const geminiKey = geminiKeys.length > 0
     const withImages = hasImages(messages)
     const errors = []
 
@@ -432,7 +460,7 @@ export default async function handler(req, res) {
     // Anything with an image goes to Gemini before Groq: it reads boards,
     // slides and charts far more reliably than the vision models Groq hosts.
     if (geminiKey && withImages) {
-      const out = await geminiChain(geminiKey, system, messages, maxTokens)
+      const out = await geminiChain(geminiKeys, system, messages, maxTokens)
       if (out.text) {
         res.status(200).json({ text: out.text, vision: true, model: out.model })
         return
@@ -455,7 +483,7 @@ export default async function handler(req, res) {
 
     // Text-only requests: Gemini is the last resort when every Groq account is busy.
     if (geminiKey && !withImages) {
-      const out = await geminiChain(geminiKey, system, messages, maxTokens)
+      const out = await geminiChain(geminiKeys, system, messages, maxTokens)
       if (out.text) {
         res.status(200).json({ text: out.text, vision: false, model: out.model })
         return

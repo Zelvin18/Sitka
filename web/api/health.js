@@ -6,7 +6,8 @@ export default function handler(req, res) {
       process.env.ANTHROPIC_API_KEY ||
         process.env.GROQ_API_KEY ||
         process.env.GROQ_API_KEYS ||
-        process.env.GEMINI_API_KEY
+        process.env.GEMINI_API_KEY ||
+        process.env.GEMINI_API_KEYS
     ),
     stt: Boolean(process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.GROQ_API_KEYS)
   })
