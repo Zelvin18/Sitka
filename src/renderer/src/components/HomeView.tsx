@@ -107,7 +107,14 @@ export default function HomeView({
       <div className="content-inner" style={{ maxWidth: 880 }}>
         <div className="home-hero">
           <Mark size={26} live />
-          <h1 className="home-greeting">{greeting()}.</h1>
+          <div className="home-greeting-row">
+            <h1 className="home-greeting">{greeting()}.</h1>
+            {onJoin && (
+              <button className="home-join" onClick={onJoin} title="Join a session by scanning the host's QR code" aria-label="Join a session">
+                <IconQr size={20} strokeWidth={1.7} />
+              </button>
+            )}
+          </div>
           <p className="home-sub">
             Sitka attends with you — lectures, meetings, and events, understood live.
           </p>
@@ -143,17 +150,6 @@ export default function HomeView({
               One question across everything you've ever captured.
             </span>
           </button>
-          {onJoin && (
-            <button className="home-action" onClick={onJoin}>
-              <span className="home-action-icon">
-                <IconQr size={19} strokeWidth={1.7} />
-              </span>
-              <span className="home-action-title">Join a session</span>
-              <span className="home-action-desc">
-                Scan the host&apos;s QR code and get captions, slides and your own Sitka on this phone.
-              </span>
-            </button>
-          )}
         </div>
 
         <button className="home-audio" onClick={onNewAudioSession}>

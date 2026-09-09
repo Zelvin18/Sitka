@@ -2648,7 +2648,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           upsert: true,
           contentType: 'video/webm'
         })
-      if (error) return { error: 'Upload failed: ' + error.message }
+      if (error) {
+        return {
+          error: /row-level security|policy/i.test(error.message)
+            ? 'Upload failed: the replays storage policy is missing. Run supabase/wave3.sql in the Supabase SQL editor, then try again.'
+            : 'Upload failed: ' + error.message
+        }
+      }
       await sb
         .from('events')
         .update({

@@ -18,20 +18,38 @@ interface BarcodeDetectorLike {
 type BarcodeDetectorCtor = new (opts: { formats: string[] }) => BarcodeDetectorLike
 type JsQr = (data: Uint8ClampedArray, w: number, h: number) => { data: string } | null
 
+const JSQR_URLS = [
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
+]
 let jsQrPromise: Promise<JsQr> | null = null
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = src
+    s.async = true
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error(`could not load ${src}`))
+    document.head.appendChild(s)
+  })
+}
 function loadJsQr(): Promise<JsQr> {
   if (!jsQrPromise) {
-    jsQrPromise = new Promise((resolve, reject) => {
+    jsQrPromise = (async () => {
       const w = window as unknown as { jsQR?: JsQr }
-      if (w.jsQR) {
-        resolve(w.jsQR)
-        return
+      for (const url of JSQR_URLS) {
+        if (w.jsQR) break
+        try {
+          await loadScript(url)
+        } catch {
+          /* try the next mirror */
+        }
       }
-      const s = document.createElement('script')
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
-      s.onload = () => (w.jsQR ? resolve(w.jsQR) : reject(new Error('QR reader unavailable')))
-      s.onerror = () => reject(new Error('QR reader could not load'))
-      document.head.appendChild(s)
+      if (!w.jsQR) throw new Error('QR reader unavailable')
+      return w.jsQR
+    })()
+    jsQrPromise.catch(() => {
+      jsQrPromise = null // allow a retry next time
     })
   }
   return jsQrPromise
@@ -60,6 +78,7 @@ export function sitkaLinkFrom(raw: string): string | null {
 export default function JoinView({ onBack }: Props): React.JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [camera, setCamera] = useState<'starting' | 'on' | 'off'>('starting')
+  const [reader, setReader] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [found, setFound] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [typed, setTyped] = useState('')
@@ -104,39 +123,62 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
       v.srcObject = stream
       await v.play().catch(() => undefined)
       setCamera('on')
+      // The browser's own reader where it exists; otherwise the small decoder.
+      // If the built-in one ever throws, the decoder takes over.
       const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
-      const detector = Detector ? new Detector({ formats: ['qr_code'] }) : null
-      const jsqr = detector ? null : await loadJsQr().catch(() => null)
+      let detector: BarcodeDetectorLike | null = null
+      try {
+        detector = Detector ? new Detector({ formats: ['qr_code'] }) : null
+      } catch {
+        detector = null
+      }
+      let jsqr: JsQr | null = null
+      const ensureDecoder = async (): Promise<void> => {
+        if (jsqr) return
+        try {
+          jsqr = await loadJsQr()
+          setReader('ready')
+        } catch {
+          setReader('failed')
+        }
+      }
+      if (!detector) await ensureDecoder()
+      else setReader('ready')
       const tick = async (): Promise<void> => {
         if (stopped) return
         const video = videoRef.current
         if (video && video.videoWidth > 0) {
-          try {
-            let text: string | undefined
-            if (detector) {
+          let text: string | undefined
+          if (detector) {
+            try {
               const codes = await detector.detect(video)
               text = codes[0]?.rawValue
-            } else if (jsqr) {
-              const size = 480
-              canvas.width = size
-              canvas.height = size
+            } catch {
+              detector = null
+              await ensureDecoder()
+            }
+          }
+          if (!text && jsqr) {
+            try {
+              // the whole picture, scaled down: people rarely centre the code perfectly
+              const scale = Math.min(1, 800 / Math.max(video.videoWidth, video.videoHeight))
+              const w = Math.round(video.videoWidth * scale)
+              const h = Math.round(video.videoHeight * scale)
+              canvas.width = w
+              canvas.height = h
               const ctx = canvas.getContext('2d', { willReadFrequently: true })
               if (ctx) {
-                // read the centre square, where the frame tells people to aim
-                const s = Math.min(video.videoWidth, video.videoHeight)
-                const sx = (video.videoWidth - s) / 2
-                const sy = (video.videoHeight - s) / 2
-                ctx.drawImage(video, sx, sy, s, s, 0, 0, size, size)
-                const img = ctx.getImageData(0, 0, size, size)
-                text = jsqr(img.data, size, size)?.data
+                ctx.drawImage(video, 0, 0, w, h)
+                const img = ctx.getImageData(0, 0, w, h)
+                text = jsqr(img.data, w, h)?.data
               }
+            } catch {
+              /* try again on the next frame */
             }
-            if (text && handle(text)) return
-          } catch {
-            /* try again on the next frame */
           }
+          if (text && handle(text)) return
         }
-        timer = setTimeout(() => void tick(), 280)
+        timer = setTimeout(() => void tick(), 250)
       }
       void tick()
     }
@@ -185,7 +227,16 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
             </div>
           )}
         </div>
-        {camera === 'on' && !found && <div className="join-hint">Hold steady over the code. It joins by itself.</div>}
+        {camera === 'on' && !found && reader !== 'failed' && (
+          <div className="join-hint">
+            {reader === 'ready' ? 'Hold steady over the code. It joins by itself.' : 'Getting the reader ready…'}
+          </div>
+        )}
+        {camera === 'on' && reader === 'failed' && (
+          <div className="notice notice-error" style={{ marginTop: 12 }}>
+            The code reader could not load on this connection. Paste the link below instead.
+          </div>
+        )}
         {error && <div className="notice notice-error" style={{ marginTop: 12 }}>{error}</div>}
 
         <div className="join-manual">

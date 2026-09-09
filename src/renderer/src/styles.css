@@ -5942,6 +5942,39 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+/* the greeting line, with Join at the far right */
+.home-greeting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.home-greeting-row .home-greeting {
+  margin: 0;
+}
+
+.home-join {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  flex: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.home-join:hover {
+  border-color: var(--text-3);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ---- Join: scan the host's QR code ---- */
 .join-stage {
   position: relative;
@@ -6254,6 +6287,15 @@ body.dragging-row .splitter-h {
   .main.shifted {
     box-shadow: -18px 0 50px rgba(0, 0, 0, 0.28);
     border-radius: 18px 0 0 18px;
+  }
+  /* the page sits above the waiting sidebar, so anything floating over the
+     page must sit higher still; it steps aside while the drawer is open */
+  .quick-rec {
+    z-index: 90;
+  }
+  .app:has(.main.shifted) .quick-rec {
+    opacity: 0;
+    pointer-events: none;
   }
   .drawer-backdrop {
     display: block;
