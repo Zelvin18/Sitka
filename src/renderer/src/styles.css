@@ -5667,6 +5667,12 @@ body.dragging-row .splitter-h {
   border-radius: var(--radius);
   background: var(--bg-soft);
   box-shadow: var(--shadow-sm);
+  /* never squashed by the chat beneath it: it keeps its height and scrolls
+     inside itself if it is ever taller than half the pane */
+  flex: none;
+  max-height: 46%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .nudge-card > svg {
@@ -6106,7 +6112,7 @@ body.dragging-row .splitter-h {
 }
 
 .audio-level.tall {
-  height: 90px;
+  height: 56px;
   gap: 5px;
   margin: 0;
   justify-content: center;
@@ -7222,6 +7228,14 @@ video {
   .session-right {
     flex: 0 0 40dvh;
     transition: flex-basis 0.2s ease;
+  }
+  /* when Sitka has noticed something, the sheet grows so the note and the
+     conversation both stay readable */
+  .session-right:has(.nudge-card) {
+    flex-basis: 56dvh;
+  }
+  .session-right .nudge-card {
+    max-height: 32dvh;
   }
   .session-right:has(.chat-folded) {
     flex: 0 0 auto;

@@ -1489,7 +1489,7 @@ export default function LiveSession({
         <div
           className="video-wrap"
           ref={videoWrapRef}
-          style={{ height: hosting ? 130 : clamp(videoH, 140, 900) }}
+          style={{ height: hosting ? 130 : audioOnlyRec ? 116 : clamp(videoH, 140, 900) }}
         >
           {audioOnlyRec ? (
             <div className="audio-stage">
@@ -1502,7 +1502,7 @@ export default function LiveSession({
             <video ref={previewRef} autoPlay muted playsInline />
           )}
         </div>
-        {!hosting && (
+        {!hosting && !audioOnlyRec && (
           <Splitter
             direction="horizontal"
             onMove={(_x, y) => {
