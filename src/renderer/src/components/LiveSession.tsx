@@ -577,7 +577,7 @@ export default function LiveSession({
     }
   }, [])
   // Full-size frame for vision questions ("what does this graph show?").
-  const getFrame = useCallback((): string | null => captureFrame(1280, 0.7), [captureFrame])
+  const getFrame = useCallback((): string | null => captureFrame(1600, 0.8), [captureFrame])
 
   // ---- visual memory: keep a key frame whenever the screen settles on something new ----
   // A tiny grayscale thumbnail is compared every few seconds; when the screen
@@ -607,7 +607,7 @@ export default function LiveSession({
       const kept = lastKeptRef.current
       if (kept && frameDifference(kept, px) < 0.1) return // same screen as the last key frame
       if (Date.now() - lastKeptAtRef.current < 6000) return
-      const frame = captureFrame(960, 0.62)
+      const frame = captureFrame(1280, 0.72)
       const id = sessionIdRef.current
       if (!frame || !id) return
       lastKeptRef.current = px

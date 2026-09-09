@@ -180,6 +180,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return s
   }
 
+  /** A key frame as stored in sessions.slides; `read` = captioned by a model that saw it. */
+  interface StoredSlide {
+    time: number
+    text: string
+    path: string
+    read?: boolean
+  }
+
   // A message is plain text, or text with images (frames of the screen).
   type ChatPart = { type: 'text'; text: string } | { type: 'image'; dataUrl: string }
   interface ChatMsg {
@@ -639,6 +647,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '',
       'Rules:',
       '- Ground every answer in the transcript. If something was not covered, say so plainly instead of guessing.',
+      '- Lines beginning with "[On screen]" are what Sitka read from the presenter\'s screen — slides, the whiteboard, documents, charts. Treat them as part of the session. When the user asks what is shown, written, on the board, on the slide or on the screen, answer from those lines and from any attached image of the screen, quoting the text and equations exactly as they appear. If neither shows it, say the screen has not been read yet.',
       '- If the question has nothing to do with this session, say so in one short clause and then answer briefly from general knowledge: a few plain sentences, no headings or long lists. The user is in the middle of a session and should not be pulled away from it; go deeper only if they ask again. Never present general knowledge as something the speaker said.',
       '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
       '- When you reference a specific moment, cite it inline with the exact format [[M:SS]] or [[H:MM:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Never cite a range — cite the moment it starts. The app turns these into clickable links that jump the recording to that moment.',
@@ -1614,10 +1623,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           d.segments.push({ start: time, end: time + 1, text: ON_SCREEN_PREFIX + text })
           d.segments.sort((a, b) => a.start - b.start)
           const { data: row } = await sb.from('sessions').select('slides').eq('id', sessionId).single()
-          const slides = ((row?.slides as { time: number; text: string; path: string }[] | null) ?? []).concat({
+          const slides = ((row?.slides as StoredSlide[] | null) ?? []).concat({
             time,
             text,
-            path
+            path,
+            read: true
           })
           await patchSession(sessionId, { transcript: d.segments, slides })
         }
@@ -1628,7 +1638,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     listSlides: async (sessionId: string): Promise<Slide[]> => {
       const { data: row } = await sb.from('sessions').select('slides').eq('id', sessionId).single()
-      const stored = (row?.slides as { time: number; text: string; path: string }[] | null) ?? []
+      const stored = (row?.slides as StoredSlide[] | null) ?? []
       if (stored.length === 0) return []
       const { data: signed } = await sb.storage
         .from('recordings')
@@ -1637,6 +1647,54 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           3600
         )
       const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]))
+      // Frames captioned before a vision model was available carry guesses.
+      // They are re-read by a model that can actually see them, a few per
+      // visit, and the transcript's "[On screen]" line is corrected too.
+      const unread = stored.filter((s) => !s.read && urlByPath.get(s.path)).slice(0, 6)
+      if (unread.length > 0 && hasChatKey()) {
+        let changed = false
+        const d = await loadSession(sessionId)
+        for (const s of unread) {
+          try {
+            const blob = await (await fetch(urlByPath.get(s.path)!)).blob()
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const fr = new FileReader()
+              fr.onload = () => resolve(String(fr.result))
+              fr.onerror = () => reject(fr.error)
+              fr.readAsDataURL(blob)
+            })
+            const out = await aiChatFull(
+              DESCRIBE_SCREEN,
+              [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'image', dataUrl },
+                    { type: 'text', text: DESCRIBE_ASK }
+                  ]
+                }
+              ],
+              600,
+              true
+            )
+            if (!out.vision) break // still no sight: try again another time
+            s.text = cleanDescription(out.text) || s.text
+            s.read = true
+            changed = true
+            if (d) {
+              const seg = d.segments.find(
+                (g) => Math.abs(g.start - s.time) < 0.6 && g.text.startsWith(ON_SCREEN_PREFIX)
+              )
+              if (seg) seg.text = ON_SCREEN_PREFIX + s.text
+            }
+          } catch {
+            break
+          }
+        }
+        if (changed) {
+          await patchSession(sessionId, d ? { transcript: d.segments, slides: stored } : { slides: stored })
+        }
+      }
       return stored
         .map((s) => ({ time: s.time, text: s.text, image: urlByPath.get(s.path) ?? '' }))
         .filter((s) => s.image)
@@ -1978,7 +2036,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             .join('\n')
         } else {
           const materials = await sessionMaterialsBlock(req.sessionId)
-          system = `${askSystemPrompt(req.live)}\n${materials ? materials + '\n\n' : ''}${transcriptBlock(segments)}`
+          // The latest reading of the screen is repeated up front so "what is
+          // on the board?" is answered even when the transcript is long.
+          const lastScreen = [...segments].reverse().find((s) => s.text.startsWith(ON_SCREEN_PREFIX))
+          const screenNow =
+            req.live && lastScreen
+              ? `\nMost recent reading of the screen (at ${formatTime(lastScreen.start)}): ${lastScreen.text.slice(ON_SCREEN_PREFIX.length)}\n`
+              : ''
+          system = `${askSystemPrompt(req.live)}\n${materials ? materials + '\n\n' : ''}${screenNow}${transcriptBlock(segments)}`
         }
         const history: ChatMsg[] = req.history
           .slice(-10)

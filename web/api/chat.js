@@ -277,6 +277,86 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
   return { error: lastError, keyErrors }
 }
 
+// ---- Gemini: the strongest free sight. Used first for anything with an
+// image (after Claude), and as one more text fallback after Groq. ----
+const KNOWN_GEMINI = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest']
+let geminiListCache = { ids: null, at: 0 }
+
+async function geminiCandidates(key) {
+  if (geminiListCache.ids && Date.now() - geminiListCache.at < 600000) return geminiListCache.ids
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`)
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) return KNOWN_GEMINI
+    const ids = (j.models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map((m) => String(m.name || '').replace(/^models\//, ''))
+      .filter((id) => /^gemini-[\d.]+-flash(-lite)?$/.test(id))
+      .sort((a, b) => parseFloat(b.split('-')[1]) - parseFloat(a.split('-')[1]) || a.length - b.length)
+    const ranked = [...KNOWN_GEMINI.filter((id) => ids.includes(id)), ...ids.filter((id) => !KNOWN_GEMINI.includes(id))]
+    geminiListCache = { ids: ranked.length ? ranked : KNOWN_GEMINI, at: Date.now() }
+    return geminiListCache.ids
+  } catch {
+    return KNOWN_GEMINI
+  }
+}
+
+function toGemini(messages) {
+  return messages.map((m) => {
+    const role = m.role === 'assistant' ? 'model' : 'user'
+    if (!Array.isArray(m.content)) return { role, parts: [{ text: String(m.content ?? '') }] }
+    const parts = m.content
+      .map((p) => {
+        if (p.type === 'image') {
+          const mm = String(p.dataUrl || '').match(/^data:(image\/[\w+.-]+);base64,(.+)$/)
+          return mm ? { inlineData: { mimeType: mm[1], data: mm[2] } } : null
+        }
+        return { text: String(p.text ?? '') }
+      })
+      .filter(Boolean)
+    return { role, parts }
+  })
+}
+
+async function geminiChain(key, system, messages, maxTokens) {
+  let lastError = 'no Gemini model'
+  for (const model of (await geminiCandidates(key)).filter((id) => !isDead('gemini:' + id))) {
+    let r
+    try {
+      r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: toGemini(messages),
+            generationConfig: { maxOutputTokens: maxTokens }
+          })
+        }
+      )
+    } catch (err) {
+      lastError = String((err && err.message) || err)
+      continue
+    }
+    const j = await r.json().catch(() => ({}))
+    if (r.ok) {
+      const text = stripThinking(
+        ((j.candidates || [])[0]?.content?.parts || []).map((p) => p.text || '').join('')
+      )
+      if (text) return { text, model }
+      lastError = `${model}: empty answer`
+      continue
+    }
+    const msg = j.error?.message || `HTTP ${r.status}`
+    lastError = `${model}: ${msg}`
+    if (r.status === 400 && /API key/i.test(msg)) break
+    if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead('gemini:' + model)
+    // 429: the free quota is counted per model, so the next model may still answer
+  }
+  return { error: lastError }
+}
+
 async function anthropicOnce(key, system, messages, maxTokens) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -334,6 +414,7 @@ export default async function handler(req, res) {
       ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
       ownGroqKey.length > 10 ? ownGroqKey : ''
     )
+    const geminiKey = clean(keys.geminiApiKey) || clean(process.env.GEMINI_API_KEY)
     const withImages = hasImages(messages)
     const errors = []
 
@@ -348,21 +429,44 @@ export default async function handler(req, res) {
       errors.push('Anthropic: ' + out.error)
     }
 
+    // Anything with an image goes to Gemini before Groq: it reads boards,
+    // slides and charts far more reliably than the vision models Groq hosts.
+    if (geminiKey && withImages) {
+      const out = await geminiChain(geminiKey, system, messages, maxTokens)
+      if (out.text) {
+        res.status(200).json({ text: out.text, vision: true, model: out.model })
+        return
+      }
+      errors.push('Gemini: ' + out.error)
+    }
+
     if (groqKeys.length > 0) {
       const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision)
       if (out.text) {
         res.status(200).json({ text: out.text, vision: out.vision, model: out.model })
         return
       }
-      if (requireVision && out.error === 'no vision model') {
-        res.status(200).json({ text: '', vision: false })
-        return
-      }
       errors.push('Groq: ' + out.error)
-      if (out.keyErrors >= groqKeys.length && errors.length === 1) {
+      if (out.keyErrors >= groqKeys.length && errors.length === 1 && !geminiKey) {
         res.status(502).json({ error: 'Groq: ' + out.error })
         return
       }
+    }
+
+    // Text-only requests: Gemini is the last resort when every Groq account is busy.
+    if (geminiKey && !withImages) {
+      const out = await geminiChain(geminiKey, system, messages, maxTokens)
+      if (out.text) {
+        res.status(200).json({ text: out.text, vision: false, model: out.model })
+        return
+      }
+      errors.push('Gemini: ' + out.error)
+    }
+
+    if (requireVision) {
+      // No model could see the image: report that honestly instead of failing.
+      res.status(200).json({ text: '', vision: false })
+      return
     }
 
     if (errors.length === 0) {
