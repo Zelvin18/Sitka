@@ -414,7 +414,7 @@ export default function App(): React.JSX.Element {
           />
         )}
         {view.name === 'settings' && (
-          <SettingsView settings={settings} onSaved={setSettings} />
+          <SettingsView settings={settings} onSaved={setSettings} onOpenSession={(id) => openSession(id)} />
         )}
         {view.name === 'brain' && (
           <BrainView

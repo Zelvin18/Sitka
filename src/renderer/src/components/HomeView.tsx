@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { ScheduledEvent, SessionMeta } from '@shared/types'
 import {
   IconBroadcast,
@@ -58,28 +58,17 @@ export default function HomeView({
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [retryTick, setRetryTick] = useState(0)
-  const [sampleBusy, setSampleBusy] = useState(false)
   const requestedRef = useRef<Set<string>>(new Set())
   const recent = sessions.filter((s) => s.status === 'complete').slice(0, 3)
   const upcomingEvents = events.filter((e) => !e.sessionId).slice(0, 2)
   const firstRun = !sessions.some((s) => !s.sample)
-  // The walkthrough opens by itself the first time, and stays one tap away after.
+  // The walkthrough opens by itself the first time someone arrives, once.
+  // After that it lives in Settings, where it can be watched again.
   const [showTour, setShowTour] = useState(() => firstRun && !tourSeen())
-  const closeTour = (): void => {
+  const closeTour = useCallback((): void => {
     markTourSeen()
     setShowTour(false)
-  }
-
-  async function openSample(): Promise<void> {
-    if (sampleBusy) return
-    setSampleBusy(true)
-    try {
-      const meta = await window.sitka.createSampleSession()
-      if (meta) onOpenSession(meta.id)
-    } finally {
-      setSampleBusy(false)
-    }
-  }
+  }, [])
 
   useEffect(() => {
     void window.sitka.listEvents().then((r) => setEvents(r.events))
@@ -119,30 +108,8 @@ export default function HomeView({
           <p className="home-sub">
             Sitka attends with you — lectures, meetings, and events, understood live.
           </p>
-          <button className="home-tour-link" onClick={() => setShowTour(true)}>
-            <IconPlay size={12} strokeWidth={2.2} />
-            How Sitka works · 1 min
-          </button>
         </div>
         {showTour && <Tour onClose={closeTour} />}
-
-        {firstRun && (
-          <button className="home-sample" onClick={() => void openSample()} disabled={sampleBusy}>
-            <span className="home-sample-mark">
-              <Mark size={24} live={sampleBusy} />
-            </span>
-            <span>
-              <span className="home-sample-title">See Sitka work in one minute</span>
-              <span className="home-sample-desc">
-                Open a short sample lecture that is already captured. Ask it a question,
-                read the notes it wrote, and jump to the exact moment behind every answer.
-              </span>
-            </span>
-            <span className="home-sample-cta">
-              {sampleBusy ? 'Preparing…' : 'Open the sample →'}
-            </span>
-          </button>
-        )}
 
         <div className="home-actions">
           <button className="home-action" onClick={onNewSession}>

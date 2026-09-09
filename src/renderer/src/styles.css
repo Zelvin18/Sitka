@@ -258,6 +258,42 @@ body {
   border-color: var(--text-3);
 }
 
+/* Settings: getting started */
+.start-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.start-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: var(--text);
+  color: var(--bg);
+  flex: none;
+}
+
+.start-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.start-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.start-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
 /* the walkthrough, over the app */
 .tour-modal {
   width: min(880px, calc(100vw - 40px));
