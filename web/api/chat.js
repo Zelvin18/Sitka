@@ -338,7 +338,12 @@ async function geminiChain(keys, system, messages, maxTokens) {
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: system }] },
               contents: toGemini(messages),
-              generationConfig: { maxOutputTokens: maxTokens }
+              generationConfig: {
+              maxOutputTokens: maxTokens,
+              // 2.5 models "think" before answering by default, which adds
+              // seconds to every screen question; a lecture needs answers now.
+              ...(/-2\.5-/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {})
+            }
             })
           }
         )

@@ -19,6 +19,7 @@ import { ON_SCREEN_PREFIX, type SessionMaterial } from '@shared/types'
 import { frameDifference } from '@shared/visionLogic'
 import {
   IconBroadcast,
+  IconCamera,
   IconMic,
   IconScreen,
   IconSparkle,
@@ -33,6 +34,17 @@ const NOTES_INTERVAL_MS = 75000
 
 /** Running as the website (browser picker) rather than inside Electron. */
 const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+/** Phones cannot share their screen (no getDisplayMedia); their camera is the eye instead. */
+const CAN_SHARE_SCREEN = typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
+  video: {
+    facingMode: { ideal: 'environment' },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { max: 15 }
+  },
+  audio: false
+}
 
 const VIDEO_CHUNK_MS = 3000
 const STT_CHUNK_MS = 5000
@@ -123,9 +135,9 @@ export default function LiveSession({
   const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
   const [hosting, setHosting] = useState(false)
   const [kind, setKind] = useState<SessionKind>(presetKind ?? 'other')
-  // ---- capture mode: the screen with its sound, or the microphone alone ----
-  const [captureMode, setCaptureMode] = useState<'screen' | 'audio'>(
-    presetAudio ? 'audio' : 'screen'
+  // ---- capture mode: the screen with its sound, the camera, or the microphone alone ----
+  const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(
+    presetAudio ? 'audio' : CAN_SHARE_SCREEN ? 'screen' : 'camera'
   )
   const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
   const [audioOnlyRec, setAudioOnlyRec] = useState(false)
@@ -269,6 +281,31 @@ export default function LiveSession({
       /* user cancelled the browser picker */
     }
   }, [systemAudioOn])
+  // The phone's back camera, pointed at the board or the projector.
+  const pickCamera = useCallback(async (): Promise<void> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
+      webStreamRef.current?.getTracks().forEach((t) => t.stop())
+      webStreamRef.current = stream
+      setWebStream(stream)
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (webStreamRef.current === stream) {
+          webStreamRef.current = null
+          setWebStream(null)
+        }
+      })
+    } catch {
+      setError('Camera access was not allowed. Check the camera permission for this site in your browser settings.')
+    }
+  }, [])
+  // A preview belongs to one mode: switching modes lets it go.
+  useEffect(() => {
+    return () => {
+      webStreamRef.current?.getTracks().forEach((t) => t.stop())
+      webStreamRef.current = null
+      setWebStream(null)
+    }
+  }, [captureMode])
   useEffect(() => {
     if (webStream && webPreviewRef.current) {
       webPreviewRef.current.srcObject = webStream
@@ -576,7 +613,7 @@ export default function LiveSession({
     }
   }, [])
   // Full-size frame for vision questions ("what does this graph show?").
-  const getFrame = useCallback((): string | null => captureFrame(1600, 0.8), [captureFrame])
+  const getFrame = useCallback((): string | null => captureFrame(1280, 0.72), [captureFrame])
 
   // ---- visual memory: keep a key frame whenever the screen settles on something new ----
   // A tiny grayscale thumbnail is compared every few seconds; when the screen
@@ -588,7 +625,12 @@ export default function LiveSession({
   const slideBusyRef = useRef(false)
   const slideCountRef = useRef(0)
   useEffect(() => {
-    if (phase !== 'recording' || captureMode !== 'screen' || !hasChatKey) return undefined
+    if (phase !== 'recording' || captureMode === 'audio' || !hasChatKey) return undefined
+    // A handheld camera never sits perfectly still, so it gets looser
+    // "settled" and "changed" thresholds and a longer gap between frames.
+    const settled = captureMode === 'camera' ? 0.06 : 0.02
+    const distinct = captureMode === 'camera' ? 0.15 : 0.1
+    const minGap = captureMode === 'camera' ? 12000 : 6000
     const t = setInterval(() => {
       const v = previewRef.current
       if (!v || v.videoWidth === 0 || slideBusyRef.current || slideCountRef.current >= 150) return
@@ -602,10 +644,10 @@ export default function LiveSession({
       const prev = lastSampleRef.current
       lastSampleRef.current = px
       if (!prev) return
-      if (frameDifference(prev, px) > 0.02) return // still changing — wait for it to settle
+      if (frameDifference(prev, px) > settled) return // still changing — wait for it to settle
       const kept = lastKeptRef.current
-      if (kept && frameDifference(kept, px) < 0.1) return // same screen as the last key frame
-      if (Date.now() - lastKeptAtRef.current < 6000) return
+      if (kept && frameDifference(kept, px) < distinct) return // same screen as the last key frame
+      if (Date.now() - lastKeptAtRef.current < minGap) return
       const frame = captureFrame(1280, 0.72)
       const id = sessionIdRef.current
       if (!frame || !id) return
@@ -777,6 +819,15 @@ export default function LiveSession({
       let desktopStream: MediaStream | null = null
       if (captureMode === 'audio') {
         // audio-only: nothing on screen to capture — the microphone is the session
+      } else if (captureMode === 'camera') {
+        const pre = webStreamRef.current
+        if (pre && pre.getVideoTracks().some((t) => t.readyState === 'live')) {
+          desktopStream = pre
+          webStreamRef.current = null
+          setWebStream(null)
+        } else {
+          desktopStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS)
+        }
       } else if (isWeb) {
         // Prefer the screen chosen (and previewed) on the picking page.
         const pre = webStreamRef.current
@@ -819,14 +870,14 @@ export default function LiveSession({
       if (desktopStream) streamsRef.current.push(desktopStream)
 
       let micStream: MediaStream | null = null
-      if (micOn || captureMode === 'audio') {
+      if (micOn || captureMode !== 'screen') {
         try {
-          // Audio-only: take the microphone raw. Echo cancellation would strip
-          // any sound the device itself is playing (a video, a call), and
-          // noise suppression can thin out distant speakers in a room.
+          // Audio-only and camera sessions happen in a room: take the
+          // microphone raw. Echo cancellation would strip any sound the device
+          // itself is playing, and noise suppression thins out distant speakers.
           micStream = await navigator.mediaDevices.getUserMedia({
             audio:
-              captureMode === 'audio'
+              captureMode !== 'screen'
                 ? { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
                 : { echoCancellation: true, noiseSuppression: true }
           })
@@ -835,8 +886,8 @@ export default function LiveSession({
           micStream = null
         }
       }
-      if (captureMode === 'audio' && !micStream) {
-        throw new Error('Microphone access is needed for an audio-only session.')
+      if (captureMode !== 'screen' && !micStream) {
+        throw new Error('Microphone access is needed for this session — the sound comes from the room.')
       }
       micStreamRef.current = micStream
       setAudioOnlyRec(captureMode === 'audio')
@@ -873,7 +924,7 @@ export default function LiveSession({
         ...(captureMode === 'audio'
           ? { audioBitsPerSecond: 64_000 }
           : IS_WEB
-            ? { videoBitsPerSecond: 450_000, audioBitsPerSecond: 64_000 }
+            ? { videoBitsPerSecond: captureMode === 'camera' ? 900_000 : 450_000, audioBitsPerSecond: 64_000 }
             : {})
       })
       recorder.ondataavailable = (e) => {
@@ -1111,7 +1162,7 @@ export default function LiveSession({
 
   // ============ picking UI ============
   if (phase === 'picking' || phase === 'starting') {
-    const ready = captureMode === 'audio' || Boolean(selectedSource)
+    const ready = captureMode !== 'screen' || Boolean(selectedSource)
     const kindLabel = KIND_OPTIONS.find((k) => k.key === kind)?.label ?? 'Session'
     const stepCount = hosting ? 4 : 3
     let stepNo = 0
@@ -1266,14 +1317,25 @@ export default function LiveSession({
               <div className="setup-step-body">
                 <div className="setup-step-title">What should Sitka watch?</div>
                 <div className="mode-switch">
+                  {CAN_SHARE_SCREEN && (
+                    <button
+                      type="button"
+                      className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
+                      onClick={() => setCaptureMode('screen')}
+                    >
+                      <IconScreen size={18} strokeWidth={1.7} />
+                      <span className="mode-title">Screen + audio</span>
+                      <span className="mode-desc">Slides, a call, a video — with the sound.</span>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
-                    onClick={() => setCaptureMode('screen')}
+                    className={`mode-tile${captureMode === 'camera' ? ' on' : ''}`}
+                    onClick={() => setCaptureMode('camera')}
                   >
-                    <IconScreen size={18} strokeWidth={1.7} />
-                    <span className="mode-title">Screen + audio</span>
-                    <span className="mode-desc">Slides, a call, a video — with the sound.</span>
+                    <IconCamera size={18} strokeWidth={1.7} />
+                    <span className="mode-title">Camera + audio</span>
+                    <span className="mode-desc">Point it at the board or the projector.</span>
                   </button>
                   <button
                     type="button"
@@ -1293,6 +1355,34 @@ export default function LiveSession({
                     </div>
                     <AudioLevel stream={micPreview} />
                   </div>
+                ) : captureMode === 'camera' ? (
+                  <button
+                    type="button"
+                    className={`web-pick${webStream ? ' has-stream' : ''}`}
+                    onClick={() => void pickCamera()}
+                    title="Open the camera"
+                  >
+                    {webStream ? (
+                      <>
+                        <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
+                        <div className="web-pick-bar">
+                          <span className="web-pick-live" />
+                          <span className="web-pick-label">Your camera</span>
+                          <span className="web-pick-change">Tap to reopen</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="web-pick-empty">
+                        <div className="web-pick-icon">
+                          <IconCamera size={26} strokeWidth={1.5} />
+                        </div>
+                        <div className="web-pick-title">Tap to open the camera</div>
+                        <div className="web-pick-sub">
+                          Point it at the board, the projector or a screen. Sitka reads what it sees and listens to the room.
+                        </div>
+                      </div>
+                    )}
+                  </button>
                 ) : IS_WEB ? (
                   <button
                     type="button"
@@ -1394,7 +1484,12 @@ export default function LiveSession({
               ) : ready ? (
                 <>
                   <Mark size={15} />
-                  {captureMode === 'audio' ? 'Listening through your microphone' : 'Watching your screen'} ·{' '}
+                  {captureMode === 'audio'
+                    ? 'Listening through your microphone'
+                    : captureMode === 'camera'
+                      ? 'Watching through your camera'
+                      : 'Watching your screen'}{' '}
+                  ·{' '}
                   {kindLabel.toLowerCase()}
                   {pendingMats.length > 0 ? ` · ${pendingMats.length} ${pendingMats.length === 1 ? 'document' : 'documents'} read` : ''}
                 </>

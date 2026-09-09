@@ -684,6 +684,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Match the length of your answer to the question. A simple or specific question gets a short, direct answer of one to three sentences — no headings, no lists, no preamble. Only produce long, structured answers when the user asks for notes, a summary, a study guide, or detail.',
       '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison.',
       '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
+      '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
       '- Do not end answers with offers like "let me know if you want more" — just answer.',
       '',
       'Transcript of the session (each line is prefixed with its start time):'
@@ -710,6 +711,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- When you reference a specific moment of the talk, cite it inline with the exact format [[M:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Plain ASCII double square brackets only. The app turns these into tappable links.',
       '- Match the length of your answer to the question: short and direct by default; structure only for catch-ups and summaries.',
       '- Formatting: **bold** for key terms, "-" bullets for genuine lists, "## " headings only in long answers, tables only for comparisons. This renders on a phone — keep it tight.',
+      '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
       '- Do not end answers with offers like "let me know if you want more" — just answer.',
       materials ? `\nEvent materials shared by the host:\n${materials.slice(0, 14000)}` : '',
       preEvent ? '' : `\nTranscript so far:\n${transcriptBlock(segments)}`

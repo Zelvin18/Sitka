@@ -80,6 +80,8 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null)
   /** Phone only: fold the conversation away so the content above gets the screen. */
   const [folded, setFolded] = useState(false)
+  /** the current question carries a picture of the screen */
+  const [withFrame, setWithFrame] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const activeRequest = useRef<string | null>(null)
@@ -149,6 +151,8 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       } else if (brain) {
         void window.sitka.askBrain({ requestId, question: q, history })
       } else {
+        const frame = host ? undefined : getFrame?.() ?? undefined
+        setWithFrame(Boolean(frame))
         void window.sitka.askAi({
           sessionId,
           requestId,
@@ -156,7 +160,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           live,
           history,
           host,
-          frame: host ? undefined : getFrame?.() ?? undefined
+          frame
         })
       }
     },
@@ -348,7 +352,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
             ) : (
               <span className="dots-mark">
                 <Mark size={16} live />
-                Thinking
+                {withFrame ? 'Reading the screen' : 'Thinking'}
               </span>
             )}
           </div>
