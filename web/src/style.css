@@ -199,6 +199,23 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--t3) 50%),lin
 }
 @media(prefers-reduced-motion:reduce){.rippling .ring,.ldot,.seg{animation:none!important}}
 
+/* ---------- the live screen ---------- */
+.stagecard{position:relative}
+.stagecard img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.stagecard .stageb{z-index:0}
+.stagecard #stageimg{z-index:1}
+.stagecard #stageimg.fade{animation:stfade .28s ease}
+@keyframes stfade{from{opacity:0}to{opacity:1}}
+.stagecard .stagetag,.stagecard .stageexp{z-index:3}
+.stagepaused{position:absolute;inset:0;z-index:2;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;backdrop-filter:blur(3px)}
+.stagecard.paused .stagepaused{display:flex}
+.stagewait{aspect-ratio:16/9;border:1.5px dashed var(--border);border-radius:16px;display:grid;place-items:center;text-align:center;padding:20px;color:var(--t3);font-size:13px;margin-bottom:10px;background:var(--soft)}
+.stagewait span{max-width:240px;line-height:1.5}
+@media(min-width:900px){
+  .stagecard{border-radius:18px;box-shadow:0 18px 50px var(--shadow)}
+  .stagewait{border-radius:18px}
+}
+
 /* ---------- header with the room count ---------- */
 header{padding-left:16px;padding-right:16px}
 .hdr-in{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:1180px;margin:0 auto}

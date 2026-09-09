@@ -735,15 +735,44 @@ export default function LiveSession({
     return () => clearInterval(t)
   }, [phase, captureMode, hasChatKey, captureFrame])
 
-  // ---- live stage view: mirror the screen to attendee phones every 2s ----
+  // ---- live stage: the host's screen on every attendee's phone ----
+  // A frame goes out the moment the picture changes, up to once a second,
+  // and at least every 4s so a still slide never looks like a dropped feed.
+  const [stageNote, setStageNote] = useState<string | null>(null)
+  const stageThumbRef = useRef<Uint8ClampedArray | null>(null)
+  const stageAtRef = useRef(0)
   useEffect(() => {
     if (phase !== 'recording' || !hosting || !confUrl) return undefined
+    let busy = false
     const t = setInterval(() => {
-      const frame = getFrame()
-      if (frame) void window.sitka.pushStageFrame(frame)
-    }, 2000)
+      if (busy) return
+      const v = previewRef.current
+      if (!v || v.videoWidth === 0) return
+      const c = document.createElement('canvas')
+      c.width = 32
+      c.height = 18
+      const ctx = c.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(v, 0, 0, 32, 18)
+      const px = ctx.getImageData(0, 0, 32, 18).data
+      const changed = !stageThumbRef.current || frameDifference(stageThumbRef.current, px) > 0.01
+      const keepAlive = Date.now() - stageAtRef.current > 4000
+      if (!changed && !keepAlive) return
+      const frame = captureFrame(1120, 0.62)
+      if (!frame) return
+      stageThumbRef.current = px
+      stageAtRef.current = Date.now()
+      busy = true
+      void window.sitka
+        .pushStageFrame(frame)
+        .then((r) => setStageNote(r && r.error ? r.error : null))
+        .catch((err: unknown) => setStageNote(err instanceof Error ? err.message : String(err)))
+        .finally(() => {
+          busy = false
+        })
+    }, 1000)
     return () => clearInterval(t)
-  }, [phase, hosting, confUrl, getFrame])
+  }, [phase, hosting, confUrl, captureFrame])
 
   // Attach the live preview stream once the recording view has mounted.
   useEffect(() => {
@@ -1766,6 +1795,14 @@ export default function LiveSession({
                   Stop
                 </button>
               </div>
+            </div>
+
+            <div className={`stage-status${stageNote ? ' bad' : ''}`}>
+              {audioOnlyRec
+                ? 'Audio only — there is no screen to show the room.'
+                : stageNote
+                  ? `Your screen is not reaching phones: ${stageNote}`
+                  : 'Your screen is live on every phone in the room.'}
             </div>
 
             {audience.reactions &&

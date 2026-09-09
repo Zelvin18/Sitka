@@ -412,48 +412,79 @@ function applyTranslation(idx: number, text: string): void {
 }
 const pendingTranslations = new Map<number, string>()
 
-// ---------- stage view ----------
+// ---------- stage view: the host's screen, live ----------
+// The host sends a fresh picture whenever their screen changes (up to once a
+// second). Each new picture fades over the previous one, so slides, boards and
+// demos feel live rather than like a slideshow of snapshots.
 let stageTimer: number | null = null
+let stageWatch: number | null = null
 let stageSeen = false
 let stageBusy = false
+let stageLastAt = 0
+let stageStartedAt = 0
+let stageEtag = ''
 const stageUrl = (): string =>
   `${SUPA_URL}/storage/v1/object/public/stage/${eventId}.jpg`
+function showStageFrame(b: Blob): void {
+  const u = URL.createObjectURL(b)
+  const img = el('stageimg') as HTMLImageElement
+  const back = el('stageimgb') as HTMLImageElement
+  const prev = img.dataset.u
+  if (prev) back.src = prev
+  img.src = u
+  img.classList.remove('fade')
+  void img.offsetWidth
+  img.classList.add('fade')
+  ;(el('stagefullimg') as HTMLImageElement).src = u
+  img.dataset.u = u
+  if (prev) window.setTimeout(() => URL.revokeObjectURL(prev), 600)
+  stageLastAt = Date.now()
+  el('stagecard').classList.remove('paused')
+  if (!stageSeen) {
+    stageSeen = true
+    el('stagewait').classList.add('hidden')
+    el('stagecard').classList.remove('hidden')
+  }
+}
 function pollStage(): void {
   if (stageBusy) return
   stageBusy = true
-  fetch(stageUrl() + '?t=' + Date.now())
+  fetch(stageUrl() + '?t=' + Date.now(), { cache: 'no-store' })
     .then((r) => {
       if (!r.ok) throw new Error('nf')
+      // the same picture again costs nothing to skip
+      const tag = r.headers.get('etag') || r.headers.get('last-modified') || ''
+      if (tag && tag === stageEtag) return null
+      stageEtag = tag
       return r.blob()
     })
     .then((b) => {
-      const u = URL.createObjectURL(b)
-      const img = el('stageimg') as HTMLImageElement
-      const old = img.dataset.u
-      img.src = u
-      ;(el('stagefullimg') as HTMLImageElement).src = u
-      img.dataset.u = u
-      if (old) URL.revokeObjectURL(old)
-      if (!stageSeen) {
-        stageSeen = true
-        el('stagecard').classList.remove('hidden')
-      }
+      if (b) showStageFrame(b)
     })
     .catch(() => {
-      if (stageSeen) {
-        stageSeen = false
-        el('stagecard').classList.add('hidden')
-        el('stagefull').classList.add('hidden')
-      }
+      /* nothing there yet, or a blip — the watcher handles a long silence */
     })
     .then(() => {
       stageBusy = false
     })
 }
+function watchStage(): void {
+  const now = Date.now()
+  if (stageSeen) {
+    // the host stopped sharing, or their connection hiccuped
+    el('stagecard').classList.toggle('paused', now - stageLastAt > 8000)
+  } else if (now - stageStartedAt > 30000) {
+    // half a minute with nothing: an audio-only talk, most likely
+    el('stagewait').classList.add('hidden')
+  }
+}
 function startStage(): void {
   if (!stageTimer) {
+    stageStartedAt = Date.now()
+    if (!stageSeen) el('stagewait').classList.remove('hidden')
     pollStage()
-    stageTimer = window.setInterval(pollStage, 2500)
+    stageTimer = window.setInterval(pollStage, 1000)
+    stageWatch = window.setInterval(watchStage, 2000)
   }
 }
 function stopStage(): void {
@@ -461,6 +492,12 @@ function stopStage(): void {
     clearInterval(stageTimer)
     stageTimer = null
   }
+  if (stageWatch) {
+    clearInterval(stageWatch)
+    stageWatch = null
+  }
+  el('stagewait').classList.add('hidden')
+  el('stagecard').classList.remove('paused')
 }
 el('stageexpbtn').onclick = (e) => {
   e.stopPropagation()

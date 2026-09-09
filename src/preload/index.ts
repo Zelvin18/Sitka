@@ -211,7 +211,8 @@ const api = {
   startConference: (sessionId: string): Promise<{ url?: string; error?: string }> =>
     ipcRenderer.invoke('conference:start', sessionId),
   stopConference: (): Promise<void> => ipcRenderer.invoke('conference:stop'),
-  pushStageFrame: (dataUrl: string): Promise<void> =>
+  /** mirror the host's screen to every attendee; an error says why phones are not getting it */
+  pushStageFrame: (dataUrl: string): Promise<{ error?: string } | void> =>
     ipcRenderer.invoke('conference:frame', dataUrl),
   conferenceStatus: (): Promise<{
     running: boolean

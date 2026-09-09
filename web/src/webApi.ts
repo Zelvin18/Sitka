@@ -2774,22 +2774,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         : {}
     },
     pushStageFrame: async (dataUrl: string) => {
-      if (!conf || conf.frameBusy) return
+      if (!conf || conf.frameBusy) return {}
       const m = /^data:image\/jpeg;base64,(.+)$/.exec(dataUrl)
-      if (!m) return
+      if (!m) return {}
       conf.frameBusy = true
       try {
         const bin = atob(m[1])
         const bytes = new Uint8Array(bin.length)
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-        await sb.storage
+        const { error } = await sb.storage
           .from('stage')
           .upload(`${conf.eventId}.jpg`, new Blob([bytes], { type: 'image/jpeg' }), {
             upsert: true,
-            contentType: 'image/jpeg'
+            contentType: 'image/jpeg',
+            cacheControl: '0'
           })
-      } catch {
-        /* transient */
+        if (error) {
+          return {
+            error: /bucket|not found/i.test(error.message)
+              ? 'the "stage" storage bucket is missing — run supabase/schema.sql'
+              : /policy|security/i.test(error.message)
+                ? 'the storage policy is missing — run supabase/host-upgrade.sql'
+                : error.message
+          }
+        }
+        return {}
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
       } finally {
         if (conf) conf.frameBusy = false
       }

@@ -5942,6 +5942,16 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+.stage-status {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: -2px 0 14px;
+}
+
+.stage-status.bad {
+  color: var(--danger);
+}
+
 /* ---- host console: the room chat ---- */
 .room-card {
   border: 1px solid var(--border);
