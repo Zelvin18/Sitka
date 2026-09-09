@@ -215,6 +215,7 @@ const CSS = `
 .t-end-btns{display:flex;gap:.7em;margin-top:.4em}
 .t-end-btns button{font:inherit;font-size:1em;font-weight:650;padding:.7em 1.4em;border-radius:.8em;border:1px solid var(--tbd);background:var(--tb);color:var(--tt);cursor:pointer}
 .t-end-btns button.pri{background:var(--tt);color:var(--tb);border-color:var(--tt)}
+@container (max-width:540px){.t-side{display:none}.t-cards span,.t-tile span{display:none}.t-recent{display:none}}
 @media(prefers-reduced-motion:reduce){.tour-stage *{animation-duration:.01s!important;animation-delay:0s!important}}
 `
 

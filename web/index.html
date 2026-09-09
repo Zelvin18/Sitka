@@ -36,7 +36,7 @@ nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,
 .btn:hover{box-shadow:0 8px 24px var(--shadow)}
 .btn:active{transform:scale(.97)}
 .btn2{background:var(--bg);color:var(--text);border-color:var(--border)}
-.btn2:hover{border-color:var(--t3)}
+.btn2:hover{border-color:var(--t3);background:var(--soft);box-shadow:none}
 .btn-sm{padding:8px 16px;font-size:13.5px}
 @media(max-width:700px){.nav-links a:not(.btn){display:none}}
 
@@ -45,38 +45,32 @@ nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 75% 35%,var(--softer),transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;inset:0;background-image:radial-gradient(var(--border) 1px,transparent 1.2px);background-size:22px 22px;opacity:.6;-webkit-mask-image:radial-gradient(ellipse 60% 60% at 72% 40%,#000 20%,transparent 72%);mask-image:radial-gradient(ellipse 60% 60% at 72% 40%,#000 20%,transparent 72%);pointer-events:none}
 .hero .wrap{position:relative;z-index:1}
-.hero-grid{display:grid;grid-template-columns:.92fr 1.08fr;gap:44px;align-items:center}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t2);margin-bottom:22px}
-.eyebrow i{width:7px;height:7px;border-radius:50%;background:var(--danger);animation:blip 1.6s ease infinite}
-@keyframes blip{50%{opacity:.25}}
-h1{font-size:clamp(38px,5.4vw,64px);line-height:1.02;letter-spacing:-.035em;font-weight:800;margin:0 0 20px}
+.hero-grid{display:flex;flex-direction:column;align-items:center;text-align:center}
+.hero-copy{max-width:760px}
+h1{font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.035em;font-weight:800;margin:0 0 20px}
 .hl{position:relative;display:inline-block}
 .hl::after{content:'';position:absolute;left:-.04em;right:-.04em;bottom:.06em;height:.16em;background:var(--text);opacity:.12;border-radius:4px}
-.hero-sub{font-size:clamp(16px,2vw,19px);color:var(--t2);max-width:520px;margin:0 0 30px;line-height:1.55}
-.hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+.hero-sub{font-size:clamp(16px,2vw,19px);color:var(--t2);max-width:600px;margin:0 auto 30px;line-height:1.55}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 .hero-trust{margin-top:18px;font-size:13px;color:var(--t3)}
-.lang-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:28px;font-size:14px;color:var(--t2);font-weight:550}
+.lang-line{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:24px;font-size:14px;color:var(--t2);font-weight:550}
 .lang-rotate{display:inline-block;height:1.5em;overflow:hidden;border:1px solid var(--border);border-radius:9px;padding:0 10px;background:var(--soft);color:var(--text);font-weight:700;vertical-align:middle}
 .lang-track{display:block;animation:langroll 14s cubic-bezier(.7,0,.3,1) infinite}
 .lang-track span{display:block;height:1.5em;line-height:1.5em}
 @keyframes langroll{0%,12%{transform:translateY(0)}16.6%,28%{transform:translateY(-1.5em)}33.3%,45%{transform:translateY(-3em)}50%,62%{transform:translateY(-4.5em)}66.6%,78%{transform:translateY(-6em)}83.3%,95%{transform:translateY(-7.5em)}100%{transform:translateY(-9em)}}
 
-/* the product, live, inside a laptop */
-.device{position:relative;width:100%;max-width:640px;justify-self:end;animation:float 9s ease-in-out infinite}
-@keyframes float{50%{transform:translateY(-8px)}}
-.device-lid{background:#111114;border-radius:18px 18px 8px 8px;padding:12px 12px 0;box-shadow:0 40px 90px var(--shadow),0 0 0 1px rgba(0,0,0,.28)}
-.device-lid::before{content:'';display:block;width:6px;height:6px;border-radius:50%;background:#2c2c31;margin:0 auto 8px}
-.device-screen{background:var(--bg);border-radius:8px 8px 0 0;overflow:hidden;padding:12px 12px 8px}
-.device-screen .tour-chapters,.device-screen .tour-bar{display:none}
-.device-screen .tour-caption{font-size:13px;min-height:2.2em;margin:10px 2px 2px;color:var(--t2)}
-.device-screen .tour-stage{border-radius:10px}
-.device-base{height:14px;background:linear-gradient(#2a2a2f,#151518);border-radius:0 0 14px 14px;margin:0 -18px;position:relative}
-.device-base::after{content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);width:120px;height:5px;background:#3a3a40;border-radius:0 0 6px 6px}
+/* the product, live, full width under the headline */
+.hero-video{max-width:980px;margin:54px auto 0}
+.hero-video-frame{background:var(--bg);border:1px solid var(--border);border-radius:22px;padding:14px 14px 10px;box-shadow:0 40px 100px var(--shadow)}
+.hero-video-frame .tour-chapters,.hero-video-frame .tour-bar{display:none}
+.hero-video-frame .tour-caption{font-size:14.5px;min-height:2.2em;margin:12px 4px 4px;color:var(--t2);text-align:center}
+.hero-video-frame .tour-stage{border-radius:14px}
 .hero-note{margin-top:14px;font-size:12.5px;color:var(--t3);text-align:center}
-@media(max-width:960px){
-  .hero{padding-top:48px}
-  .hero-grid{grid-template-columns:1fr;gap:34px}
-  .device{max-width:100%;justify-self:stretch}
+@media(max-width:700px){
+  .hero{padding-top:44px}
+  .hero-video{margin-top:36px}
+  .hero-video-frame{padding:8px 8px 6px;border-radius:16px}
+  .hero-video-frame .tour-caption{font-size:13px}
 }
 
 /* ---- the four moments strip ---- */
@@ -162,10 +156,19 @@ section{padding:84px 0}
 .cta-end h2{font-size:clamp(30px,5vw,46px);letter-spacing:-.035em;font-weight:800;margin-bottom:12px;line-height:1.05}
 .cta-end p{color:var(--t2);margin-bottom:30px;font-size:17px}
 
-footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:var(--t3)}
-.foot-in{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.foot-links{display:flex;gap:18px}
-.foot-links a:hover{color:var(--text)}
+footer{border-top:1px solid var(--border);background:var(--soft);padding:64px 0 28px;font-size:14px;color:var(--t2)}
+.foot-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:36px;padding-bottom:44px;border-bottom:1px solid var(--border)}
+.foot-brand .brand{margin-bottom:12px;color:var(--text)}
+.foot-brand p{max-width:300px;font-size:14px;line-height:1.55}
+.foot-langs{margin-top:16px;display:flex;flex-wrap:wrap;gap:6px}
+.foot-langs span{font-size:12px;font-weight:600;color:var(--t3);border:1px solid var(--border);border-radius:20px;padding:3px 9px;background:var(--bg)}
+.foot-col h5{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--t3);margin:0 0 14px}
+.foot-col a{display:block;color:var(--t2);font-size:14px;padding:5px 0}
+.foot-col a:hover{color:var(--text)}
+.foot-bottom{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:22px;font-size:13px;color:var(--t3)}
+.foot-bottom .mark{width:14px;height:14px;display:inline-block;vertical-align:-2px;margin-right:6px}
+@media(max-width:860px){.foot-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.foot-grid{grid-template-columns:1fr}}
 
 /* reveal on scroll */
 .rv{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
@@ -183,14 +186,13 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
     <a href="#how">How it works</a>
     <a href="#who">Who it's for</a>
     <a href="/app">Sign in</a>
-    <a class="btn btn-sm" href="/app">Open Sitka</a>
+    <a class="btn btn2 btn-sm" href="/app">Open Sitka</a>
   </div>
 </div></nav>
 
 <header class="hero"><div class="wrap">
   <div class="hero-grid">
     <div class="hero-copy">
-      <div class="eyebrow"><i></i>Live in the room with you</div>
       <h1>The AI that <span class="hl">attends</span> with you.</h1>
       <p class="hero-sub">Sitka sits in your lectures, meetings and talks. It listens, reads what is on the screen, answers your questions privately, and remembers every moment — so you can stay present.</p>
       <div class="hero-cta">
@@ -203,13 +205,10 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
       </div>
     </div>
 
-    <div>
-      <div class="device" aria-hidden="true">
-        <div class="device-lid"><div class="device-screen"><div id="tour"></div></div></div>
-        <div class="device-base"></div>
-      </div>
-      <div class="hero-note">A real session, start to finish — tap to pause.</div>
-    </div>
+  </div>
+  <div class="hero-video" aria-hidden="true">
+    <div class="hero-video-frame"><div id="tour"></div></div>
+    <div class="hero-note">A real session, start to finish. Tap the picture to pause.</div>
   </div>
 </div></header>
 
@@ -330,12 +329,37 @@ footer{border-top:1px solid var(--border);padding:34px 0;font-size:13px;color:va
   <a class="btn" href="/app" style="padding:15px 36px;font-size:16px">Open Sitka</a>
 </div></section>
 
-<footer><div class="wrap foot-in">
-  <span class="brand" style="font-size:14px"><svg class="mark" style="width:16px;height:16px" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</span>
-  <div class="foot-links">
-    <a href="/legal">Privacy &amp; Terms</a>
-    <a href="/e/demo">Attendee view</a>
-    <a href="/app">Sign in</a>
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <span class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</span>
+      <p>The AI that attends with you. It listens, reads the screen, answers privately and remembers every moment of your lectures, meetings and events.</p>
+      <div class="foot-langs"><span>English</span><span>Shona</span><span>French</span><span>Swahili</span><span>Arabic</span><span>Chinese</span><span>+ more</span></div>
+    </div>
+    <div class="foot-col">
+      <h5>Product</h5>
+      <a href="#features">Features</a>
+      <a href="#sight">Sight</a>
+      <a href="#how">How it works</a>
+      <a href="#who">Who it's for</a>
+    </div>
+    <div class="foot-col">
+      <h5>Sitka for</h5>
+      <a href="/app">Education</a>
+      <a href="/app">Business</a>
+      <a href="/app">Events and conferences</a>
+      <a href="/e/demo">The attendee view</a>
+    </div>
+    <div class="foot-col">
+      <h5>Account</h5>
+      <a href="/app">Sign in</a>
+      <a href="/app#create">Create an account</a>
+      <a href="/legal">Privacy &amp; Terms</a>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>© 2026 Sitka. All rights reserved.</span>
+    <span>Works in any browser · Phone, laptop or projector</span>
   </div>
 </div></footer>
 
