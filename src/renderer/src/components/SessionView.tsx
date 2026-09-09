@@ -18,6 +18,7 @@ import {
   IconEdit,
   IconNotes,
   IconShare,
+  IconSparkle,
   IconStar,
   Mark
 } from '../lib/icons'
@@ -72,6 +73,9 @@ export default function SessionView({
   const [reanalyzing, setReanalyzing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
+  // Phone: the chat is a tab beside Transcript, open by default, so the screen
+  // shows one thing at a time. On a desktop the chat is always the right column.
+  const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
 
   useEffect(() => {
     let cancelled = false
@@ -271,7 +275,7 @@ export default function SessionView({
   }
 
   return (
-    <div className="session-layout" ref={layoutRef}>
+    <div className={`session-layout${askOpen ? ' ask-open' : ''}`} ref={layoutRef}>
       <div className="session-left">
         <div className="session-header">
           <div className="session-header-row">
@@ -491,7 +495,21 @@ export default function SessionView({
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0' }}>
+        <div
+          className="tab-row"
+          style={{ display: 'flex', gap: 4, padding: '12px 24px 0' }}
+          onClickCapture={(e) => {
+            const b = (e.target as HTMLElement).closest('button')
+            if (b && !b.classList.contains('tab-ask')) setAskOpen(false)
+          }}
+        >
+          <button
+            className={`btn btn-sm tab-ask ${askOpen ? '' : 'btn-ghost'}`}
+            onClick={() => setAskOpen(true)}
+          >
+            <IconSparkle size={13} />
+            Ask
+          </button>
           <button
             className={`btn btn-sm ${tab === 'transcript' ? '' : 'btn-ghost'}`}
             onClick={() => setTab('transcript')}

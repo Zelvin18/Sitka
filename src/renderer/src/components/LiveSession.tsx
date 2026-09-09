@@ -181,6 +181,8 @@ export default function LiveSession({
   const [leftTab, setLeftTab] = useState<'transcript' | 'notes' | 'audience' | 'materials'>(
     'transcript'
   )
+  // Phone: Ask Sitka is a tab beside Transcript, open by default.
+  const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
   const [markToast, setMarkToast] = useState<string | null>(null)
@@ -1523,7 +1525,7 @@ export default function LiveSession({
 
   // ============ recording UI ============
   return (
-    <div className="session-layout" ref={layoutRef}>
+    <div className={`session-layout${askOpen ? ' ask-open' : ''}`} ref={layoutRef}>
       <div className="session-left">
         <div className="session-header">
           <div className="session-header-row">
@@ -1612,7 +1614,21 @@ export default function LiveSession({
             <span>Transcription issue: {sttError}</span>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0' }}>
+        <div
+          className="tab-row"
+          style={{ display: 'flex', gap: 4, padding: '12px 24px 0' }}
+          onClickCapture={(e) => {
+            const b = (e.target as HTMLElement).closest('button')
+            if (b && !b.classList.contains('tab-ask')) setAskOpen(false)
+          }}
+        >
+          <button
+            className={`btn btn-sm tab-ask ${askOpen ? '' : 'btn-ghost'}`}
+            onClick={() => setAskOpen(true)}
+          >
+            <IconSparkle size={13} />
+            Ask
+          </button>
           <button
             className={`btn btn-sm ${leftTab === 'transcript' ? '' : 'btn-ghost'}`}
             onClick={() => setLeftTab('transcript')}

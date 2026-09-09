@@ -5870,6 +5870,56 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+/* ---- Phone: Ask Sitka is a tab beside Transcript ----
+   The screen shows one thing at a time: the chat, or the transcript, notes
+   and study material. Ask is the default. On a desktop the chat keeps its
+   own column and this tab never appears. */
+.tab-ask {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .tab-ask {
+    display: inline-flex;
+  }
+  .tab-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  .tab-row::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-row > .btn {
+    flex: none;
+    white-space: nowrap;
+  }
+  .session-layout .session-right {
+    display: none;
+  }
+  .session-layout.ask-open .session-right {
+    display: flex;
+    flex: 1 1 auto;
+    border-top: none;
+  }
+  .session-layout.ask-open .session-left {
+    flex: none;
+  }
+  .session-layout.ask-open .session-left .tab-row ~ * {
+    display: none;
+  }
+  .session-layout.ask-open .tab-row > .btn:not(.tab-ask) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+  }
+  .session-layout.ask-open .session-right .chat-header {
+    display: none;
+  }
+}
+
 /* Notes from Sitka live inside the conversation: never clipped, never
    stealing space from the chat. */
 .msg-note {
