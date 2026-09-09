@@ -5942,6 +5942,81 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+/* ---- host console: the room chat ---- */
+.room-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.room-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.room-empty {
+  font-size: 13px;
+  color: var(--text-3);
+  padding: 10px 2px;
+  line-height: 1.5;
+}
+
+.room-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 88%;
+}
+
+.room-msg b {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.room-msg span {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px 12px 12px 4px;
+  padding: 7px 11px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.room-msg.host {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.room-msg.host b {
+  color: var(--text);
+}
+
+.room-msg.host span {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+  border-radius: 12px 12px 4px 12px;
+}
+
+.room-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.room-input .input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* the greeting line, with Join at the far right */
 .home-greeting-row {
   display: flex;

@@ -34,6 +34,66 @@ let persona: string | null = null
 let myLang = 'English'
 let joined = false
 let listening = false
+let myName = ''
+
+// ---------- the room: who is here, and what they are saying ----------
+async function refreshCount(): Promise<void> {
+  const { count } = await sb
+    .from('attendees')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_id', eventId)
+  if (typeof count === 'number') {
+    el('countn').textContent = String(count)
+    el('count').classList.toggle('hidden', count < 1)
+  }
+}
+
+interface RoomRow {
+  id: string
+  attendee_id: string | null
+  name: string
+  host: boolean
+  text: string
+}
+const roomSeen = new Set<string>()
+function renderRoomMsg(row: RoomRow): void {
+  if (roomSeen.has(row.id)) return
+  roomSeen.add(row.id)
+  el('roomwait')?.classList.add('hidden')
+  const d = document.createElement('div')
+  const mine = row.attendee_id && row.attendee_id === attId
+  d.className = `rm${mine ? ' me' : ''}${row.host ? ' host' : ''}`
+  const who = document.createElement('b')
+  who.textContent = row.host ? 'Host' : mine ? 'You' : row.name || 'Guest'
+  const body = document.createElement('span')
+  body.textContent = row.text
+  d.append(who, body)
+  el('room').appendChild(d)
+  const pane = el('pane-room')
+  if (pane.classList.contains('sel')) pane.scrollTop = pane.scrollHeight
+  else if (!mine) document.querySelector('[data-pane=room]')?.classList.add('new')
+}
+async function sendRoom(text: string): Promise<void> {
+  const t = text.trim().slice(0, 600)
+  if (!t || !attId) return
+  const row: RoomRow = {
+    id: crypto.randomUUID(),
+    attendee_id: attId,
+    name: myName || (persona ? persona : 'Guest'),
+    host: false,
+    text: t
+  }
+  renderRoomMsg(row) // instantly, then the room gets it
+  const { error } = await sb.from('room_messages').insert({ ...row, event_id: eventId })
+  if (error) {
+    const n = document.createElement('div')
+    n.className = 'notice err'
+    n.textContent = /relation|does not exist/i.test(error.message)
+      ? 'The room chat is not set up for this event yet.'
+      : 'Could not send — check your connection.'
+    el('room').appendChild(n)
+  }
+}
 
 const LANG_CODES: Record<string, string> = {
   English: 'en', Shona: 'sn', Ndebele: 'nr', Swahili: 'sw', French: 'fr',
@@ -311,6 +371,8 @@ const translatedForMe = (): boolean => {
 // ---------- captions ----------
 const segEls = new Map<number, HTMLElement>()
 function upsertSeg(row: SegRow, translated?: string): void {
+  // silence sometimes transcribes as a lone dot — never worth a line
+  if (/^[\s.。…,\-–—]*$/.test(row.text)) return
   el('livewait').style.display = 'none'
   const existing = segEls.get(row.idx)
   if (existing) {
@@ -695,6 +757,11 @@ function goLiveView(): void {
   el('reactrow').classList.remove('hidden')
   startStage()
   void keepAwake()
+  // on a laptop the captions are always in view, so the panel opens on Ask
+  if (window.matchMedia('(min-width: 900px)').matches) {
+    const live = document.querySelector('[data-pane=live]')
+    if (live?.classList.contains('sel')) (document.querySelector('[data-pane=ask]') as HTMLElement).click()
+  }
 }
 function goPreView(): void {
   el('wait').classList.add('hidden')
@@ -744,8 +811,14 @@ document.querySelectorAll('.tab').forEach((t) => {
     const pane = (t as HTMLElement).dataset.pane
     el('pane-' + pane).classList.add('sel')
     el('askrow').style.display = pane === 'ask' ? 'flex' : 'none'
+    el('roomrow').style.display = pane === 'room' ? 'flex' : 'none'
     if (pane === 'live') {
       const p = el('pane-live')
+      p.scrollTop = p.scrollHeight
+    }
+    if (pane === 'room') {
+      t.classList.remove('new')
+      const p = el('pane-room')
       p.scrollTop = p.scrollHeight
     }
     if (pane === 'q') void refreshBoard()
@@ -839,6 +912,19 @@ el('asktext').addEventListener('keydown', (e) => {
   if (ke.key === 'Enter' && !ke.shiftKey) {
     e.preventDefault()
     ;(el('asksend') as HTMLButtonElement).click()
+  }
+})
+;(el('roomsend') as HTMLButtonElement).onclick = () => {
+  const box = el('roomtext') as HTMLTextAreaElement
+  const v = box.value
+  box.value = ''
+  void sendRoom(v)
+}
+el('roomtext').addEventListener('keydown', (e) => {
+  const ke = e as KeyboardEvent
+  if (ke.key === 'Enter' && !ke.shiftKey) {
+    e.preventDefault()
+    ;(el('roomsend') as HTMLButtonElement).click()
   }
 })
 el('catchup').onclick = () => {
@@ -1008,6 +1094,7 @@ const storeKey = 'sitka-att-' + eventId
 async function join(newJoin: boolean): Promise<void> {
   if (newJoin) {
     attId = crypto.randomUUID()
+    myName = (el('name') as HTMLInputElement).value.trim().slice(0, 40)
     const { error } = await sb.from('attendees').insert({
       id: attId,
       event_id: eventId,
@@ -1020,7 +1107,7 @@ async function join(newJoin: boolean): Promise<void> {
       return
     }
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ id: attId, persona, lang: myLang }))
+      localStorage.setItem(storeKey, JSON.stringify({ id: attId, persona, lang: myLang, name: myName }))
     } catch {
       /* private mode */
     }
@@ -1091,6 +1178,16 @@ async function join(newJoin: boolean): Promise<void> {
     )
     .on(
       'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'room_messages', filter: 'event_id=eq.' + eventId },
+      (payload) => renderRoomMsg(payload.new as RoomRow)
+    )
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'attendees', filter: 'event_id=eq.' + eventId },
+      () => void refreshCount()
+    )
+    .on(
+      'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'asks', filter: 'attendee_id=eq.' + attId },
       (payload) => {
         const row = payload.new as { id: string; kind: string; question: string; status: string; answer: string | null }
@@ -1132,6 +1229,18 @@ async function join(newJoin: boolean): Promise<void> {
   listening = false // don't speak the whole backlog
   for (const row of segRows ?? []) upsertSeg(row as SegRow, transMap.get((row as SegRow).idx))
   listening = wasListening
+
+  // the room so far, and how many are here
+  const { data: roomRows } = await sb
+    .from('room_messages')
+    .select('id,attendee_id,name,host,text')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true })
+    .limit(150)
+  for (const r of roomRows ?? []) renderRoomMsg(r as RoomRow)
+  document.querySelector('[data-pane=room]')?.classList.remove('new')
+  void refreshCount()
+  window.setInterval(() => void refreshCount(), 20000)
 
   // pick up a poll that is already running
   const { data: pollRows } = await sb
@@ -1279,7 +1388,7 @@ async function boot(): Promise<void> {
     return
   }
 
-  let saved: { id: string; persona: string | null; lang: string } | null = null
+  let saved: { id: string; persona: string | null; lang: string; name?: string } | null = null
   try {
     saved = JSON.parse(localStorage.getItem(storeKey) || 'null')
   } catch {
@@ -1289,6 +1398,7 @@ async function boot(): Promise<void> {
     attId = saved.id
     persona = saved.persona
     myLang = saved.lang || 'English'
+    myName = saved.name || ''
     el('loading').classList.add('hidden')
     void join(false)
   } else {

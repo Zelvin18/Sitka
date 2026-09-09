@@ -391,6 +391,15 @@ export interface SpaceInsight {
 
 // ---------- who is using Sitka (shown top right) ----------
 
+/** one line in an event's room chat */
+export interface RoomMessage {
+  id: string
+  name: string
+  host: boolean
+  text: string
+  at: number
+}
+
 export interface Profile {
   /** display name: the account name online, the computer's user offline */
   name: string

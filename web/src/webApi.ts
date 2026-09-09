@@ -2738,6 +2738,41 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('polls').update({ status: 'closed' }).eq('event_id', conf.eventId).eq('status', 'open')
       void confPollStats()
     },
+    // ---------- the room chat: attendees talking, the host listening and joining in ----------
+    listRoomMessages: async () => {
+      if (!conf) return []
+      const { data } = await sb
+        .from('room_messages')
+        .select('id,name,host,text,created_at')
+        .eq('event_id', conf.eventId)
+        .order('created_at', { ascending: false })
+        .limit(80)
+      return (data ?? [])
+        .reverse()
+        .map((r) => ({
+          id: r.id as string,
+          name: (r.name as string) || 'Guest',
+          host: Boolean(r.host),
+          text: r.text as string,
+          at: new Date(r.created_at as string).getTime()
+        }))
+    },
+    sendRoomMessage: async (text: string) => {
+      if (!conf) return { error: 'Go live first.' }
+      const t = text.trim().slice(0, 600)
+      if (!t) return {}
+      const { error } = await sb.from('room_messages').insert({
+        id: uid(),
+        event_id: conf.eventId,
+        attendee_id: null,
+        name: 'Host',
+        host: true,
+        text: t
+      })
+      return error
+        ? { error: /relation|does not exist/i.test(error.message) ? 'Run supabase/wave10.sql to enable the room chat.' : error.message }
+        : {}
+    },
     pushStageFrame: async (dataUrl: string) => {
       if (!conf || conf.frameBusy) return
       const m = /^data:image\/jpeg;base64,(.+)$/.exec(dataUrl)

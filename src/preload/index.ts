@@ -18,6 +18,7 @@ import type {
   OrgSpaceKind,
   Organization,
   Profile,
+  RoomMessage,
   ScheduledEvent,
   Space,
   SpaceAskRequest,
@@ -231,6 +232,9 @@ const api = {
   launchPoll: (question: string, options: string[]): Promise<{ error?: string }> =>
     ipcRenderer.invoke('conference:launchPoll', question, options),
   closePoll: (): Promise<void> => ipcRenderer.invoke('conference:closePoll'),
+  /** the room chat of the live event: what attendees are saying to each other */
+  listRoomMessages: (): Promise<RoomMessage[]> => ipcRenderer.invoke('room:list'),
+  sendRoomMessage: (text: string): Promise<{ error?: string }> => ipcRenderer.invoke('room:send', text),
   publishReplay: (
     sessionId: string,
     enable: boolean

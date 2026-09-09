@@ -15,7 +15,7 @@ import Splitter from './Splitter'
 import QRCode from 'qrcode'
 import AudioLevel from './AudioLevel'
 import MaterialsPanel from './MaterialsPanel'
-import { ON_SCREEN_PREFIX, type SessionMaterial } from '@shared/types'
+import { ON_SCREEN_PREFIX, type RoomMessage, type SessionMaterial } from '@shared/types'
 import { frameDifference } from '@shared/visionLogic'
 import {
   IconBroadcast,
@@ -251,6 +251,11 @@ export default function LiveSession({
   const [recap, setRecap] = useState<{ topic: string; text: string } | null>(null)
   const [recapBusy, setRecapBusy] = useState(false)
   const [notePushed, setNotePushed] = useState(false)
+  // the room chat: what attendees say to each other, and the host's replies
+  const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
+  const [roomText, setRoomText] = useState('')
+  const [roomError, setRoomError] = useState<string | null>(null)
+  const roomListRef = useRef<HTMLDivElement>(null)
   const nudgesShownRef = useRef<string[]>([])
   const nudgeBusyRef = useRef(false)
   const lastNudgeCountRef = useRef(0)
@@ -432,6 +437,43 @@ export default function LiveSession({
       setPhase((p) => (p === 'intent' ? 'picking' : p))
     }
   }, [initialEventId])
+
+  // Room chat: refreshed while the Console is open, newest at the bottom.
+  useEffect(() => {
+    if (!confUrl || leftTab !== 'audience') return undefined
+    let cancelled = false
+    const load = (): void => {
+      void window.sitka.listRoomMessages().then((m) => {
+        if (cancelled) return
+        setRoomMsgs((prev) => {
+          const same = prev.length === m.length && prev.every((p, i) => p.id === m[i]?.id)
+          return same ? prev : m
+        })
+      })
+    }
+    load()
+    const t = setInterval(load, 4000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [confUrl, leftTab])
+  useEffect(() => {
+    const n = roomListRef.current
+    if (n) n.scrollTop = n.scrollHeight
+  }, [roomMsgs.length])
+  const sendRoom = useCallback(async (): Promise<void> => {
+    const t = roomText.trim()
+    if (!t) return
+    setRoomText('')
+    const r = await window.sitka.sendRoomMessage(t)
+    if (r.error) setRoomError(r.error)
+    else {
+      setRoomError(null)
+      const m = await window.sitka.listRoomMessages()
+      setRoomMsgs(m)
+    }
+  }, [roomText])
 
   useEffect(() => {
     if (!confUrl) return undefined
@@ -1737,6 +1779,39 @@ export default function LiveSession({
                   </span>
                 </div>
               )}
+
+            <div className="section-title">Room chat</div>
+            <div className="room-card">
+              <div className="room-list" ref={roomListRef}>
+                {roomMsgs.length === 0 ? (
+                  <div className="room-empty">
+                    Quiet so far. Attendees can talk to each other here, and everything they say is visible to you.
+                  </div>
+                ) : (
+                  roomMsgs.map((m) => (
+                    <div key={m.id} className={`room-msg${m.host ? ' host' : ''}`}>
+                      <b>{m.host ? 'You' : m.name}</b>
+                      <span>{m.text}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              {roomError && <div className="notice notice-error" style={{ margin: '8px 0 0' }}>{roomError}</div>}
+              <div className="room-input">
+                <input
+                  className="input"
+                  placeholder="Say something to the room…"
+                  value={roomText}
+                  onChange={(e) => setRoomText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void sendRoom()
+                  }}
+                />
+                <button className="btn btn-sm" disabled={!roomText.trim()} onClick={() => void sendRoom()}>
+                  Send
+                </button>
+              </div>
+            </div>
 
             {mind.length > 0 && (
               <>
