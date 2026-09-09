@@ -2753,12 +2753,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       void confPollStats()
     },
     // ---------- the room chat: attendees talking, the host listening and joining in ----------
-    listRoomMessages: async () => {
-      if (!conf) return []
+    listRoomMessages: async (eventId?: string) => {
+      // the live event by default; any past event by id, so a host can
+      // read the room again after it ended
+      const evId = eventId ?? conf?.eventId
+      if (!evId) return []
       const { data } = await sb
         .from('room_messages')
         .select('id,name,host,text,created_at')
-        .eq('event_id', conf.eventId)
+        .eq('event_id', evId)
         .order('created_at', { ascending: false })
         .limit(80)
       return (data ?? [])

@@ -234,7 +234,7 @@ const api = {
     ipcRenderer.invoke('conference:launchPoll', question, options),
   closePoll: (): Promise<void> => ipcRenderer.invoke('conference:closePoll'),
   /** the room chat of the live event: what attendees are saying to each other */
-  listRoomMessages: (): Promise<RoomMessage[]> => ipcRenderer.invoke('room:list'),
+  listRoomMessages: (eventId?: string): Promise<RoomMessage[]> => ipcRenderer.invoke('room:list', eventId),
   sendRoomMessage: (text: string): Promise<{ error?: string }> => ipcRenderer.invoke('room:send', text),
   publishReplay: (
     sessionId: string,

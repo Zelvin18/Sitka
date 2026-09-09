@@ -1103,8 +1103,51 @@ body {
 /* ============ Session setup: three quick choices ============ */
 
 .setup {
-  max-width: 760px;
+  max-width: 680px;
+  margin: 0 auto;
   padding-bottom: 0 !important;
+  text-align: center;
+}
+
+.setup .setup-hero .page-title,
+.setup .setup-hero .page-subtitle,
+.setup .setup-hero .eco-kicker {
+  text-align: center;
+}
+
+.setup .setup-hero .page-subtitle {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.setup .setup-block .setup-step-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.setup .kind-row,
+.setup .audio-chips {
+  justify-content: center;
+}
+
+.setup .web-pick,
+.setup .mic-card,
+.setup .source-grid,
+.setup .setup-card,
+.setup .textarea {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+.setup .notice {
+  text-align: left;
+}
+
+.setup .setup-foot {
+  text-align: left;
 }
 
 .setup-back {
@@ -6000,6 +6043,12 @@ body.dragging-row .splitter-h {
 .room-list-tall {
   flex: 1;
   max-height: none;
+}
+
+.room-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 4px 0 12px;
 }
 
 @media (max-width: 860px) {

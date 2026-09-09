@@ -1,6 +1,6 @@
 import { IconMic } from '../lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { SessionData, SessionMaterial, SessionMeta, Slide } from '@shared/types'
+import type { RoomMessage, SessionData, SessionMaterial, SessionMeta, Slide } from '@shared/types'
 import MaterialsPanel from './MaterialsPanel'
 import ChatPane from './ChatPane'
 import TranscriptPane from './TranscriptPane'
@@ -76,6 +76,10 @@ export default function SessionView({
   // Phone: the chat is a tab beside Transcript, open by default, so the screen
   // shows one thing at a time. On a desktop the chat is always the right column.
   const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
+  // Hosted events keep their room: the host can read the whole conversation
+  // again beside Ask Sitka, long after the event ended.
+  const [rightTab, setRightTab] = useState<'ask' | 'room'>('ask')
+  const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -86,6 +90,18 @@ export default function SessionView({
       cancelled = true
     }
   }, [sessionId])
+
+  const roomEventId = data?.meta.hosted ? data.meta.eventId : undefined
+  useEffect(() => {
+    if (!roomEventId) return undefined
+    let cancelled = false
+    void window.sitka.listRoomMessages(roomEventId).then((m) => {
+      if (!cancelled) setRoomMsgs(m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [roomEventId])
 
   // Visual memory: the key frames of what was on screen, as a filmstrip.
   useEffect(() => {
@@ -793,6 +809,35 @@ export default function SessionView({
         onReset={() => setChatW(440)}
       />
       <div className="session-right" style={{ width: clamp(chatW, 300, 900) }}>
+        {roomEventId && (
+          <div className="right-tabs">
+            <button className={rightTab === 'ask' ? 'on' : ''} onClick={() => setRightTab('ask')}>
+              <IconSparkle size={13} />
+              Ask Sitka
+            </button>
+            <button className={rightTab === 'room' ? 'on' : ''} onClick={() => setRightTab('room')}>
+              Room{roomMsgs.length > 0 ? ` · ${roomMsgs.length}` : ''}
+            </button>
+          </div>
+        )}
+        {roomEventId && rightTab === 'room' && (
+          <div className="room-panel">
+            <div className="room-note">The room, as it happened. Attendees talked here during the event.</div>
+            <div className="room-list room-list-tall">
+              {roomMsgs.length === 0 ? (
+                <div className="room-empty">Nobody wrote in the room during this event.</div>
+              ) : (
+                roomMsgs.map((m) => (
+                  <div key={m.id} className={`room-msg${m.host ? ' host' : ''}`}>
+                    <b>{m.host ? 'You' : m.name}</b>
+                    <span>{m.text}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        {!(roomEventId && rightTab === 'room') && (
         <ChatPane
           sessionId={meta.id}
           live={false}
@@ -820,6 +865,7 @@ export default function SessionView({
             'When was the main topic explained?'
           ]}
         />
+        )}
       </div>
     </div>
   )
