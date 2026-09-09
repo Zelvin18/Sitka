@@ -5,8 +5,8 @@ import {
   IconDots,
   IconFolder,
   IconHome,
+  IconMenu,
   IconMic,
-  IconPanel,
   IconPlus,
   IconSettings,
   IconSparkle,
@@ -140,7 +140,7 @@ export default function Sidebar({
           title="Hide sidebar"
           onClick={onCollapse}
         >
-          <IconPanel size={14} />
+          <IconMenu size={22} strokeWidth={2} />
         </button>
       </div>
 

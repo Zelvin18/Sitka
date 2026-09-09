@@ -7,7 +7,8 @@ import HomeView from './components/HomeView'
 import EventsView from './components/EventsView'
 import CoachView from './components/CoachView'
 import CommandPalette from './components/CommandPalette'
-import { IconBriefcase, IconCap, IconPanel } from './lib/icons'
+import { IconMenu } from './lib/icons'
+import SpaceMenu from './components/SpaceMenu'
 import { usePersistedBool } from './lib/persist'
 import Home from './components/Home'
 import EcosystemView from './components/EcosystemView'
@@ -103,6 +104,39 @@ export default function App(): React.JSX.Element {
   }, [])
   const closeDrawer = useCallback((): void => {
     if (isPhone()) setSidebarOpen(false)
+  }, [setSidebarOpen])
+
+  // Phone: a swipe to the right opens the drawer, a swipe to the left closes
+  // it. Only clearly sideways swipes count, so scrolling is never hijacked.
+  useEffect(() => {
+    let startX = 0
+    let startY = 0
+    let tracking = false
+    const onStart = (e: TouchEvent): void => {
+      if (!isPhone() || e.touches.length !== 1) return
+      const t = e.target as HTMLElement
+      // a horizontal drag inside a scrolling row (tabs, filmstrip) is that row's
+      if (t.closest('.seg, .tab-row, .filmstrip, input, textarea')) return
+      startX = e.touches[0].clientX
+      startY = e.touches[0].clientY
+      tracking = true
+    }
+    const onEnd = (e: TouchEvent): void => {
+      if (!tracking) return
+      tracking = false
+      const t = e.changedTouches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return
+      if (dx > 0) setSidebarOpen(true)
+      else setSidebarOpen(false)
+    }
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchend', onEnd)
+    }
   }, [setSidebarOpen])
 
   // Quick record: one tap (or Ctrl+Shift+R) starts an audio session right now,
@@ -250,6 +284,8 @@ export default function App(): React.JSX.Element {
           onDeleteSession={(id) => void deleteSession(id)}
         />
       )}
+      {/* Phone: the dimmed page behind the drawer; tapping it closes the drawer. */}
+      {sidebarOpen && <div className="drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
       <div className="main">
         {/* A solid strip along the top: Back on the left, the doors on the right.
             Content scrolls beneath it, never through it. */}
@@ -257,11 +293,12 @@ export default function App(): React.JSX.Element {
         <div className="main-drag" />
         {!sidebarOpen && (
           <button
-            className="btn btn-ghost btn-sm sidebar-reopen"
+            className="sidebar-reopen"
             title="Show sidebar"
+            aria-label="Show sidebar"
             onClick={() => setSidebarOpen(true)}
           >
-            <IconPanel size={14} />
+            <IconMenu size={22} strokeWidth={2} />
           </button>
         )}
         {canBack && view.name !== 'homepage' && (
@@ -273,50 +310,22 @@ export default function App(): React.JSX.Element {
             ‹ Back
           </button>
         )}
-        {/* The two doors, always in view at the top right. Tapping the open one leads home. */}
+        {/* "Sitka for" at the top right: personal, Education or Business. */}
         <div className="top-right">
-        <div className="space-switch" role="tablist" aria-label="Sitka for">
-          <button
-            role="tab"
-            aria-selected={space === 'business'}
-            className={`space-btn${space === 'business' ? ' on' : ''}`}
-            title="Sitka for Business — meetings, decisions, follow-through"
-            onClick={() => {
-              if (space === 'business') {
-                setSpace(undefined)
-                setView({ name: 'homepage' })
-              } else {
-                setSpace('business')
-                setView({ name: 'business' })
-              }
-            }}
-          >
-            <span className="space-btn-icon">
-              <IconBriefcase size={13} strokeWidth={1.9} />
-            </span>
-            <span className="space-btn-text">Business</span>
-          </button>
-          <button
-            role="tab"
-            aria-selected={space === 'education'}
-            className={`space-btn${space === 'education' ? ' on' : ''}`}
-            title="Sitka for Education — lectures, understanding, exams"
-            onClick={() => {
-              if (space === 'education') {
-                setSpace(undefined)
-                setView({ name: 'homepage' })
-              } else {
-                setSpace('education')
-                setView({ name: 'education' })
-              }
-            }}
-          >
-            <span className="space-btn-icon">
-              <IconCap size={13} strokeWidth={1.9} />
-            </span>
-            <span className="space-btn-text">Education</span>
-          </button>
-        </div>
+        <SpaceMenu
+          space={space}
+          onPick={(s) => {
+            setSpace(s)
+            setView(
+              s === 'business'
+                ? { name: 'business' }
+                : s === 'education'
+                  ? { name: 'education' }
+                  : { name: 'homepage' }
+            )
+            closeDrawer()
+          }}
+        />
         <ProfileMenu
           sessions={sessions}
           onSettings={() => setView({ name: 'settings' })}

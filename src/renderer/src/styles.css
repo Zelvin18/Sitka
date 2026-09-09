@@ -4462,10 +4462,37 @@ body.dragging-row .splitter-h {
 
 .sidebar-reopen {
   position: absolute;
-  top: 7px;
+  top: 5px;
   left: 10px;
   z-index: 20;
   -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sidebar-reopen:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-drag .btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  color: var(--text);
+}
+
+/* the drawer backdrop only exists on phones */
+.drawer-backdrop {
+  display: none;
 }
 
 .session-header {
@@ -5873,6 +5900,49 @@ body.dragging-row .splitter-h {
 /* ---- Phone: the sidebar reads like a native menu ----
    Bigger type, brighter labels, taller rows, larger icons. */
 @media (max-width: 860px) {
+  .drawer-backdrop {
+    display: block;
+  }
+  .sidebar-reopen {
+    position: fixed !important;
+    top: calc(4px + env(safe-area-inset-top, 0px)) !important;
+    left: 8px !important;
+    width: 42px;
+    height: 42px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none;
+    border-radius: 12px !important;
+  }
+  .sidebar-drag {
+    height: 52px;
+  }
+  .space-menu-btn {
+    font-size: 16px;
+    height: 38px;
+    padding: 0 8px 0 10px;
+  }
+  .space-menu-kicker {
+    display: none;
+  }
+  .space-menu {
+    width: min(300px, calc(100vw - 24px));
+    top: 48px;
+  }
+  .space-item-text b {
+    font-size: 16px;
+  }
+  .space-item-text small {
+    font-size: 13.5px;
+  }
+  .avatar-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 12.5px;
+  }
+  .top-right {
+    gap: 8px;
+  }
   .sidebar {
     width: min(330px, 88vw);
     padding-left: 16px;
@@ -6678,6 +6748,115 @@ body.dragging-row .splitter-h {
   -webkit-app-region: no-drag;
 }
 
+/* "Sitka for ▾" — one clear button, one small menu */
+.space-wrap {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.space-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.space-menu-btn:hover,
+.space-menu-btn.open {
+  background: var(--bg-soft);
+  border-color: var(--border);
+}
+
+.space-menu-kicker {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.space-menu-btn .icon {
+  color: var(--text-3);
+  transition: transform 0.15s ease;
+}
+
+.space-menu-btn.open .icon {
+  transform: rotate(180deg);
+}
+
+.space-menu {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  z-index: 301;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+  animation: fadeIn 0.12s ease;
+}
+
+.space-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 10px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.space-item:hover {
+  background: var(--bg-soft);
+}
+
+.space-item.on {
+  background: var(--bg-softer);
+}
+
+.space-item-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  flex: none;
+}
+
+.space-item-text b {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.space-item-text small {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-top: 1px;
+}
+
 .space-switch {
   display: inline-flex;
   align-items: center;
@@ -7339,29 +7518,28 @@ body.dragging-row .splitter-h {
     box-shadow: 24px 0 60px rgba(0, 0, 0, 0.28);
   }
 
-  .app:has(.sidebar)::before {
-    content: '';
+  .drawer-backdrop {
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(10, 10, 12, 0.38);
+    background: rgba(10, 10, 12, 0.42);
+    animation: fadeIn 0.15s ease;
   }
 
   /* Floating menu button when the drawer is closed */
   .sidebar-reopen {
     position: fixed !important;
-    top: calc(8px + env(safe-area-inset-top)) !important;
-    left: 10px !important;
+    top: calc(4px + env(safe-area-inset-top)) !important;
+    left: 8px !important;
     z-index: 40;
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     display: flex !important;
     align-items: center;
     justify-content: center;
-    background: var(--bg-soft) !important;
-    border: 1px solid var(--border) !important;
+    background: transparent !important;
+    border: none !important;
     border-radius: 12px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
   .content-inner {
