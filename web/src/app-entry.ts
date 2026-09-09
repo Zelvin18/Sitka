@@ -107,7 +107,11 @@ async function boot(): Promise<void> {
     await launch()
   }
   ;(el('gpassword') as HTMLInputElement).addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') (el('gsignin') as HTMLButtonElement).click()
+    if (e.key !== 'Enter') return
+    // Enter submits whichever action the page is showing: sign in or create.
+    const create = el('gsignup') as HTMLButtonElement
+    const visible = create.offsetParent !== null && !create.hidden
+    ;(visible ? create : (el('gsignin') as HTMLButtonElement)).click()
   })
 }
 void boot()

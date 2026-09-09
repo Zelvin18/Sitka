@@ -273,8 +273,8 @@ body {
 
 .tour-modal-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -285,6 +285,45 @@ body {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-3);
+  margin-right: auto;
+}
+
+.tour-modal-skip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.tour-modal-skip:hover {
+  color: var(--text);
+}
+
+.tour-modal-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tour-modal-x svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tour-modal-x:hover {
+  color: var(--text);
+  border-color: var(--text-3);
 }
 
 @media (max-width: 860px) {
