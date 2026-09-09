@@ -5731,21 +5731,94 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
-/* The chat column sits under the floating top bar (46px), so the note that
-   opens the column starts below it, and the chat header no longer needs its
-   own clearance. */
-.session-right > .nudge-card {
-  margin-top: 58px;
+/* Notes from Sitka live inside the conversation: never clipped, never
+   stealing space from the chat. */
+.msg-note {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 13px 6px;
 }
 
-.session-right > .nudge-card + .chat .chat-header {
-  padding-top: 13px;
+.msg-note-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-bottom: 5px;
 }
 
-@media (max-width: 860px) {
-  .session-right > .nudge-card {
-    margin-top: 12px;
-  }
+/* ---- figures the AI draws: charts and diagrams from the screen ---- */
+.fig {
+  margin: 10px 0;
+  padding: 12px 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.fig svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+}
+
+.fig-title {
+  font-size: 14px;
+  font-weight: 650;
+  fill: currentColor;
+}
+
+.fig-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.fig-axis {
+  stroke: var(--text-3);
+  stroke-width: 1.2;
+}
+
+.fig-tick {
+  font-size: 11px;
+  fill: var(--text-2);
+}
+
+.fig-value {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+}
+
+.fig-box {
+  fill: var(--bg-soft);
+  stroke: var(--text-3);
+  stroke-width: 1.2;
+}
+
+.fig-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: currentColor;
+}
+
+.msg-pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  background: var(--bg-softer);
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 .nudge-card > svg {

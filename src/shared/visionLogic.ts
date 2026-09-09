@@ -3,7 +3,8 @@ export const DESCRIBE_SCREEN = [
   'You are the eyes of a note-taker. Describe what is on this screen for a written record that will be searched later. Only report what is actually visible in the image; never guess or fill in what a screen like this "usually" shows.',
   'Transcribe visible headings, labels, bullet points and numbers exactly. Copy equations, formulas and code exactly as written, in plain notation (x^2, dy/dx, √x, (a)/(b)). For a whiteboard or handwriting, transcribe what is written. For charts and graphs, state the type, the axes, the series, the trend and any values shown. Describe diagrams by their parts and connections. Mention images only if they carry meaning.',
   'In a video call, note who is presenting or speaking if a name label is visible, and what they are sharing. Ignore the surrounding browser, menus, thumbnails and adverts unless they are the content itself.',
-  'Be factual and compact (at most about 120 words). No introductions like "The screen shows".',
+  'Tables: reproduce them as a markdown table with every visible value. Charts and graphs: give the type, the axes, and the visible data points as "label: value" pairs, so the chart can be redrawn later. Diagrams: list the parts and each connection as "A -> B".',
+  'Be factual and compact (at most about 200 words). No introductions like "The screen shows".',
   'If the screen holds nothing informative (a plain video call grid, a desktop, a blank page), reply with exactly: NONE'
 ].join('\n')
 

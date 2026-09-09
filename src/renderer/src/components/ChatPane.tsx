@@ -43,6 +43,8 @@ interface Props {
 export interface ChatPaneHandle {
   /** programmatically send a question, as if the user typed it */
   ask: (question: string) => void
+  /** drop a note from Sitka into the conversation (nudges, things it noticed) */
+  note: (text: string) => void
 }
 
 const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
@@ -161,7 +163,11 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     [sessionId, live, streaming, getFrame, brain, host, askOverride]
   )
 
-  useImperativeHandle(ref, () => ({ ask: (question: string) => send(question) }), [send])
+  const addNote = useCallback((text: string) => {
+    setMessages((prev) => [...prev, { role: 'assistant', content: text, at: Date.now(), kind: 'note' }])
+    setFolded(false)
+  }, [])
+  useImperativeHandle(ref, () => ({ ask: (question: string) => send(question), note: addNote }), [send, addNote])
 
   // Stop any speech when leaving the pane.
   useEffect(() => {
@@ -305,7 +311,13 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
               {m.content}
             </div>
           ) : (
-            <div key={i} className="msg-ai-wrap">
+            <div key={i} className={m.kind === 'note' ? 'msg-ai-wrap msg-note fade-in' : 'msg-ai-wrap'}>
+              {m.kind === 'note' && (
+                <div className="msg-note-label">
+                  <IconSparkle size={12} />
+                  Sitka noticed
+                </div>
+              )}
               <AiText text={m.content} onSeek={onSeek} resolveLabel={resolveLabel} />
               <div className="msg-actions">
                 <button

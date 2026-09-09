@@ -219,7 +219,6 @@ export default function LiveSession({
   const [recap, setRecap] = useState<{ topic: string; text: string } | null>(null)
   const [recapBusy, setRecapBusy] = useState(false)
   const [notePushed, setNotePushed] = useState(false)
-  const [nudge, setNudge] = useState<string | null>(null)
   const nudgesShownRef = useRef<string[]>([])
   const nudgeBusyRef = useRef(false)
   const lastNudgeCountRef = useRef(0)
@@ -511,7 +510,7 @@ export default function LiveSession({
         .then((res) => {
           if (res.nudge && !nudgesShownRef.current.includes(res.nudge)) {
             nudgesShownRef.current.push(res.nudge)
-            setNudge(res.nudge)
+            chatRef.current?.note(res.nudge)
           }
         })
         .finally(() => {
@@ -1829,18 +1828,6 @@ export default function LiveSession({
       {markToast && <div className="toast fade-in">{markToast}</div>}
       {dialogs}
       <div className="session-right" style={{ width: clamp(chatW, 300, 900) }}>
-        {nudge && (
-          <div className="nudge-card fade-in">
-            <IconSparkle size={14} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="nudge-label">Sitka noticed</div>
-              <AiText text={nudge} onSeek={seekTranscript} />
-            </div>
-            <button className="convo-line-delete" title="Dismiss" onClick={() => setNudge(null)}>
-              ×
-            </button>
-          </div>
-        )}
         {session && (
           <ChatPane
             ref={chatRef}

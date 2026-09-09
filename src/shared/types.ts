@@ -74,6 +74,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   at: number
+  /** 'note' = something Sitka noticed on its own, shown in the conversation */
+  kind?: 'note'
 }
 
 export type MomentKind = 'important' | 'question'

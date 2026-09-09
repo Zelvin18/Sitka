@@ -2,6 +2,7 @@ import React from 'react'
 import { normalizeCitations, parseTimestamp } from '../lib/format'
 import { IconPlay } from '../lib/icons'
 import { renderMath } from '../lib/math'
+import { Chart, Flow, parseChart, parseFlow } from '../lib/figures'
 
 interface Props {
   text: string
@@ -142,6 +143,32 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
 
     if (trimmed === '') {
       flushAll()
+      continue
+    }
+
+    // Fenced block: a chart or diagram the AI drew, or plain code.
+    const fence = trimmed.match(/^```\s*([\w-]*)\s*$/)
+    if (fence) {
+      flushAll()
+      const lang = fence[1].toLowerCase()
+      const body: string[] = []
+      let ei = li + 1
+      while (ei < lines.length && !/^\s*```/.test(lines[ei])) {
+        body.push(lines[ei])
+        ei++
+      }
+      const text = body.join('\n')
+      const chart = lang === 'chart' ? parseChart(text) : null
+      const flow = lang === 'flow' || lang === 'diagram' ? parseFlow(text) : null
+      if (chart) blocks.push(<Chart key={`f${key++}`} spec={chart} />)
+      else if (flow) blocks.push(<Flow key={`f${key++}`} spec={flow} />)
+      else
+        blocks.push(
+          <pre key={`f${key++}`} className="msg-pre">
+            <code>{text}</code>
+          </pre>
+        )
+      li = ei
       continue
     }
 
