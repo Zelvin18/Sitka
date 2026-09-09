@@ -186,21 +186,48 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     role: 'user' | 'assistant'
     content: string | ChatPart[]
   }
-  async function aiChat(system: string, messages: ChatMsg[], maxTokens = 2000): Promise<string> {
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+  /**
+   * One AI call with the server's fallback chain behind it. `vision` says
+   * whether attached images were actually seen. Busy or rate-limited answers
+   * are retried here a couple of times before the caller ever sees an error.
+   */
+  async function aiChatFull(
+    system: string,
+    messages: ChatMsg[],
+    maxTokens = 2000,
+    requireVision = false
+  ): Promise<{ text: string; vision: boolean }> {
     const k = storedSettings()
-    const r = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        keys: { anthropicApiKey: k.anthropicApiKey, groqApiKey: k.groqApiKey },
-        system,
-        messages,
-        maxTokens
-      })
-    })
-    const j = await r.json()
-    if (!r.ok) throw new Error(j.error || 'AI error')
-    return j.text || ''
+    let lastError = 'AI error'
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await sleep(attempt === 1 ? 1500 : 5000)
+      let r: Response
+      try {
+        r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            keys: { anthropicApiKey: k.anthropicApiKey, groqApiKey: k.groqApiKey },
+            system,
+            messages,
+            maxTokens,
+            requireVision
+          })
+        })
+      } catch {
+        lastError = 'Sitka could not reach its AI — check the connection.'
+        continue
+      }
+      const j = (await r.json().catch(() => ({}))) as { text?: string; vision?: boolean; error?: string }
+      if (r.ok) return { text: j.text || '', vision: Boolean(j.vision) }
+      lastError = j.error || `AI error (HTTP ${r.status})`
+      if (r.status === 400 || r.status === 401 || r.status === 403) break // nothing a retry can fix
+    }
+    throw new Error(lastError)
+  }
+  async function aiChat(system: string, messages: ChatMsg[], maxTokens = 2000): Promise<string> {
+    return (await aiChatFull(system, messages, maxTokens)).text
   }
   function hasChatKey(): boolean {
     const k = storedSettings()
@@ -618,7 +645,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
       '- When the user asks "when was X discussed" or wants to find a moment, give the timestamp citation(s) plus a one-line description of each.',
       '- Match the length of your answer to the question. A simple or specific question gets a short, direct answer of one to three sentences — no headings, no lists, no preamble. Only produce long, structured answers when the user asks for notes, a summary, a study guide, or detail.',
-      '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison. Never use LaTeX — write any math in plain text.',
+      '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison.',
+      '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
       '- Do not end answers with offers like "let me know if you want more" — just answer.',
       '',
       'Transcript of the session (each line is prefixed with its start time):'
@@ -690,7 +718,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // ---------- after a session: title, summary, highlights, then memory ----------
   // Failures are written to meta.analysisError so the session page can say what
   // went wrong and offer a retry, instead of showing "generating summary…" forever.
-  async function analyzeWebSession(id: string): Promise<void> {
+  // One analysis per session at a time: opening the page right after the
+  // session ends joins the run already in progress instead of starting another.
+  const analysisRuns = new Map<string, Promise<void>>()
+  function analyzeWebSession(id: string): Promise<void> {
+    const running = analysisRuns.get(id)
+    if (running) return running
+    const run = analyzeWebSessionNow(id).finally(() => analysisRuns.delete(id))
+    analysisRuns.set(id, run)
+    return run
+  }
+  async function analyzeWebSessionNow(id: string): Promise<void> {
     const d = await loadSession(id)
     if (!d) return
     try {
@@ -710,19 +748,25 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         '- "highlights": 3-8 key moments worth revisiting, each with "time" copied exactly from a timestamp in the transcript (like "12:37") and a short label (max 10 words).'
       ].join('\n')
       const materials = await sessionMaterialsBlock(id)
-      const out = await aiChat(system, [
-        {
-          role: 'user',
-          content: materials
-            ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
-            : transcriptBlock(d.segments)
-        }
-      ])
-      const parsed = extractJson<{
+      const ask = async (): Promise<{
         title?: string
         summary?: string
         highlights?: { time: string; label: string }[]
-      }>(out)
+      } | null> => {
+        const out = await aiChat(system, [
+          {
+            role: 'user',
+            content: materials
+              ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+              : transcriptBlock(d.segments)
+          }
+        ])
+        return extractJson(out)
+      }
+      // The summary is written automatically; a model that answers with prose
+      // instead of JSON gets a second chance before this counts as a failure.
+      let parsed = await ask()
+      if (!parsed?.summary) parsed = await ask()
       if (!parsed?.summary) throw new Error('The model did not return a usable summary.')
       // Like the desktop app: the session is named after what it was about.
       if (parsed.title && String(parsed.title).trim()) {
@@ -1536,7 +1580,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const m = dataUrl.match(/^data:image\/jpeg;base64,(.+)$/)
       if (!m) return { text: '' }
       try {
-        const out = await aiChat(
+        // requireVision: a frame is only ever described by a model that can
+        // see it. Without one, nothing is stored — never an invented caption.
+        const out = await aiChatFull(
           DESCRIBE_SCREEN,
           [
             {
@@ -1547,9 +1593,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
               ]
             }
           ],
-          600
+          600,
+          true
         )
-        const text = cleanDescription(out)
+        if (!out.vision) return { text: '' }
+        const text = cleanDescription(out.text)
         if (!text) return { text: '' }
         const bin = atob(m[1])
         const bytes = new Uint8Array(bin.length)
@@ -1945,7 +1993,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
                   { type: 'image', dataUrl: req.frame },
                   {
                     type: 'text',
-                    text: `(The attached image is what is currently on screen in the live session.)\n\n${req.question}`
+                    text: `(The attached image is what is currently on screen in the live session. Read it carefully: when asked what is written or shown, quote it exactly as it appears — equations, labels, names, values.)\n\n${req.question}`
                   }
                 ]
               }

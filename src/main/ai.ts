@@ -79,7 +79,8 @@ function askSystemPrompt(live: boolean): string {
     '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
     '- When the user asks "when was X discussed" or wants to find a moment, give the timestamp citation(s) plus a one-line description of each.',
     '- Match the length of your answer to the question. A simple or specific question gets a short, direct answer of one to three sentences — no headings, no lists, no preamble. Only produce long, structured answers when the user asks for notes, a summary, a study guide, or detail.',
-    '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison. Never use LaTeX or \\( \\) \\[ \\] notation — write any math in plain text, e.g. f\'(x) = 2x or x^2.',
+    '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison.',
+    '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
     '- Do not end answers with offers like "let me know if you want more" — just answer.',
     '- If the user asks you to explain a concept from the session, explain it in your own words at the level they ask for.',
     '- If a "Prior learning" section is provided (moments from the user\'s OTHER sessions), connect your explanation to what they already covered when genuinely relevant — mention the session by name (e.g. \'you covered this in "Intro to Limits"\') and cite those moments as [[<sessionId>@M:SS]] using the ids shown there. Do not force connections that are not helpful.',
@@ -262,7 +263,8 @@ const GROQ_PREFERRED_VISION_MODELS = [
   'meta-llama/llama-4-maverick-17b-128e-instruct',
   'meta-llama/llama-4-scout-17b-16e-instruct'
 ]
-const GROQ_NON_CHAT_RE = /whisper|tts|guard|embed|moderation|allam/i
+const GROQ_NON_CHAT_RE =
+  /whisper|tts|orpheus|canopylabs|playai|guard|embed|moderation|safety|allam|saudi|arabic|transcri|-stt|rerank/i
 
 let cachedGroqModelIds: string[] | null = null
 

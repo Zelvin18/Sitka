@@ -1,6 +1,7 @@
 import React from 'react'
 import { normalizeCitations, parseTimestamp } from '../lib/format'
 import { IconPlay } from '../lib/icons'
+import { renderMath } from '../lib/math'
 
 interface Props {
   text: string
@@ -15,18 +16,15 @@ const TS_RE =
   /\[\[(?:([a-fA-F0-9]{6,})@)?(\d{1,2}:\d{2}(?::\d{2})?)(?:\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?))?\]\]/g
 const INLINE_RE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g
 
-/** Remove LaTeX delimiters the models sometimes emit: \( \) \[ \] */
-function stripLatex(text: string): string {
-  return text.replace(/\\[()[\]]/g, '')
-}
-
 function renderStyled(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   const parts = text.split(INLINE_RE)
   parts.forEach((part, i) => {
     if (!part) return
     if (part.startsWith('**') && part.endsWith('**')) {
-      nodes.push(<strong key={`${keyPrefix}-s${i}`}>{part.slice(2, -2)}</strong>)
+      nodes.push(
+        <strong key={`${keyPrefix}-s${i}`}>{renderMath(part.slice(2, -2), `${keyPrefix}-s${i}`)}</strong>
+      )
     } else if (part.startsWith('`') && part.endsWith('`')) {
       nodes.push(
         <code key={`${keyPrefix}-c${i}`} className="msg-code">
@@ -34,9 +32,9 @@ function renderStyled(text: string, keyPrefix: string): React.ReactNode[] {
         </code>
       )
     } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-      nodes.push(<em key={`${keyPrefix}-e${i}`}>{part.slice(1, -1)}</em>)
+      nodes.push(<em key={`${keyPrefix}-e${i}`}>{renderMath(part.slice(1, -1), `${keyPrefix}-e${i}`)}</em>)
     } else {
-      nodes.push(part)
+      nodes.push(...renderMath(part, `${keyPrefix}-p${i}`))
     }
   })
   return nodes
@@ -48,7 +46,7 @@ interface InlineCtx {
 }
 
 function renderInline(text: string, ctx: InlineCtx, keyPrefix: string): React.ReactNode[] {
-  const cleaned = stripLatex(text)
+  const cleaned = text
   const nodes: React.ReactNode[] = []
   let last = 0
   let i = 0

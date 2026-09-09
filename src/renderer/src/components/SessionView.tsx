@@ -102,12 +102,29 @@ export default function SessionView({
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
 
   const tabInitializedRef = useRef(false)
+  const autoAnalyzedRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     void window.sitka.getSession(sessionId).then((d) => {
       if (cancelled) return
       setData(d)
+      // The title and summary are written automatically. If that has not
+      // happened yet (the tab was closed, the AI was busy), it happens now.
+      if (
+        d &&
+        d.meta.status === 'complete' &&
+        !d.meta.analyzed &&
+        d.segments.length > 2 &&
+        autoAnalyzedRef.current !== d.meta.id
+      ) {
+        autoAnalyzedRef.current = d.meta.id
+        setReanalyzing(true)
+        void window.sitka.reanalyzeSession(d.meta.id).then((m) => {
+          setReanalyzing(false)
+          if (m) setData((cur) => (cur ? { ...cur, meta: m } : cur))
+        })
+      }
       // Meetings lead with decisions & actions; lectures/others with transcript.
       if (!tabInitializedRef.current && d) {
         tabInitializedRef.current = true
@@ -328,28 +345,14 @@ export default function SessionView({
           <div className="session-meta-row">
             <span>{formatDate(meta.createdAt)}</span>
             {!meta.analyzed && meta.status === 'complete' && segments.length > 0 && (
-              <>
-                {meta.analysisError ? (
-                  <span style={{ color: 'var(--danger)' }} title={meta.analysisError}>
-                    · summary failed: {meta.analysisError.slice(0, 90)}
-                  </span>
-                ) : (
-                  <span>· {reanalyzing ? 'generating summary…' : 'summary pending'}</span>
-                )}
-                <button
-                  className="link-btn"
-                  disabled={reanalyzing}
-                  onClick={() => {
-                    setReanalyzing(true)
-                    void window.sitka.reanalyzeSession(meta.id).then((m) => {
-                      setReanalyzing(false)
-                      if (m) setData((d) => (d ? { ...d, meta: m } : d))
-                    })
-                  }}
-                >
-                  {reanalyzing ? 'Working…' : 'Generate now'}
-                </button>
-              </>
+              <span title={meta.analysisError}>
+                ·{' '}
+                {reanalyzing
+                  ? 'writing the title and summary…'
+                  : meta.analysisError
+                    ? 'summary not ready yet — Sitka will try again next time you open this session'
+                    : 'summary pending'}
+              </span>
             )}
           </div>
           {showMaterials && (
