@@ -15,7 +15,7 @@ function inline(s: string): string {
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>')
   // [[M:SS]] citations become plain timestamps outside the app
-  out = out.replace(/\[\[(?:[a-fA-F0-9]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?)\]\]/g, '($1)')
+  out = out.replace(/\[\[(?:[a-fA-F0-9-]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?)\]\]/g, '($1)')
   return out
 }
 

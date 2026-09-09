@@ -6,7 +6,7 @@
 
 import { normalizeCitations } from './format'
 
-const CITE_RE = /\[\[(?:[a-fA-F0-9]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?)?)\]\]/g
+const CITE_RE = /\[\[(?:[a-fA-F0-9-]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?)?)\]\]/g
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

@@ -809,7 +809,10 @@ export default function SessionView({
             }
             seek(seconds)
           }}
-          resolveLabel={(sid) => sessions.find((s) => s.id.startsWith(sid))?.title}
+          resolveLabel={(sid) =>
+            // a moment in this very session needs only its time; other sessions get their name
+            meta.id.startsWith(sid) ? undefined : sessions.find((s) => s.id.startsWith(sid))?.title
+          }
           onOpenSettings={onOpenSettings}
           suggestions={[
             'Summarize this session',

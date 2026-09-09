@@ -41,7 +41,7 @@ export function videoUrl(sessionId: string): string {
   return `sitka://sessions/${sessionId}/video.webm`
 }
 
-const CITE_BODY = '((?:[a-fA-F0-9]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[-–—]\\s*\\d{1,2}:\\d{2}(?::\\d{2})?)?)'
+const CITE_BODY = '((?:[a-fA-F0-9-]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[-–—]\\s*\\d{1,2}:\\d{2}(?::\\d{2})?)?)'
 
 /**
  * Models occasionally write citations with fullwidth brackets (【…】) or single

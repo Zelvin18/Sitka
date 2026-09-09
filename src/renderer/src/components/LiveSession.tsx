@@ -1943,7 +1943,11 @@ export default function LiveSession({
           <ChatPane
             ref={chatRef}
             onPersist={onChatPersist}
-            resolveLabel={(sid) => sessions.find((s) => s.id.startsWith(sid))?.title}
+            resolveLabel={(sid) =>
+              sessionIdRef.current?.startsWith(sid)
+                ? undefined
+                : sessions.find((s) => s.id.startsWith(sid))?.title
+            }
             sessionId={session.id}
             live
             initialChat={[]}

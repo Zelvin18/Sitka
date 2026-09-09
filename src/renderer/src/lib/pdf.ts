@@ -60,7 +60,7 @@ function runs(md: string): Run[] {
   const clean = md
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '$1')
-    .replace(/\[\[(?:[a-fA-F0-9]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?)\]\]/g, '($1)')
+    .replace(/\[\[(?:[a-fA-F0-9-]{6,}@)?(\d{1,2}:\d{2}(?::\d{2})?)\]\]/g, '($1)')
     .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1$2')
   const out: Run[] = []
   const parts = clean.split(/\*\*/)

@@ -234,9 +234,9 @@ var IC_STOP='<rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/>';
 var IC_CHECK='<path d="M4.5 12.5 10 18 19.5 6.5"/>';
 
 // ---------- markdown + timestamp chips (mirrors the desktop AiText renderer) ----------
-var RE_FW=/【\\s*((?:[a-fA-F0-9]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*】/g;
-var RE_BR=/\\[{1,2}\\s*((?:[a-fA-F0-9]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*\\]{1,2}/g;
-var RE_CHIP=/\\[\\[((?:[a-fA-F0-9]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\]\\]/g;
+var RE_FW=/【\\s*((?:[a-fA-F0-9-]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*】/g;
+var RE_BR=/\\[{1,2}\\s*((?:[a-fA-F0-9-]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*\\]{1,2}/g;
+var RE_CHIP=/\\[\\[((?:[a-fA-F0-9-]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?)\\]\\]/g;
 function normCites(t){return (t||'').replace(RE_FW,'[[$1]]').replace(RE_BR,'[[$1]]')}
 function escH(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function parseTs(ts){

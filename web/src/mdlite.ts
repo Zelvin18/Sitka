@@ -1,8 +1,8 @@
 /** Compact markdown + [[M:SS]] citation-chip renderer (shared by public pages). */
 
-const RE_FW = /【\s*((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*】/g
-const RE_BR = /\[{1,2}\s*((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*\]{1,2}/g
-const RE_CHIP = /\[\[((?:[a-fA-F0-9]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\]\]/g
+const RE_FW = /【\s*((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*】/g
+const RE_BR = /\[{1,2}\s*((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*\]{1,2}/g
+const RE_CHIP = /\[\[((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\]\]/g
 
 const RE_PAREN = /\((\d{1,2}:\d{2}(?::\d{2})?)\)/g
 export const normCites = (t: string): string =>

@@ -14,7 +14,7 @@ interface Props {
 
 // [[M:SS]], a range [[0:52-0:57]], or a cross-session cite [[ab12cd34@12:37]].
 const TS_RE =
-  /\[\[(?:([a-fA-F0-9]{6,})@)?(\d{1,2}:\d{2}(?::\d{2})?)(?:\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?))?\]\]/g
+  /\[\[(?:([a-fA-F0-9-]{6,})@)?(\d{1,2}:\d{2}(?::\d{2})?)(?:\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?))?\]\]/g
 const INLINE_RE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g
 
 function renderStyled(text: string, keyPrefix: string): React.ReactNode[] {
