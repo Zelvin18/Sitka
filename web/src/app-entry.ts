@@ -14,6 +14,10 @@ const sb = createClient(SUPA_URL, SUPA_KEY)
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 
+// The app's modules read this flag the moment they load, so it is set before
+// any of them arrive: this is the web build, wherever the code came from.
+;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
+
 // start fetching the code now; it is used a moment later
 const webApiModule = import('./webApi')
 let resolveReady: () => void = () => undefined

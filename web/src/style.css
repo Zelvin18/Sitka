@@ -244,6 +244,19 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--t3) 50%),lin
   .joinform h1{font-size:30px}
 }
 
+/* ---------- live pane: the screen first, then the words ---------- */
+.livehead{display:flex;flex-direction:column;gap:10px;padding:12px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.livehead .stagecard,.livehead .stagewait{margin-bottom:0}
+.livetools{display:flex;align-items:center;gap:8px}
+.livetools .listen{flex:1;margin:0;padding:10px 12px;font-size:13.5px;border-radius:12px}
+.livetools .savebtn{flex:none;width:42px;height:42px;padding:0;margin:0;border-radius:12px;justify-content:center}
+.livetools .savebtn span{display:none}
+.reactrow{display:none!important}
+@media(min-width:900px){
+  .livetools .listen{flex:0 0 auto;padding:9px 16px}
+  .livetools{justify-content:flex-start}
+}
+
 /* ---------- the live screen ---------- */
 .stagecard{position:relative}
 .stagecard img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}

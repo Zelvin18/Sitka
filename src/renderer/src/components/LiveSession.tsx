@@ -1406,7 +1406,7 @@ export default function LiveSession({
             {!eventLocked && (
               <section className="setup-block">
                 <div className="setup-step-body">
-                  <div className="setup-step-title">This is a…</div>
+                  <div className="setup-step-title">Session type</div>
                   <div className="kind-row">
                     {KIND_OPTIONS.map((k) => (
                       <button
@@ -1425,7 +1425,7 @@ export default function LiveSession({
 
             <section className="setup-block">
               <div className="setup-step-body">
-                <div className="setup-step-title">What should Sitka watch?</div>
+                <div className="setup-step-title">Capture</div>
                 <div className="mode-switch">
                   {CAN_SHARE_SCREEN && (
                     <button
@@ -1433,8 +1433,8 @@ export default function LiveSession({
                       className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
                       onClick={() => setCaptureMode('screen')}
                     >
-                      <IconScreen size={18} strokeWidth={1.7} />
-                      <span className="mode-title">Screen + audio</span>
+                      <IconScreen size={16} strokeWidth={1.8} />
+                      <span className="mode-title">Screen</span>
                       <span className="mode-desc">Slides, a call, a video — with the sound.</span>
                     </button>
                   )}
@@ -1443,8 +1443,8 @@ export default function LiveSession({
                     className={`mode-tile${captureMode === 'camera' ? ' on' : ''}`}
                     onClick={() => setCaptureMode('camera')}
                   >
-                    <IconCamera size={18} strokeWidth={1.7} />
-                    <span className="mode-title">Camera + audio</span>
+                    <IconCamera size={16} strokeWidth={1.8} />
+                    <span className="mode-title">Camera</span>
                     <span className="mode-desc">Point it at the board or the projector.</span>
                   </button>
                   <button
@@ -1452,8 +1452,8 @@ export default function LiveSession({
                     className={`mode-tile${captureMode === 'audio' ? ' on' : ''}`}
                     onClick={() => setCaptureMode('audio')}
                   >
-                    <IconMic size={18} strokeWidth={1.7} />
-                    <span className="mode-title">Audio only</span>
+                    <IconMic size={16} strokeWidth={1.8} />
+                    <span className="mode-title">Audio</span>
                     <span className="mode-desc">Just listen — in person, quick and simple.</span>
                   </button>
                 </div>
