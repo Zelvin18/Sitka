@@ -149,6 +149,8 @@ export default function LiveSession({
     if (wanted === 'screen' && !CAN_SHARE_SCREEN) return 'camera'
     return wanted
   })
+  // the setup page keeps documents behind one quiet link
+  const [moreOpen, setMoreOpen] = useState(false)
   // The page may be left before start() finishes; nothing must linger.
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -256,6 +258,9 @@ export default function LiveSession({
   const [roomText, setRoomText] = useState('')
   const [roomError, setRoomError] = useState<string | null>(null)
   const roomListRef = useRef<HTMLDivElement>(null)
+  // hosting: the right column is the Co-Pilot by default, the Room on request
+  const [rightTab, setRightTab] = useState<'ask' | 'room'>('ask')
+  const roomSeenRef = useRef(0)
   const nudgesShownRef = useRef<string[]>([])
   const nudgeBusyRef = useRef(false)
   const lastNudgeCountRef = useRef(0)
@@ -438,9 +443,10 @@ export default function LiveSession({
     }
   }, [initialEventId])
 
-  // Room chat: refreshed while the Console is open, newest at the bottom.
+  // Room chat: kept fresh while hosting (quickly while the Room is open,
+  // gently otherwise, so the tab can show how much has been said).
   useEffect(() => {
-    if (!confUrl || leftTab !== 'audience') return undefined
+    if (!confUrl) return undefined
     let cancelled = false
     const load = (): void => {
       void window.sitka.listRoomMessages().then((m) => {
@@ -452,12 +458,15 @@ export default function LiveSession({
       })
     }
     load()
-    const t = setInterval(load, 4000)
+    const t = setInterval(load, rightTab === 'room' ? 2500 : 8000)
     return () => {
       cancelled = true
       clearInterval(t)
     }
-  }, [confUrl, leftTab])
+  }, [confUrl, rightTab])
+  useEffect(() => {
+    if (rightTab === 'room') roomSeenRef.current = roomMsgs.length
+  }, [rightTab, roomMsgs.length])
   useEffect(() => {
     const n = roomListRef.current
     if (n) n.scrollTop = n.scrollHeight
@@ -1271,9 +1280,6 @@ export default function LiveSession({
   if (phase === 'picking' || phase === 'starting') {
     const ready = captureMode !== 'screen' || Boolean(selectedSource)
     const kindLabel = KIND_OPTIONS.find((k) => k.key === kind)?.label ?? 'Session'
-    const stepCount = hosting ? 4 : 3
-    let stepNo = 0
-    const step = (): number => ++stepNo
     return (
       <div className="content">
         <div className="content-inner setup">
@@ -1308,7 +1314,7 @@ export default function LiveSession({
                 ? 'Choose what your audience will follow. The QR you shared goes live the moment you start.'
                 : hosting
                   ? 'Pick what to capture and share. The join QR appears as soon as you start.'
-                  : `${stepCount} quick choices, then Sitka listens, writes, remembers and answers.`}
+                  : 'Pick what Sitka should watch and press Start. Everything else is optional.'}
             </p>
           </div>
 
@@ -1331,8 +1337,7 @@ export default function LiveSession({
 
           <div className="setup-steps">
             {hosting && (
-              <section className="setup-step">
-                <span className="setup-step-n">{step()}</span>
+              <section className="setup-block">
                 <div className="setup-step-body">
                   <div className="setup-step-title">The event</div>
                   {eventLocked ? (
@@ -1399,8 +1404,7 @@ export default function LiveSession({
             )}
 
             {!eventLocked && (
-              <section className="setup-step">
-                <span className="setup-step-n">{step()}</span>
+              <section className="setup-block">
                 <div className="setup-step-body">
                   <div className="setup-step-title">This is a…</div>
                   <div className="kind-row">
@@ -1419,8 +1423,7 @@ export default function LiveSession({
               </section>
             )}
 
-            <section className="setup-step">
-              <span className="setup-step-n">{step()}</span>
+            <section className="setup-block">
               <div className="setup-step-body">
                 <div className="setup-step-title">What should Sitka watch?</div>
                 <div className="mode-switch">
@@ -1558,27 +1561,29 @@ export default function LiveSession({
               </div>
             </section>
 
-            <section className="setup-step">
-              <span className="setup-step-n">{step()}</span>
-              <div className="setup-step-body">
-                <div className="setup-step-title">
-                  Anything Sitka should read first? <span className="setup-optional">optional</span>
+            <section className="setup-block setup-more-block">
+              <button type="button" className="setup-more" onClick={() => setMoreOpen((v) => !v)}>
+                {moreOpen ? 'Hide' : pendingMats.length > 0 ? `Slides and notes · ${pendingMats.length}` : 'Add slides or notes'}
+                <span className="setup-optional">optional</span>
+              </button>
+              {moreOpen && (
+                <div className="setup-step-body" style={{ marginTop: 10 }}>
+                  <div className="setup-step-hint">
+                    Sitka reads them before it listens, so it knows where the session is heading.
+                  </div>
+                  <MaterialsPanel
+                    compact
+                    materials={pendingMats}
+                    onAdd={async (name, text) =>
+                      setPendingMats((prev) => [
+                        ...prev,
+                        { id: `${Date.now()}-${prev.length}`, name, text, chars: text.length, addedAt: Date.now() }
+                      ])
+                    }
+                    onRemove={async (id) => setPendingMats((prev) => prev.filter((m) => m.id !== id))}
+                  />
                 </div>
-                <div className="setup-step-hint">
-                  Slides, notes or an agenda. Sitka reads them before it listens, so it knows where the session is heading.
-                </div>
-                <MaterialsPanel
-                  compact
-                  materials={pendingMats}
-                  onAdd={async (name, text) =>
-                    setPendingMats((prev) => [
-                      ...prev,
-                      { id: `${Date.now()}-${prev.length}`, name, text, chars: text.length, addedAt: Date.now() }
-                    ])
-                  }
-                  onRemove={async (id) => setPendingMats((prev) => prev.filter((m) => m.id !== id))}
-                />
-              </div>
+              )}
             </section>
           </div>
 
@@ -1817,39 +1822,6 @@ export default function LiveSession({
                 </div>
               )}
 
-            <div className="section-title">Room chat</div>
-            <div className="room-card">
-              <div className="room-list" ref={roomListRef}>
-                {roomMsgs.length === 0 ? (
-                  <div className="room-empty">
-                    Quiet so far. Attendees can talk to each other here, and everything they say is visible to you.
-                  </div>
-                ) : (
-                  roomMsgs.map((m) => (
-                    <div key={m.id} className={`room-msg${m.host ? ' host' : ''}`}>
-                      <b>{m.host ? 'You' : m.name}</b>
-                      <span>{m.text}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-              {roomError && <div className="notice notice-error" style={{ margin: '8px 0 0' }}>{roomError}</div>}
-              <div className="room-input">
-                <input
-                  className="input"
-                  placeholder="Say something to the room…"
-                  value={roomText}
-                  onChange={(e) => setRoomText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void sendRoom()
-                  }}
-                />
-                <button className="btn btn-sm" disabled={!roomText.trim()} onClick={() => void sendRoom()}>
-                  Send
-                </button>
-              </div>
-            </div>
-
             {mind.length > 0 && (
               <>
                 <div className="section-title">The room's mind</div>
@@ -2085,7 +2057,55 @@ export default function LiveSession({
       {markToast && <div className="toast fade-in">{markToast}</div>}
       {dialogs}
       <div className="session-right" style={{ width: clamp(chatW, 300, 900) }}>
-        {session && (
+        {hosting && session && (
+          <div className="right-tabs">
+            <button className={rightTab === 'ask' ? 'on' : ''} onClick={() => setRightTab('ask')}>
+              <IconSparkle size={13} />
+              Co-Pilot
+            </button>
+            <button className={rightTab === 'room' ? 'on' : ''} onClick={() => setRightTab('room')}>
+              Room
+              {roomMsgs.length > roomSeenRef.current && rightTab !== 'room' && (
+                <i className="right-tab-dot" />
+              )}
+            </button>
+          </div>
+        )}
+        {hosting && session && rightTab === 'room' && (
+          <div className="room-panel">
+            <div className="room-list room-list-tall" ref={roomListRef}>
+              {roomMsgs.length === 0 ? (
+                <div className="room-empty">
+                  Quiet so far. Attendees can talk to each other here, and everything they say is visible to you.
+                  Say hello.
+                </div>
+              ) : (
+                roomMsgs.map((m) => (
+                  <div key={m.id} className={`room-msg${m.host ? ' host' : ''}`}>
+                    <b>{m.host ? 'You' : m.name}</b>
+                    <span>{m.text}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            {roomError && <div className="notice notice-error" style={{ margin: '8px 0 0' }}>{roomError}</div>}
+            <div className="room-input">
+              <input
+                className="input"
+                placeholder="Say something to the room…"
+                value={roomText}
+                onChange={(e) => setRoomText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void sendRoom()
+                }}
+              />
+              <button className="btn btn-sm" disabled={!roomText.trim()} onClick={() => void sendRoom()}>
+                Send
+              </button>
+            </div>
+          </div>
+        )}
+        {session && !(hosting && rightTab === 'room') && (
           <ChatPane
             ref={chatRef}
             onPersist={onChatPersist}

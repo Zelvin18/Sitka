@@ -54,9 +54,24 @@ interface RoomRow {
   name: string
   host: boolean
   text: string
+  created_at?: string
 }
 const roomSeen = new Set<string>()
+let roomLastAt = ''
+// Realtime delivers instantly; this quiet poll guarantees nothing is ever
+// missed even when the live connection drops for a moment.
+async function pollRoom(): Promise<void> {
+  const { data } = await sb
+    .from('room_messages')
+    .select('id,attendee_id,name,host,text,created_at')
+    .eq('event_id', eventId)
+    .gt('created_at', roomLastAt || '1970-01-01')
+    .order('created_at', { ascending: true })
+    .limit(50)
+  for (const r of data ?? []) renderRoomMsg(r as RoomRow)
+}
 function renderRoomMsg(row: RoomRow): void {
+  if (row.created_at && row.created_at > roomLastAt) roomLastAt = row.created_at
   if (roomSeen.has(row.id)) return
   roomSeen.add(row.id)
   el('roomwait')?.classList.add('hidden')
@@ -951,6 +966,13 @@ el('asktext').addEventListener('keydown', (e) => {
     ;(el('asksend') as HTMLButtonElement).click()
   }
 })
+// leaving keeps your seat: come back through the same link and you are still you
+el('leavebtn').onclick = () => {
+  if (window.confirm('Leave this event? You can come back with the same link.')) location.href = '/'
+}
+el('joinback').onclick = () => {
+  location.href = '/'
+}
 ;(el('roomsend') as HTMLButtonElement).onclick = () => {
   const box = el('roomtext') as HTMLTextAreaElement
   const v = box.value
@@ -1270,14 +1292,16 @@ async function join(newJoin: boolean): Promise<void> {
   // the room so far, and how many are here
   const { data: roomRows } = await sb
     .from('room_messages')
-    .select('id,attendee_id,name,host,text')
+    .select('id,attendee_id,name,host,text,created_at')
     .eq('event_id', eventId)
     .order('created_at', { ascending: true })
     .limit(150)
   for (const r of roomRows ?? []) renderRoomMsg(r as RoomRow)
   document.querySelector('[data-pane=room]')?.classList.remove('new')
+  window.setInterval(() => void pollRoom(), 3000)
   void refreshCount()
   window.setInterval(() => void refreshCount(), 20000)
+  el('leavebtn').classList.remove('hidden')
 
   // pick up a poll that is already running
   const { data: pollRows } = await sb

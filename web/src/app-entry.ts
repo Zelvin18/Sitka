@@ -1,6 +1,10 @@
 /**
  * Web entry for the FULL Sitka app: sign in, install the cloud backend as
  * window.sitka, then boot the untouched desktop renderer (React app).
+ *
+ * Speed: the two big pieces of code (the cloud backend and the app itself)
+ * start downloading the moment the page opens, while the sign-in check runs.
+ * The app renders as soon as the backend is installed — nothing waits in line.
  */
 import { createClient } from '@supabase/supabase-js'
 
@@ -9,6 +13,15 @@ const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const sb = createClient(SUPA_URL, SUPA_KEY)
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
+
+// start fetching the code now; it is used a moment later
+const webApiModule = import('./webApi')
+let resolveReady: () => void = () => undefined
+const ready = new Promise<void>((r) => {
+  resolveReady = r
+})
+;(window as unknown as { sitkaReady: Promise<void> }).sitkaReady = ready
+const rendererModule = import('../../src/renderer/src/main')
 
 /**
  * The app is a fixed frame: it never zooms and never pans sideways. Phones
@@ -48,9 +61,10 @@ async function launch(): Promise<void> {
   el('gatecard').classList.add('hidden')
   el('gateload').classList.remove('hidden')
   lockFrame()
-  const { installWebApi } = await import('./webApi')
+  const { installWebApi } = await webApiModule
   await installWebApi(sb)
-  await import('../../src/renderer/src/main')
+  resolveReady()
+  await rendererModule
   el('gate').classList.add('hidden')
 }
 

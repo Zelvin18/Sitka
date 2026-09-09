@@ -5948,6 +5948,149 @@ body.dragging-row .splitter-h {
   margin: -2px 0 14px;
 }
 
+/* ---- hosting: Co-Pilot and Room share the right column ---- */
+.right-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 52px 16px 0;
+  flex: none;
+}
+
+.right-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-2);
+  padding: 8px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+.right-tabs button.on {
+  background: var(--bg-softer);
+  color: var(--text);
+}
+
+.right-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-left: 2px;
+}
+
+.right-tabs + .chat .chat-header {
+  padding-top: 10px;
+}
+
+.room-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 14px;
+}
+
+.room-list-tall {
+  flex: 1;
+  max-height: none;
+}
+
+@media (max-width: 860px) {
+  .right-tabs {
+    padding-top: 10px;
+  }
+}
+
+/* ---- setup: pick what to watch, press Start ---- */
+.setup-block {
+  padding-bottom: 26px;
+}
+
+.setup-block .setup-step-title {
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  margin-bottom: 12px;
+}
+
+.setup-more-block {
+  padding-bottom: 12px;
+}
+
+.setup-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 20px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.setup-more:hover {
+  border-color: var(--text-3);
+}
+
+.setup .mode-switch {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: none;
+  gap: 12px;
+}
+
+.setup .mode-tile {
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  gap: 6px;
+}
+
+.setup .mode-tile .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.setup .mode-title {
+  font-size: 15px;
+}
+
+.setup .mode-desc {
+  font-size: 13px;
+}
+
+.setup .mode-tile.on {
+  box-shadow: 0 0 0 3px var(--bg-softer);
+}
+
+@media (max-width: 860px) {
+  .setup .mode-switch {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .setup .mode-tile {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+  .setup .mode-tile .mode-title {
+    margin-top: 0;
+  }
+  .setup .mode-tile .mode-desc {
+    display: block;
+  }
+}
+
 .stage-status.bad {
   color: var(--danger);
 }

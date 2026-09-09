@@ -132,14 +132,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     bar.append(msg, hint, close)
     document.body.appendChild(bar)
   }
-  // Probe the core table once so a missing setup is obvious immediately.
-  {
-    const probe = await sb.from('sessions').select('id', { count: 'exact', head: true })
-    if (probe.error) storageProblem(probe.error.message)
-  }
-
-  // Does this deployment provide platform AI keys? (Users then need none.)
+  // The setup probe and the platform-key check run side by side, and the
+  // probe never holds the workspace back: a missing table shows a banner.
   let platform = { chat: false, stt: false }
+  void sb
+    .from('sessions')
+    .select('id', { count: 'exact', head: true })
+    .then((probe) => {
+      if (probe.error) storageProblem(probe.error.message)
+    })
   try {
     const r = await fetch('/api/health')
     if (r.ok) platform = { ...platform, ...(await r.json()) }
@@ -1529,7 +1530,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
     },
 
-    listSessions: async () => (await allSessions()).map((r) => r.meta),
+    // The list needs only the metadata: transcripts and chats stay in the
+    // database until a session is opened, which is what makes the workspace
+    // appear at once.
+    listSessions: async () => {
+      const { data, error } = await sb
+        .from('sessions')
+        .select('id,meta')
+        .order('created_at', { ascending: false })
+      if (error) storageProblem(error.message)
+      const rows = ((data as { id: string; meta: SessionMeta }[]) || []).map((r) => r.meta)
+      const have = new Set(rows.map((m) => m.id))
+      for (const b of readBackups()) if (!have.has(b.id)) rows.push(b.meta)
+      return rows
+    },
 
     getSession: async (id: string) => loadSession(id),
 
