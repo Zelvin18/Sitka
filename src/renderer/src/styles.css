@@ -233,6 +233,70 @@ body {
 .home-hero .mark {
   margin-bottom: 16px;
 }
+
+.home-tour-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.home-tour-link:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+
+/* the walkthrough, over the app */
+.tour-modal {
+  width: min(880px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: 18px;
+  padding: 16px 20px 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.15s ease;
+}
+
+.tour-modal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+
+.tour-modal-time {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+@media (max-width: 860px) {
+  .tour-modal {
+    width: calc(100vw - 20px);
+    padding: 12px 12px 14px;
+    border-radius: 14px;
+  }
+  .tour-caption {
+    font-size: 13.5px;
+  }
+}
 .dots-mark {
   display: inline-flex;
   align-items: center;

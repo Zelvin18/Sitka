@@ -10,6 +10,23 @@ import {
   Mark
 } from '../lib/icons'
 import { formatDate, formatDuration } from '../lib/format'
+import Tour from './Tour'
+
+const TOUR_SEEN = 'sitka.tourSeen'
+function tourSeen(): boolean {
+  try {
+    return localStorage.getItem(TOUR_SEEN) === '1'
+  } catch {
+    return true
+  }
+}
+function markTourSeen(): void {
+  try {
+    localStorage.setItem(TOUR_SEEN, '1')
+  } catch {
+    /* private mode */
+  }
+}
 
 interface Props {
   sessions: SessionMeta[]
@@ -46,6 +63,12 @@ export default function HomeView({
   const recent = sessions.filter((s) => s.status === 'complete').slice(0, 3)
   const upcomingEvents = events.filter((e) => !e.sessionId).slice(0, 2)
   const firstRun = !sessions.some((s) => !s.sample)
+  // The walkthrough opens by itself the first time, and stays one tap away after.
+  const [showTour, setShowTour] = useState(() => firstRun && !tourSeen())
+  const closeTour = (): void => {
+    markTourSeen()
+    setShowTour(false)
+  }
 
   async function openSample(): Promise<void> {
     if (sampleBusy) return
@@ -96,7 +119,12 @@ export default function HomeView({
           <p className="home-sub">
             Sitka attends with you — lectures, meetings, and events, understood live.
           </p>
+          <button className="home-tour-link" onClick={() => setShowTour(true)}>
+            <IconPlay size={12} strokeWidth={2.2} />
+            How Sitka works · 1 min
+          </button>
         </div>
+        {showTour && <Tour onClose={closeTour} />}
 
         {firstRun && (
           <button className="home-sample" onClick={() => void openSample()} disabled={sampleBusy}>
