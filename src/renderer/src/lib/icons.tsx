@@ -339,6 +339,8 @@ export const IconDownload = (p: IconProps) =>
     </>
   )
 
+export const IconChevron = (p: IconProps) => base(p.size, p.strokeWidth, <path d="M6 9l6 6 6-6" />)
+
 export const IconNotes = (p: IconProps) =>
   base(
     p.size,

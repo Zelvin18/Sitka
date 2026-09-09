@@ -7208,3 +7208,65 @@ video {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Phone: the chat is a sheet that folds away ----
+   In a lecture the insights above the chat matter as much as the chat, so on
+   a phone the chat takes a smaller share of the screen and can be folded down
+   to just its header and input. Sending a question unfolds it. */
+
+.chat-fold {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .session-right {
+    flex: 0 0 40dvh;
+    transition: flex-basis 0.2s ease;
+  }
+  .session-right:has(.chat-folded) {
+    flex: 0 0 auto;
+  }
+  .chat-folded .chat-scroll,
+  .chat-folded .chat-suggestions {
+    display: none;
+  }
+  .session-layout .session-right .chat-header {
+    padding: 8px 10px 8px 16px;
+  }
+  .chat-fold {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-left: 6px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .chat-fold:active {
+    background: var(--bg-softer);
+  }
+  .chat-fold .icon {
+    transition: transform 0.2s ease;
+  }
+  .chat-folded .chat-fold .icon {
+    transform: rotate(180deg);
+  }
+
+  /* An audio-only session does not need a tall stage on a phone */
+  .session-layout .video-wrap:has(.audio-stage) {
+    height: 72px !important;
+  }
+  .session-layout .video-wrap:has(.audio-stage) .audio-level.tall {
+    height: 34px;
+    width: min(360px, 62%);
+  }
+  .session-layout .video-wrap:has(.audio-stage) .audio-stage {
+    flex-direction: row;
+    gap: 14px;
+  }
+}

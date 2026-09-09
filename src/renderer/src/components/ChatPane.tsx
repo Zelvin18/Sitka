@@ -8,7 +8,7 @@ import React, {
 } from 'react'
 import type { AiStreamEvent, ChatMessage } from '@shared/types'
 import AiText from './AiText'
-import { IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
+import { IconChevron, IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
 import { cleanForSpeech, copyRich } from '../lib/clipboard'
 
 interface Props {
@@ -76,6 +76,8 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   const [error, setError] = useState<string | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null)
+  /** Phone only: fold the conversation away so the content above gets the screen. */
+  const [folded, setFolded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const activeRequest = useRef<string | null>(null)
@@ -139,6 +141,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       setInput('')
       setStreaming(true)
       setStreamText('')
+      setFolded(false)
       if (askOverride) {
         askOverride(requestId, q, history)
       } else if (brain) {
@@ -253,7 +256,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     messages.length === 0 && !streaming && hasChatKey && (suggestions?.length ?? 0) > 0
 
   return (
-    <div className="chat">
+    <div className={folded ? 'chat chat-folded' : 'chat'}>
       <div className="chat-header">
         <IconSparkle size={15} />
         {headerTitle ?? 'Ask Sitka'}
@@ -263,6 +266,14 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
             ● LIVE
           </span>
         )}
+        <button
+          className="chat-fold"
+          title={folded ? 'Show the conversation' : 'Hide the conversation'}
+          aria-label={folded ? 'Show the conversation' : 'Hide the conversation'}
+          onClick={() => setFolded((v) => !v)}
+        >
+          <IconChevron size={16} strokeWidth={2.2} />
+        </button>
       </div>
 
       <div className="chat-scroll" ref={scrollRef}>
