@@ -5722,11 +5722,30 @@ body.dragging-row .splitter-h {
   background: var(--bg-soft);
   box-shadow: var(--shadow-sm);
   /* never squashed by the chat beneath it: it keeps its height and scrolls
-     inside itself if it is ever taller than half the pane */
+     inside itself if it is ever taller than a third of the pane */
   flex: none;
-  max-height: 46%;
+  max-height: 34%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* The chat column sits under the floating top bar (46px), so the note that
+   opens the column starts below it, and the chat header no longer needs its
+   own clearance. */
+.session-right > .nudge-card {
+  margin-top: 58px;
+}
+
+.session-right > .nudge-card + .chat .chat-header {
+  padding-top: 13px;
+}
+
+@media (max-width: 860px) {
+  .session-right > .nudge-card {
+    margin-top: 12px;
+  }
 }
 
 .nudge-card > svg {
