@@ -8,6 +8,7 @@ import {
   IconMenu,
   IconMic,
   IconPlus,
+  IconQr,
   IconSettings,
   IconSparkle,
   IconWand,
@@ -31,6 +32,7 @@ interface Props {
   onOpenSession: (id: string) => void
   onSettings: () => void
   onCollapse: () => void
+  onJoin: () => void
   onRenameSession: (id: string, title: string) => void
   onDeleteSession: (id: string) => void
 }
@@ -56,6 +58,7 @@ export default function Sidebar({
   onOpenSession,
   onSettings,
   onCollapse,
+  onJoin,
   onRenameSession,
   onDeleteSession
 }: Props): React.JSX.Element {
@@ -170,6 +173,13 @@ export default function Sidebar({
         >
           <IconSparkle size={15} />
           Overview
+        </button>
+        <button
+          className={`side-item${activeView === 'join' ? ' active' : ''}`}
+          onClick={onJoin}
+        >
+          <IconQr size={15} />
+          Join
         </button>
         <button
           className={`side-item${activeView === 'events' ? ' active' : ''}`}

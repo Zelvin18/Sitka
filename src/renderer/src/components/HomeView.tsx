@@ -5,6 +5,7 @@ import {
   IconCalendar,
   IconMic,
   IconPlay,
+  IconQr,
   IconScreen,
   IconSparkle,
   Mark
@@ -36,6 +37,7 @@ interface Props {
   onGoLibrary: () => void
   onOpenSession: (id: string) => void
   onNewAudioSession: () => void
+  onJoin?: () => void
 }
 
 function greeting(): string {
@@ -53,7 +55,8 @@ export default function HomeView({
   onGoOverview,
   onGoLibrary,
   onOpenSession,
-  onNewAudioSession
+  onNewAudioSession,
+  onJoin
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -140,6 +143,17 @@ export default function HomeView({
               One question across everything you've ever captured.
             </span>
           </button>
+          {onJoin && (
+            <button className="home-action" onClick={onJoin}>
+              <span className="home-action-icon">
+                <IconQr size={19} strokeWidth={1.7} />
+              </span>
+              <span className="home-action-title">Join a session</span>
+              <span className="home-action-desc">
+                Scan the host&apos;s QR code and get captions, slides and your own Sitka on this phone.
+              </span>
+            </button>
+          )}
         </div>
 
         <button className="home-audio" onClick={onNewAudioSession}>

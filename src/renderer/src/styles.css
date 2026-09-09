@@ -5942,6 +5942,130 @@ body.dragging-row .splitter-h {
   line-height: 1.5;
 }
 
+/* ---- Join: scan the host's QR code ---- */
+.join-stage {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 1 / 1;
+  margin: 8px 0 0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0f0f11;
+  color: #f1f1f3;
+  display: grid;
+  place-items: center;
+}
+
+.join-stage video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.join-stage.on video {
+  opacity: 1;
+}
+
+.join-frame {
+  position: absolute;
+  inset: 16%;
+  pointer-events: none;
+}
+
+.join-frame i {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border: 3px solid #fff;
+  border-radius: 6px;
+}
+
+.join-frame i:nth-child(1) {
+  left: 0;
+  top: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.join-frame i:nth-child(2) {
+  right: 0;
+  top: 0;
+  border-left: none;
+  border-bottom: none;
+}
+
+.join-frame i:nth-child(3) {
+  left: 0;
+  bottom: 0;
+  border-right: none;
+  border-top: none;
+}
+
+.join-frame i:nth-child(4) {
+  right: 0;
+  bottom: 0;
+  border-left: none;
+  border-top: none;
+}
+
+.join-note {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d9d9de;
+  max-width: 300px;
+  line-height: 1.5;
+}
+
+.join-hint {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.join-manual {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.join-manual-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+.join-manual-row {
+  display: flex;
+  gap: 8px;
+}
+
+.join-manual-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .join-stage {
+    max-width: none;
+    border-radius: 16px;
+  }
+}
+
 /* ---- Settings that feel like settings ---- */
 .set-row {
   display: flex;

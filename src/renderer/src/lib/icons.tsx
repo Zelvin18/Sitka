@@ -341,6 +341,18 @@ export const IconDownload = (p: IconProps) =>
 
 export const IconChevron = (p: IconProps) => base(p.size, p.strokeWidth, <path d="M6 9l6 6 6-6" />)
 
+export const IconQr = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <path d="M14 14h3v3h-3zM20 14v1M17 20h4M20 18v3" />
+    </>
+  )
+
 /** the sidebar toggle: two bars, the lower one shorter */
 export const IconMenu = (p: IconProps) => base(p.size, p.strokeWidth, <path d="M4 7.5h16M4 14.5h10" />)
 

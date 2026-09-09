@@ -9,6 +9,7 @@ import CoachView from './components/CoachView'
 import CommandPalette from './components/CommandPalette'
 import { IconMenu } from './lib/icons'
 import SpaceMenu from './components/SpaceMenu'
+import JoinView from './components/JoinView'
 import { applyAppearance } from './lib/prefs'
 
 const PHONE_QUERY = '(max-width: 859px)'
@@ -29,6 +30,7 @@ type View =
   | { name: 'events'; eventId?: string }
   | { name: 'coach' }
   | { name: 'create' }
+  | { name: 'join' }
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
@@ -317,6 +319,10 @@ export default function App(): React.JSX.Element {
             setView({ name: 'create' })
             closeDrawer()
           }}
+          onJoin={() => {
+            setView({ name: 'join' })
+            closeDrawer()
+          }}
           onHome={() => {
             setView({ name: 'home' })
             closeDrawer()
@@ -407,6 +413,7 @@ export default function App(): React.JSX.Element {
             onGoLibrary={() => setView({ name: 'home' })}
             onOpenSession={openSession}
             onNewAudioSession={() => setView({ name: 'live', audioOnly: true })}
+            onJoin={() => setView({ name: 'join' })}
           />
         )}
         {(view.name === 'business' || view.name === 'education') && (
@@ -462,6 +469,7 @@ export default function App(): React.JSX.Element {
             onOpenSettings={() => setView({ name: 'settings' })}
           />
         )}
+        {view.name === 'join' && <JoinView onBack={goBack} />}
         {view.name === 'create' && (
           <CreateView
             sessions={sessions}
