@@ -5885,44 +5885,85 @@ body.dragging-row .splitter-h {
 
 /* ---- host console ---- */
 
-.console-stats {
+/* ---- host console: one slim strip instead of three cards ---- */
+.console-bar {
   display: flex;
-  align-items: stretch;
-  gap: 14px;
-  margin: 4px 0 8px;
-}
-
-.console-stat {
-  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 8px 12px 8px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 18px;
+  border-radius: 12px;
   background: var(--bg-soft);
+  margin: 2px 0 12px;
 }
 
-.console-value {
-  font-size: 34px;
+.console-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.console-figure {
+  font-size: 12.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.console-figure b {
+  font-size: 18px;
   font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-right: 5px;
   font-variant-numeric: tabular-nums;
 }
 
-.console-label {
-  font-size: 11.5px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin-top: 3px;
+.console-bar .stage-status {
+  flex: 1;
+  min-width: 160px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.console-actions {
+.console-bar .stage-status::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.console-bar .stage-status.ok::before,
+.console-bar .stage-status.bad::before {
+  background: var(--danger);
+}
+
+.console-btns {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  justify-content: center;
-  background: var(--bg);
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+@media (max-width: 859px) {
+  .console-bar {
+    gap: 8px 14px;
+  }
+  .console-bar .stage-status {
+    order: 3;
+    flex-basis: 100%;
+    white-space: normal;
+  }
+  .console-btns {
+    margin-left: auto;
+  }
 }
 
 .agenda-list {

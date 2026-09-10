@@ -1877,18 +1877,28 @@ export default function LiveSession({
         </div>
         {leftTab === 'audience' && confUrl ? (
           <div className="transcript">
-            <div className="console-stats">
-              <div className="console-stat">
-                <div className="console-value">{audience.attendees}</div>
-                <div className="console-label">with you now</div>
+            {/* One slim strip: the two figures, the screen status, the controls. */}
+            <div className="console-bar">
+              <div className="console-figures">
+                <span className="console-figure" title="People on the event page right now">
+                  <b>{audience.attendees}</b>
+                  with you now
+                </span>
+                <span className="console-figure" title="Questions sent to you, not yet answered">
+                  <b>{audience.questions.reduce((n, g) => n + g.items.length, 0)}</b>
+                  questions waiting
+                </span>
               </div>
-              <div className="console-stat">
-                <div className="console-value">
-                  {audience.questions.reduce((n, g) => n + g.items.length, 0)}
-                </div>
-                <div className="console-label">questions waiting</div>
+              <div
+                className={`stage-status${stageNote ? ' bad' : audioOnlyRec ? ' quiet' : ' ok'}`}
+              >
+                {audioOnlyRec
+                  ? 'Audio only — no screen to show the room'
+                  : stageNote
+                    ? `Screen not reaching phones: ${stageNote}`
+                    : 'Screen live on every phone'}
               </div>
-              <div className="console-stat console-actions">
+              <div className="console-btns">
                 <button className="btn btn-sm" onClick={() => void openQr(confUrl)}>
                   Show QR
                 </button>
@@ -1901,18 +1911,14 @@ export default function LiveSession({
                     Stage screen
                   </button>
                 )}
-                <button className="btn btn-ghost btn-sm" onClick={() => void stopHosting()}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title="Stop sharing with the room; the recording continues"
+                  onClick={() => void stopHosting()}
+                >
                   Stop
                 </button>
               </div>
-            </div>
-
-            <div className={`stage-status${stageNote ? ' bad' : ''}`}>
-              {audioOnlyRec
-                ? 'Audio only — there is no screen to show the room.'
-                : stageNote
-                  ? `Your screen is not reaching phones: ${stageNote}`
-                  : 'Your screen is live on every phone in the room.'}
             </div>
 
             {audience.reactions &&
