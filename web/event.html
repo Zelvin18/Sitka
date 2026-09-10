@@ -37,22 +37,8 @@
 <div id="join" class="joinwrap hidden">
   <aside class="joinvis" aria-hidden="true">
     <div class="jv-in">
-      <div class="jv-kicker"><i></i>Live with Sitka</div>
       <h2 class="jv-title">Everything the speaker says and shows — on your screen, in your language.</h2>
-      <div class="jv-card">
-        <div class="jv-stage"><span class="jv-eq">Find dy/dx for y = 3x² + 4</span><span class="jv-tag"><i></i>LIVE SCREEN</span></div>
-        <div class="jv-lines">
-          <div class="jv-line" style="--d:.3s"><span>0:12</span><span>Take y equals three x squared plus four.</span></div>
-          <div class="jv-line" style="--d:1.1s"><span>0:20</span><span>Bring the exponent down, then reduce it by one.</span></div>
-        </div>
-        <div class="jv-ask"><span class="q">what's on the board?</span><span class="a">It asks for dy/dx of <b>y = 3x² + 4</b>. By the power rule, <b>dy/dx = 6x</b>.</span></div>
-      </div>
-      <ul class="jv-list">
-        <li>The presenter's screen, live, with captions and a voice in your language</li>
-        <li>Ask anything, privately, at your level — answers point to the moment</li>
-        <li>Talk with the room, send questions to the speaker</li>
-        <li>A take-home pack the moment it ends</li>
-      </ul>
+      <div id="attendtour" class="jv-tour"></div>
     </div>
   </aside>
   <div class="joinform">
@@ -110,6 +96,7 @@
       <div class="stagecard hidden" id="stagecard">
         <img id="stageimgb" class="stageb" alt="">
         <img id="stageimg" alt="Live stage">
+        <video id="stagevideo" class="stagevid" autoplay muted playsinline></video>
         <div class="stagepaused" id="stagepaused">Screen paused</div>
         <span class="stagetag"><span class="ldot"></span>STAGE</span>
         <button class="stageexp" id="stageexpbtn" aria-label="Fullscreen"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
@@ -118,6 +105,7 @@
         <button class="listen hidden" id="listenbtn"></button>
         <button class="savebtn hidden" id="savebtn" title="Save this moment" aria-label="Save this moment"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.2 5.8L12 16.4l-5.2 2.9 1.2-5.8-4.4-4 5.9-.6z"/></svg><span>Save this moment</span></button>
       </div>
+      <div class="stagesplit" id="stagesplit" title="Drag to resize the screen"><i></i></div>
       <div class="small hidden" id="voicenote" style="margin-top:8px"></div>
       <div class="reactrow hidden" id="reactrow">
         <button class="reactbtn" id="reactup"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"/></svg>Landed</button>

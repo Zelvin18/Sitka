@@ -744,6 +744,17 @@ export default function LiveSession({
     return () => clearInterval(t)
   }, [phase, captureMode, hasChatKey, captureFrame])
 
+  // ---- live video: a direct connection to each phone that asks for one ----
+  useEffect(() => {
+    if (phase !== 'recording' || !hosting || !confUrl) return undefined
+    const stream = previewStreamRef.current
+    if (!stream) return undefined
+    void window.sitka.startVideoBroadcast(stream)
+    return () => {
+      void window.sitka.stopVideoBroadcast()
+    }
+  }, [phase, hosting, confUrl])
+
   // ---- live stage: the host's screen on every attendee's phone ----
   // A frame goes out the moment the picture changes, up to once a second,
   // and at least every 4s so a still slide never looks like a dropped feed.
@@ -2069,6 +2080,7 @@ export default function LiveSession({
                 <i className="right-tab-dot" />
               )}
             </button>
+            <span className="live-badge right-live">● LIVE</span>
           </div>
         )}
         {hosting && session && rightTab === 'room' && (

@@ -1,5 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import './style.css'
+import { mountAttendTour } from './attendTour'
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -293,6 +294,7 @@ function speakNext(): void {
     return
   }
   speakingNow = true
+  speakStartedAt = Date.now()
   const u = new SpeechSynthesisUtterance(speakQ.shift())
   const v = pickVoice()
   if (v) u.voice = v
@@ -306,8 +308,19 @@ function speakText(text: string): void {
   if (!listening || !window.speechSynthesis || !text) return
   speakQ.push(text)
   while (speakQ.length > 3) speakQ.shift()
-  if (!speakingNow) speakNext()
+  // a short pause after cancel(): Chrome drops an utterance queued in the same tick
+  if (!speakingNow) window.setTimeout(speakNext, 120)
 }
+// Chrome sometimes freezes mid-utterance; a stuck voice is reset, not endured.
+let speakStartedAt = 0
+window.setInterval(() => {
+  if (!listening || !window.speechSynthesis) return
+  if (speakingNow && Date.now() - speakStartedAt > 25000) {
+    window.speechSynthesis.cancel()
+    speakingNow = false
+    speakNext()
+  }
+}, 5000)
 let resumeTimer: number | null = null
 function listenLabel(): void {
   const b = el('listenbtn')
@@ -342,6 +355,11 @@ function setupListen(): void {
         ? 'Speaking each new line in ' + myLang + '.'
         : "Trying this device's " + myLang + " voice — if you hear nothing it isn't installed (captions still live)."
       el('voicenote').classList.remove('hidden')
+      // say something at once, so the tap is answered by a voice, not silence
+      speakQ = []
+      speakingNow = false
+      const last = lastCaption()
+      speakText(last ? last.text : 'Listening in ' + myLang + '.')
       if (resumeTimer) clearInterval(resumeTimer)
       resumeTimer = window.setInterval(() => {
         if (listening && window.speechSynthesis) window.speechSynthesis.resume()
@@ -459,6 +477,7 @@ function showStageFrame(b: Blob): void {
     stageSeen = true
     el('stagewait').classList.add('hidden')
     el('stagecard').classList.remove('hidden')
+    el('stagesplit').classList.remove('hidden')
   }
 }
 function pollStage(): void {
@@ -514,11 +533,148 @@ function stopStage(): void {
   el('stagewait').classList.add('hidden')
   el('stagecard').classList.remove('paused')
 }
-el('stageexpbtn').onclick = (e) => {
-  e.stopPropagation()
+function openStageFull(): void {
+  if (el('stagecard').classList.contains('rtc')) {
+    const v = el('stagevideo') as HTMLVideoElement & { webkitEnterFullscreen?: () => void }
+    if (v.requestFullscreen) void v.requestFullscreen().catch(() => undefined)
+    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen()
+    return
+  }
   el('stagefull').classList.remove('hidden')
 }
-el('stageimg').onclick = () => el('stagefull').classList.remove('hidden')
+el('stageexpbtn').onclick = (e) => {
+  e.stopPropagation()
+  openStageFull()
+}
+el('stageimg').onclick = openStageFull
+el('stagevideo').onclick = openStageFull
+
+// ---------- the screen's height is yours: drag the handle ----------
+{
+  const split = el('stagesplit')
+  const card = el('stagecard')
+  let dragY = 0
+  let startH = 0
+  try {
+    const saved = localStorage.getItem('sitka-stage-h')
+    if (saved) card.style.setProperty('--stage-h', saved)
+  } catch {
+    /* ignore */
+  }
+  split.classList.add('hidden')
+  split.addEventListener('pointerdown', (e) => {
+    dragY = e.clientY
+    startH = card.getBoundingClientRect().height
+    split.classList.add('drag')
+    split.setPointerCapture(e.pointerId)
+  })
+  split.addEventListener('pointermove', (e) => {
+    if (!split.classList.contains('drag')) return
+    const max = el('pane-live').clientHeight * 0.78
+    const h = Math.max(140, Math.min(max, startH + (e.clientY - dragY)))
+    card.style.setProperty('--stage-h', `${Math.round(h)}px`)
+  })
+  const end = (): void => {
+    if (!split.classList.contains('drag')) return
+    split.classList.remove('drag')
+    try {
+      localStorage.setItem('sitka-stage-h', card.style.getPropertyValue('--stage-h'))
+    } catch {
+      /* ignore */
+    }
+  }
+  split.addEventListener('pointerup', end)
+  split.addEventListener('pointercancel', end)
+}
+
+// ---------- real-time video from the host (WebRTC) ----------
+// The host offers a live video track to each phone that asks; the still
+// frames keep flowing underneath, so a phone that cannot connect (or a room
+// too large for direct connections) still sees the screen, a second behind.
+let rtcPc: RTCPeerConnection | null = null
+let rtcChannel: RealtimeChannel | null = null
+let rtcWantTimer: number | null = null
+const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+function rtcWant(): void {
+  void rtcChannel?.send({ type: 'broadcast', event: 'want', payload: { id: attId } })
+}
+function rtcMark(on: boolean): void {
+  const card = el('stagecard')
+  card.classList.toggle('rtc', on)
+  if (on) {
+    card.classList.remove('hidden')
+    el('stagewait').classList.add('hidden')
+    el('stagesplit').classList.remove('hidden')
+    stageSeen = true
+  }
+}
+async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
+  rtcPc?.close()
+  const pc = new RTCPeerConnection(RTC_CONFIG)
+  rtcPc = pc
+  pc.onicecandidate = (e) => {
+    if (e.candidate)
+      void rtcChannel?.send({
+        type: 'broadcast',
+        event: 'ice',
+        payload: { id: attId, from: 'attendee', candidate: e.candidate.toJSON() }
+      })
+  }
+  pc.ontrack = (e) => {
+    const v = el('stagevideo') as HTMLVideoElement
+    v.srcObject = e.streams[0]
+    void v.play().catch(() => undefined)
+    rtcMark(true)
+  }
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+      if (rtcPc === pc) rtcMark(false)
+    }
+  }
+  await pc.setRemoteDescription(sdp)
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+  void rtcChannel?.send({ type: 'broadcast', event: 'answer', payload: { id: attId, sdp: pc.localDescription } })
+}
+function startRtc(): void {
+  if (rtcChannel || !attId || typeof RTCPeerConnection === 'undefined') return
+  const ch = sb.channel('rtc-' + eventId, { config: { broadcast: { self: false } } })
+  rtcChannel = ch
+  ch.on('broadcast', { event: 'offer' }, ({ payload }) => {
+    const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
+    if (p.id === attId) void rtcAccept(p.sdp).catch(() => rtcMark(false))
+  })
+  ch.on('broadcast', { event: 'ice' }, ({ payload }) => {
+    const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
+    if (p.id === attId && p.from === 'host' && rtcPc) void rtcPc.addIceCandidate(p.candidate).catch(() => undefined)
+  })
+  ch.on('broadcast', { event: 'bye' }, () => {
+    rtcPc?.close()
+    rtcPc = null
+    rtcMark(false)
+  })
+  ch.subscribe((status) => {
+    if (status !== 'SUBSCRIBED') return
+    rtcWant()
+    if (rtcWantTimer) clearInterval(rtcWantTimer)
+    rtcWantTimer = window.setInterval(() => {
+      if (!rtcPc || rtcPc.connectionState !== 'connected') rtcWant()
+    }, 12000)
+  })
+}
+function stopRtc(): void {
+  rtcPc?.close()
+  rtcPc = null
+  rtcMark(false)
+  if (rtcWantTimer) {
+    clearInterval(rtcWantTimer)
+    rtcWantTimer = null
+  }
+  if (rtcChannel) {
+    void sb.removeChannel(rtcChannel)
+    rtcChannel = null
+  }
+}
 el('stageclose').onclick = () => el('stagefull').classList.add('hidden')
 el('stagefull').onclick = (e) => {
   if (e.target === el('stagefull') || e.target === el('stagefullimg'))
@@ -808,6 +964,7 @@ function goLiveView(): void {
   el('savebtn').classList.remove('hidden')
   el('reactrow').classList.remove('hidden')
   startStage()
+  startRtc()
   void keepAwake()
   // on a laptop the captions are always in view, so the panel opens on Ask
   if (window.matchMedia('(min-width: 900px)').matches) {
@@ -829,6 +986,7 @@ function goPreView(): void {
 function onEnded(): void {
   setBadge('ended')
   stopStage()
+  stopRtc()
   el('takewait').textContent = 'The event has ended — grab your personalized pack below.'
 }
 function applyEventState(): void {
@@ -1465,6 +1623,7 @@ async function boot(): Promise<void> {
   } else {
     el('loading').classList.add('hidden')
     el('join').classList.remove('hidden')
+    mountAttendTour(el('attendtour'))
   }
 }
 void boot()

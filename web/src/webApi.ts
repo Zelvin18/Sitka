@@ -5,7 +5,7 @@
  * desktop renderer runs online. The signed-in user's browser tab is the brain:
  * it captures, transcribes, answers attendees, and stores everything here.
  */
-import type { SupabaseClient, User } from '@supabase/supabase-js'
+import type { RealtimeChannel, SupabaseClient, User } from '@supabase/supabase-js'
 import type { SitkaApi } from '../../src/preload/index'
 import {
   memorySystemPrompt,
@@ -1003,6 +1003,70 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       c.answering.add(row.id)
       void confReviewQuestion(row)
     }
+  }
+
+  // ---------- host side of the live video: one direct connection per phone ----------
+  interface RtcHost {
+    channel: RealtimeChannel
+    peers: Map<string, RTCPeerConnection>
+    stream: MediaStream
+  }
+  let rtc: RtcHost | null = null
+  // Beyond this, phones keep the still frames: direct connections cost the
+  // host's upload for every viewer. Larger rooms need a media server.
+  const RTC_MAX_PEERS = 12
+  async function rtcOfferTo(id: string): Promise<void> {
+    const r = rtc
+    if (!r) return
+    r.peers.get(id)?.close()
+    r.peers.delete(id)
+    if (r.peers.size >= RTC_MAX_PEERS) return
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+    r.peers.set(id, pc)
+    for (const t of r.stream.getVideoTracks()) {
+      const sender = pc.addTrack(t, r.stream)
+      const p = sender.getParameters()
+      if (p.encodings && p.encodings.length > 0) {
+        p.encodings[0].maxBitrate = 900_000
+        p.encodings[0].maxFramerate = 15
+        void sender.setParameters(p).catch(() => undefined)
+      }
+    }
+    pc.onicecandidate = (e) => {
+      if (e.candidate)
+        void r.channel.send({
+          type: 'broadcast',
+          event: 'ice',
+          payload: { id, from: 'host', candidate: e.candidate.toJSON() }
+        })
+    }
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        pc.close()
+        if (r.peers.get(id) === pc) r.peers.delete(id)
+      }
+    }
+    try {
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      void r.channel.send({ type: 'broadcast', event: 'offer', payload: { id, sdp: pc.localDescription } })
+    } catch {
+      pc.close()
+      r.peers.delete(id)
+    }
+  }
+  async function stopRtcHost(): Promise<void> {
+    const r = rtc
+    if (!r) return
+    rtc = null
+    try {
+      await r.channel.send({ type: 'broadcast', event: 'bye', payload: {} })
+    } catch {
+      /* the room is already gone */
+    }
+    r.peers.forEach((pc) => pc.close())
+    r.peers.clear()
+    void sb.removeChannel(r.channel)
   }
 
   async function confPollStats(): Promise<void> {
@@ -2790,6 +2854,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         ? { error: /relation|does not exist/i.test(error.message) ? 'Run supabase/wave10.sql to enable the room chat.' : error.message }
         : {}
     },
+    // ---------- live video to attendees (direct connections, small rooms) ----------
+    startVideoBroadcast: async (source: unknown) => {
+      const stream = source as MediaStream
+      if (!conf || !stream || typeof RTCPeerConnection === 'undefined') return
+      if (rtc) await stopRtcHost()
+      const channel = sb.channel('rtc-' + conf.eventId, { config: { broadcast: { self: false } } })
+      rtc = { channel, peers: new Map(), stream }
+      channel.on('broadcast', { event: 'want' }, ({ payload }) => {
+        const p = payload as { id?: string }
+        if (p.id) void rtcOfferTo(String(p.id))
+      })
+      channel.on('broadcast', { event: 'answer' }, ({ payload }) => {
+        const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
+        const pc = rtc?.peers.get(p.id)
+        if (pc && pc.signalingState === 'have-local-offer') void pc.setRemoteDescription(p.sdp).catch(() => undefined)
+      })
+      channel.on('broadcast', { event: 'ice' }, ({ payload }) => {
+        const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
+        if (p.from !== 'attendee') return
+        void rtc?.peers.get(p.id)?.addIceCandidate(p.candidate).catch(() => undefined)
+      })
+      channel.subscribe()
+    },
+    stopVideoBroadcast: async () => stopRtcHost(),
     pushStageFrame: async (dataUrl: string) => {
       if (!conf || conf.frameBusy) return {}
       const m = /^data:image\/jpeg;base64,(.+)$/.exec(dataUrl)

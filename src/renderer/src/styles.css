@@ -5994,25 +5994,37 @@ body.dragging-row .splitter-h {
 /* ---- hosting: Co-Pilot and Room share the right column ---- */
 .right-tabs {
   display: flex;
-  gap: 4px;
-  padding: 52px 16px 0;
+  align-items: center;
+  gap: 8px;
+  padding: 52px 16px 10px;
+  border-bottom: 1px solid var(--border);
   flex: none;
 }
 
 .right-tabs button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   position: relative;
   border: none;
   background: none;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 650;
   color: var(--text-2);
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: 20px;
   cursor: pointer;
+}
+
+.right-live {
+  margin-left: auto;
+}
+
+/* the tabs name the pane, so the pane's own header would only repeat them */
+.right-tabs + .chat .chat-header,
+.right-tabs + .room-panel + .chat .chat-header {
+  display: none;
 }
 
 .right-tabs button.on {

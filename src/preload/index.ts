@@ -211,6 +211,9 @@ const api = {
   startConference: (sessionId: string): Promise<{ url?: string; error?: string }> =>
     ipcRenderer.invoke('conference:start', sessionId),
   stopConference: (): Promise<void> => ipcRenderer.invoke('conference:stop'),
+  /** live video to attendees — served by the web app; the desktop host uses stage frames */
+  startVideoBroadcast: async (_stream: unknown): Promise<void> => undefined,
+  stopVideoBroadcast: async (): Promise<void> => undefined,
   /** mirror the host's screen to every attendee; an error says why phones are not getting it */
   pushStageFrame: (dataUrl: string): Promise<{ error?: string } | void> =>
     ipcRenderer.invoke('conference:frame', dataUrl),

@@ -73,6 +73,8 @@ export function installBrowserMockIfNeeded(): void {
     startConference: async () => ({ error: 'unavailable in browser preview' }),
     stopConference: async () => undefined,
     pushStageFrame: async () => undefined,
+    startVideoBroadcast: async () => undefined,
+    stopVideoBroadcast: async () => undefined,
     launchPoll: async () => ({ error: 'unavailable in browser preview' }),
     closePoll: async () => undefined,
     listRoomMessages: async () => [],
