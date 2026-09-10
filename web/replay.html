@@ -25,6 +25,19 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .meta{color:var(--t3);font-size:13.5px;margin-bottom:18px}
 .player{border-radius:16px;overflow:hidden;background:#000;box-shadow:0 12px 34px var(--shadow);margin-bottom:22px}
 .player video{width:100%;display:block;max-height:60vh}
+.player video[hidden]{display:none}
+.playgate{width:100%;aspect-ratio:16/9;max-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#141416;color:#fff;border:0;cursor:pointer;font:inherit;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.playgate[hidden]{display:none}
+.playgate .pg{width:58px;height:58px;border-radius:50%;border:2px solid rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;margin-bottom:4px;transition:transform .2s ease,background .2s ease}
+.playgate:hover .pg{background:rgba(255,255,255,.12);transform:scale(1.05)}
+.playgate .pg-sub{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.55)}
+.playgate.busy{cursor:progress}
+.playgate.busy .pg{animation:pulse 1.2s infinite}
+.playgate.busy .pg-sub{visibility:hidden}
+.playgate.failed{color:#bbb;cursor:default}
+.recnote{border:1px dashed var(--border);border-radius:12px;padding:12px 14px;color:var(--t3);font-size:13.5px;margin-bottom:22px}
+.recnote[hidden]{display:none}
+.summary.pending{color:var(--t3)}
 .summary{color:var(--t2);font-size:15px;margin-bottom:22px}
 .sec{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:26px 0 10px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -97,7 +110,11 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
   <div id="main" style="display:none">
     <h1 id="rtitle"></h1>
     <div class="meta" id="rmeta"></div>
-    <div class="player" id="player"><video id="rvideo" controls playsinline preload="metadata"></video></div>
+    <div class="player" id="player">
+      <button class="playgate" id="playgate" hidden><span class="pg"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></span><span id="playgate-text">Watch the recording</span><span class="pg-sub">Loads when you tap</span></button>
+      <video id="rvideo" controls playsinline preload="metadata" hidden></video>
+    </div>
+    <div class="recnote" id="recnote" hidden></div>
     <div class="summary" id="rsummary"></div>
     <div class="sec" id="notestitle" style="display:none">Notes</div>
     <div class="md notes" id="rnotes" style="display:none"></div>

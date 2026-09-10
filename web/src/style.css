@@ -382,6 +382,14 @@ header .brand,header .evtitle{max-width:none;margin:0}
   .center{margin:auto}
 }
 
+/* ---- the end of the event: a card with the recap one tap away ---- */
+.endcard{border:1px solid var(--border);border-radius:16px;padding:20px 18px 18px;margin:12px 0 16px;background:var(--bg);text-align:center;animation:fadeup .5s ease}
+.endcard .mark{width:26px;height:26px;display:block;margin:0 auto 8px}
+.endcard h2{font-size:18px;letter-spacing:-.015em;margin:0 0 4px}
+.endcard p{color:var(--t2);font-size:14px;margin:0 0 14px}
+.endcard .endlink{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;margin:0;min-width:180px}
+.endcard .endlink.hidden{display:none}
+
 /* ---- loading: the mark orbiting, a line of words beneath ---- */
 .mark-live circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
 @keyframes orbit{to{transform:rotate(360deg)}}

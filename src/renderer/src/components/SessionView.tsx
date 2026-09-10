@@ -676,6 +676,7 @@ export default function SessionView({
             sessionId={meta.id}
             report={data.report}
             hasChatKey={hasChatKey}
+            initialUrl={meta.replayUrl ?? null}
             onUpdated={(r) => setData((d) => (d ? { ...d, report: r } : d))}
           />
         )}

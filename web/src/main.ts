@@ -20,7 +20,7 @@ interface EventRow {
   pre_event_chat: boolean
   materials_present: boolean
   live_voice: { enabled: boolean; languages: string[] }
-  replay?: { enabled?: boolean } | null
+  replay?: { enabled?: boolean; summary?: string; video?: boolean | 'parts' } | null
 }
 interface SegRow {
   idx: number
@@ -1009,11 +1009,32 @@ function goPreView(): void {
   })
   ;(document.querySelector('[data-pane=ask]') as HTMLElement).click()
 }
+// The end card: the host has finished, and the recap is one tap away. The
+// link shows as soon as the event row carries the recap flag, which the host's
+// app sets in the same moment it ends the event.
+function refreshEndCard(): void {
+  if (!ev || ev.status !== 'ended') return
+  const card = el('endcard')
+  card.classList.remove('hidden')
+  const link = el('endlink') as HTMLAnchorElement
+  link.href = `/r/${eventId}`
+  const on = Boolean(ev.replay?.enabled)
+  link.classList.toggle('hidden', !on)
+  el('endsub').textContent = on
+    ? 'Your recap is ready: what was said, the key moments, and the recording. Ask it anything, any time.'
+    : 'Thanks for being here. Your take-home pack is in the last tab.'
+}
 function onEnded(): void {
   setBadge('ended')
   stopStage()
   stopRtc()
   el('takewait').textContent = 'The event has ended — grab your personalized pack below.'
+  refreshEndCard()
+  // On a phone the card sits at the top of the Live tab; bring it into view.
+  if (window.innerWidth < 900) {
+    ;(document.querySelector('[data-pane=live]') as HTMLElement | null)?.click()
+    el('pane-live').scrollTop = 0
+  }
 }
 function applyEventState(): void {
   if (!ev || !joined) return
@@ -1291,7 +1312,7 @@ const myChat: { role: string; content: string }[] = []
     }
     let h = ''
     if (ev?.replay?.enabled) {
-      h += `<a class="btn btn2" style="margin:0 0 4px;text-decoration:none" href="/r/${eventId}">Watch the full replay</a>`
+      h += `<a class="btn btn2" style="margin:0 0 4px;text-decoration:none" href="/r/${eventId}">Open the event recap</a>`
     }
     if (moments.length > 0) {
       h += `<div class="tkcard"><h2>My saved moments</h2>${moments
@@ -1461,15 +1482,24 @@ async function join(newJoin: boolean): Promise<void> {
   // row every 3s until the event is over, plus any captions it missed while live.
   let lastSegIdx = -1
   let watching = false
+  let endedTicks = 0
   const watchEvent = async (): Promise<void> => {
-    if (watching || !ev || ev.status === 'ended') return
+    if (watching || !ev) return
+    // After the end, the recap flag and the recording can still change for a
+    // while: keep looking, more slowly, for about ten minutes.
+    if (ev.status === 'ended') {
+      endedTicks++
+      if (endedTicks > 200 || endedTicks % 5 !== 0) return
+    }
     watching = true
     try {
       const { data: fresh } = await sb.from('events').select('*').eq('id', eventId).single()
       if (fresh) {
         const before = ev.status
+        const hadRecap = Boolean(ev.replay?.enabled)
         ev = fresh as EventRow
         if (ev.status !== before) applyEventState()
+        else if (ev.status === 'ended' && Boolean(ev.replay?.enabled) !== hadRecap) refreshEndCard()
       }
       if (ev.status === 'live') {
         const { data: rows } = await sb

@@ -607,11 +607,37 @@ export function endCloudEvent(sessionId: string): void {
     endedAt: Date.now()
   })
   const event = store.getEvent(state.eventId)
+  const meta = store.getMeta(sessionId)
   void state.client
     .from('events')
     .upsert(event ? eventRow(event, 'ended', sessionId) : { id: state.eventId, status: 'ended' })
     .then(() => undefined)
     .catch(() => undefined)
+    .then(() =>
+      // The room gets its recap link at once: the words now, the summary and
+      // the recording as soon as they are ready (see cloudPublishReplay).
+      state.client
+        .from('events')
+        .update({
+          replay: {
+            enabled: true,
+            auto: true,
+            title: meta?.title ?? event?.title ?? '',
+            summary: meta?.summary ?? '',
+            highlights: meta?.highlights ?? [],
+            durationMs: meta?.durationMs,
+            video: false,
+            publishedAt: Date.now()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', state.eventId)
+        .then(() => undefined, () => undefined)
+    )
+  if (meta) {
+    meta.replayUrl = webUrlFor(state.eventId).replace('/e/', '/r/')
+    store.saveMeta(meta)
+  }
   void generateCloudProxyBriefs(state.client, state.eventId, sessionId)
 }
 
@@ -800,12 +826,15 @@ export async function cloudPublishReplay(
           summary: meta.summary ?? '',
           highlights: meta.highlights ?? [],
           durationMs: meta.durationMs,
+          video: true,
           publishedAt: Date.now()
         },
         updated_at: new Date().toISOString()
       })
       .eq('id', meta.eventId)
-    return { enabled: true, url: webUrlFor(meta.eventId).replace('/e/', '/r/') }
+    meta.replayUrl = webUrlFor(meta.eventId).replace('/e/', '/r/')
+    store.saveMeta(meta)
+    return { enabled: true, url: meta.replayUrl }
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

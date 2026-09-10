@@ -72,6 +72,8 @@ export interface SessionMeta {
   sample?: boolean
   /** public recap page, set while the session is shared */
   recapUrl?: string
+  /** the event's recap page (/r/<eventId>), set once a hosted event ends */
+  replayUrl?: string
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */

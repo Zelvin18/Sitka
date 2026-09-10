@@ -20,6 +20,10 @@ interface Replay {
   summary?: string
   highlights?: { time: string; label: string }[]
   durationMs?: number
+  /** true: a public copy exists; 'parts': play the host's own recording parts */
+  video?: boolean | 'parts'
+  /** switched on by Sitka when the event ended, not by hand */
+  auto?: boolean
 }
 interface SegRow {
   idx: number
@@ -94,6 +98,13 @@ function highlightAt(sec: number): void {
 function seek(sec: number): void {
   if (hasVideo) {
     const v = el('rvideo') as HTMLVideoElement
+    if (!v.src) {
+      // not fetched yet: fetch it now and land on the moment once it is there
+      pendingSeek = Math.max(0, sec)
+      el('playgate').click()
+      el('player').scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     v.currentTime = Math.max(0, sec)
     void v.play().catch(() => undefined)
     v.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -228,16 +239,133 @@ function wireAsk(title: string, transcript: string, materials: string, kindWord:
   })
 }
 
+// ---------- the event recording ----------
+// It plays from the host's own recording, in the parts the host's browser
+// uploaded while recording (opened to readers by wave11.sql while the recap is
+// on), or from a public copy when the host published one by hand. Either way
+// it is fetched only when someone taps the player.
+let playerReady = false
+let loadingParts = false
+let pendingSeek: number | null = null
+
+function applySummary(r: Replay): void {
+  const s = el('rsummary')
+  if (r.summary) {
+    s.textContent = r.summary
+    s.classList.remove('pending')
+    delete s.dataset.pending
+  } else {
+    s.textContent = 'Sitka is writing the summary. It appears here in a moment.'
+    s.classList.add('pending')
+    s.dataset.pending = '1'
+  }
+}
+
+function armVideo(v: HTMLVideoElement): void {
+  v.hidden = false
+  v.onloadedmetadata = () => {
+    // A recording stitched from parts may not know its length yet: ask the
+    // browser to find the end once, so the timeline and seeking work.
+    if (!Number.isFinite(v.duration)) {
+      v.currentTime = 1e101
+      v.ontimeupdate = () => {
+        v.ontimeupdate = () => highlightAt(v.currentTime)
+        v.currentTime = pendingSeek ?? 0
+        pendingSeek = null
+      }
+      return
+    }
+    if (pendingSeek !== null) {
+      v.currentTime = pendingSeek
+      pendingSeek = null
+    }
+  }
+  void v.play().catch(() => undefined)
+}
+
+async function loadParts(owner: string, sessionId: string): Promise<void> {
+  if (loadingParts) return
+  loadingParts = true
+  const gate = el('playgate')
+  const txt = el('playgate-text')
+  const v = el('rvideo') as HTMLVideoElement
+  gate.classList.add('busy')
+  try {
+    const dir = `${owner}/${sessionId}`
+    const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
+    if (error) throw error
+    const parts = (files ?? [])
+      .map((f) => f.name)
+      .filter((n) => /^part-\d+\.webm$/.test(n))
+      .sort()
+    const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
+    const blobs: Blob[] = []
+    for (let i = 0; i < paths.length; i++) {
+      txt.textContent = `Loading the recording · ${i + 1} of ${paths.length}`
+      const { data: blob, error: e2 } = await sb.storage.from('recordings').download(paths[i])
+      if (e2 || !blob) throw e2 ?? new Error('missing part')
+      blobs.push(blob)
+    }
+    gate.hidden = true
+    v.src = URL.createObjectURL(new Blob(blobs, { type: 'video/webm' }))
+    armVideo(v)
+  } catch {
+    txt.textContent = 'The recording could not be loaded. The host may have removed it.'
+    gate.classList.remove('busy')
+    gate.classList.add('failed')
+  } finally {
+    loadingParts = false
+  }
+}
+
+function setupPlayer(
+  r: Replay,
+  row: { owner?: string | null; session_id?: string | null }
+): void {
+  if (playerReady) return
+  const player = el('player')
+  const gate = el('playgate')
+  const note = el('recnote')
+  const v = el('rvideo') as HTMLVideoElement
+  const mins = r.durationMs ? ` · ${fmtDuration(r.durationMs)}` : ''
+  if (r.video === true) {
+    playerReady = true
+    hasVideo = true
+    player.style.display = ''
+    note.hidden = true
+    gate.hidden = false
+    el('playgate-text').textContent = 'Watch the recording' + mins
+    gate.onclick = () => {
+      gate.hidden = true
+      v.src = `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
+      armVideo(v)
+    }
+    return
+  }
+  if (r.video === 'parts' && row.owner && row.session_id) {
+    playerReady = true
+    hasVideo = true
+    player.style.display = ''
+    note.hidden = true
+    gate.hidden = false
+    el('playgate-text').textContent = 'Watch the recording' + mins
+    gate.onclick = () => void loadParts(row.owner as string, row.session_id as string)
+    return
+  }
+  player.style.display = 'none'
+  note.hidden = false
+  note.textContent = 'The recording is still on its way. The words below are complete.'
+}
+
 async function bootEvent(): Promise<boolean> {
   const { data } = await sb
     .from('events')
-    .select('title,replay,starts_at')
+    .select('title,replay,starts_at,owner,session_id')
     .eq('id', pageId)
     .single()
   const replay = (data?.replay ?? null) as Replay | null
   if (!data || !replay?.enabled) return false
 
-  hasVideo = true
   const title = replay.title || (data.title as string) || 'Event replay'
   document.title = title + ' — Sitka Replay'
   el('rtitle').textContent = title
@@ -245,9 +373,7 @@ async function bootEvent(): Promise<boolean> {
   if (data.starts_at) bits.push(fmtDate(data.starts_at as string))
   if (replay.durationMs) bits.push(fmtDuration(replay.durationMs))
   el('rmeta').textContent = bits.join(' · ')
-  ;(el('rvideo') as HTMLVideoElement).src =
-    `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
-  el('rsummary').textContent = replay.summary || ''
+  applySummary(replay)
   renderHighlights(replay.highlights)
 
   const { data: segs } = await sb
@@ -258,8 +384,34 @@ async function bootEvent(): Promise<boolean> {
   const rows = (segs ?? []) as SegRow[]
   renderLines(rows.map((s) => ({ sec: Number(s.start_sec), label: s.label, text: s.text })))
 
+  // The recording loads only when asked for: one tap on the player.
   const v = el('rvideo') as HTMLVideoElement
   v.ontimeupdate = () => highlightAt(v.currentTime)
+  setupPlayer(replay, data as { owner?: string | null; session_id?: string | null })
+
+  // The summary is written by Sitka in the minute after the event ends: keep
+  // asking for it (and for the recording) for a while, so the page fills in.
+  if (!replay.summary || !hasVideo) {
+    let ticks = 0
+    const t = window.setInterval(async () => {
+      ticks++
+      const { data: fresh } = await sb
+        .from('events')
+        .select('title,replay,owner,session_id')
+        .eq('id', pageId)
+        .single()
+      const r = (fresh?.replay ?? null) as Replay | null
+      if (!r || !r.enabled) {
+        clearInterval(t)
+        return
+      }
+      if (r.summary && !el('rsummary').textContent) applySummary(r)
+      if (r.highlights?.length && !el('rchips').children.length) renderHighlights(r.highlights)
+      if (r.title) el('rtitle').textContent = r.title
+      if (!hasVideo) setupPlayer(r, fresh as { owner?: string | null; session_id?: string | null })
+      if ((r.summary && hasVideo) || ticks > 80) clearInterval(t)
+    }, 15000)
+  }
 
   const materialsRes = await sb.from('events').select('materials_text').eq('id', pageId).single()
   const materials = ((materialsRes.data?.materials_text as string) || '').slice(0, 10000)

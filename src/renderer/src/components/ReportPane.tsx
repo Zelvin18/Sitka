@@ -6,6 +6,8 @@ interface Props {
   sessionId: string
   report: EventReport | null
   hasChatKey: boolean
+  /** the recap page, when the event already shares one (set the moment it ended) */
+  initialUrl?: string | null
   onUpdated: (report: EventReport) => void
 }
 
@@ -13,12 +15,13 @@ export default function ReportPane({
   sessionId,
   report,
   hasChatKey,
+  initialUrl,
   onUpdated
 }: Props): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [replayBusy, setReplayBusy] = useState(false)
-  const [replayUrl, setReplayUrl] = useState<string | null>(null)
+  const [replayUrl, setReplayUrl] = useState<string | null>(initialUrl ?? null)
   const [replayErr, setReplayErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -88,11 +91,11 @@ export default function ReportPane({
 
       <div className="replay-card">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 650, marginBottom: 2 }}>Public replay</div>
+          <div style={{ fontWeight: 650, marginBottom: 2 }}>Event recap</div>
           <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
             {replayUrl
-              ? 'Live — anyone with the link can watch the recording with the clickable transcript.'
-              : 'Publish this event as a shareable page: the recording, transcript and key moments, one link for everyone.'}
+              ? 'Shared with the room the moment the event ended: the summary, the key moments, the transcript and the recording, one link for everyone. Deleting this session takes it down.'
+              : 'Share this event as a page: the recording, transcript and key moments, one link for everyone.'}
           </div>
           {replayUrl && (
             <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 6, wordBreak: 'break-all' }}>
@@ -121,7 +124,7 @@ export default function ReportPane({
                 disabled={replayBusy}
                 onClick={() => setReplay(false)}
               >
-                Unpublish
+                Stop sharing
               </button>
             </>
           ) : (
@@ -131,7 +134,7 @@ export default function ReportPane({
               onClick={() => setReplay(true)}
             >
               <IconBroadcast size={13} />
-              {replayBusy ? 'Publishing…' : 'Publish replay'}
+              {replayBusy ? 'Sharing…' : 'Share recap'}
             </button>
           )}
         </div>

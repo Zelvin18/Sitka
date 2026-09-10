@@ -818,6 +818,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       delete d.meta.analysisError
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
+      // The event recap gets the summary and the moments as soon as they exist.
+      await syncReplayText(d.meta).catch(() => undefined)
       // Memory: decisions, promises, people and concepts, pinned to their moments.
       await rememberSession(d.meta, d.segments).catch(() => undefined)
     } catch (err) {
@@ -1256,6 +1258,54 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  // ---------- the event recap: shared with the room the moment the event ends ----------
+  // The recap page (/r/<eventId>) reads the transcript from the segments table,
+  // the summary from events.replay once analysis has written it, and the
+  // recording straight from the parts uploaded while recording (wave11.sql
+  // opens them to readers while the recap is on). Nothing is copied.
+  const replayUrlFor = (eventId: string): string => `${location.origin}/r/${eventId}`
+
+  async function readReplay(eventId: string): Promise<Record<string, unknown> | null> {
+    const { data } = await sb.from('events').select('replay').eq('id', eventId).single()
+    return (data?.replay as Record<string, unknown> | null) ?? null
+  }
+
+  async function writeReplay(eventId: string, patch: Record<string, unknown>): Promise<void> {
+    const current = (await readReplay(eventId)) ?? {}
+    await sb
+      .from('events')
+      .update({ replay: { ...current, ...patch }, updated_at: new Date().toISOString() })
+      .eq('id', eventId)
+  }
+
+  /** Switch the recap on with what is known right now; the summary follows. */
+  async function openReplay(meta: SessionMeta): Promise<void> {
+    if (!meta.eventId) return
+    await writeReplay(meta.eventId, {
+      enabled: true,
+      auto: true,
+      title: meta.title,
+      summary: meta.summary ?? '',
+      highlights: meta.highlights ?? [],
+      durationMs: meta.durationMs,
+      video: 'parts',
+      publishedAt: Date.now()
+    })
+  }
+
+  /** After analysis: the summary, the moments and the final title reach the recap. */
+  async function syncReplayText(meta: SessionMeta): Promise<void> {
+    if (!meta.eventId || !meta.hosted) return
+    const current = await readReplay(meta.eventId)
+    if (!current || current.enabled !== true) return
+    await writeReplay(meta.eventId, {
+      title: meta.title,
+      summary: meta.summary ?? '',
+      highlights: meta.highlights ?? [],
+      durationMs: meta.durationMs
+    })
+  }
+
   async function endConf(sessionId: string): Promise<void> {
     if (!conf || conf.sessionId !== sessionId) return
     const c = conf
@@ -1276,6 +1326,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       .from('events')
       .update({ status: 'ended', updated_at: new Date().toISOString() })
       .eq('id', c.eventId)
+    // The room gets its recap link straight away.
+    if (d) {
+      d.meta.replayUrl = replayUrlFor(c.eventId)
+      await openReplay(d.meta).catch(() => undefined)
+    }
     void generateProxyBriefs(c.eventId, d?.segments ?? [], c.sessionId)
     conf = null
   }
@@ -1612,6 +1667,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     getSession: async (id: string) => loadSession(id),
 
     deleteSession: async (id: string) => {
+      // A hosted event's recap dies with its session: the page closes and the
+      // public copy of the recording, if one was made, is removed. The parts
+      // below go too, so the recap's own player has nothing left to read.
+      const evId = cache.get(id)?.meta.eventId ?? (await loadSession(id))?.meta.eventId
+      if (evId) {
+        await sb
+          .from('events')
+          .update({ replay: { enabled: false }, updated_at: new Date().toISOString() })
+          .eq('id', evId)
+          .then(() => undefined, () => undefined)
+        await sb.storage.from('replays').remove([`${evId}.webm`]).catch(() => undefined)
+      }
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
       await forgetSession(id)
@@ -2060,6 +2127,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       d.meta.durationMs = durationMs
       d.meta.status = 'complete'
       await endConf(id)
+      if (d.meta.hosted && d.meta.eventId) d.meta.replayUrl = replayUrlFor(d.meta.eventId)
 
       // Flush the tail of the recording and wait for every part to land.
       const b = recBuf.get(id)
@@ -2714,6 +2782,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             updated_at: new Date().toISOString()
           })
           .eq('id', evId)
+        // the public copy, if one was ever made, goes with it
+        await sb.storage.from('replays').remove([`${evId}.webm`]).catch(() => undefined)
+        delete d.meta.replayUrl
+        await patchSession(sessionId, { meta: d.meta })
+        emitSession(d.meta)
         return { enabled: false }
       }
       const video = await api.readVideo(sessionId, 'video')
@@ -2751,12 +2824,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             summary: d.meta.summary ?? '',
             highlights: d.meta.highlights ?? [],
             durationMs: d.meta.durationMs,
+            video: true,
             publishedAt: Date.now()
           },
           updated_at: new Date().toISOString()
         })
         .eq('id', evId)
-      return { enabled: true, url: `${location.origin}/r/${evId}` }
+      d.meta.replayUrl = replayUrlFor(evId)
+      await patchSession(sessionId, { meta: d.meta })
+      emitSession(d.meta)
+      return { enabled: true, url: replayUrlFor(evId) }
     },
     publishRecap: async (sessionId: string, enable: boolean) => {
       const d = await loadSession(sessionId)

@@ -789,7 +789,12 @@ function registerIpc(): void {
     endConference(id)
     endCloudEvent(id)
     void ensureThumb(id)
-    void runAnalysis(id)
+    void runAnalysis(id).then(() => {
+      // A hosted online event shares its recap with the room; the summary is
+      // in now, and the recording follows it up to the recap page.
+      const m = store.getMeta(id)
+      if (m?.hosted && m.eventId && cloudConfigured()) void cloudPublishReplay(id, true)
+    })
     return meta
   })
 
