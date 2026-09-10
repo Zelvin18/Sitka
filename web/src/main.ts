@@ -477,7 +477,7 @@ function showStageFrame(b: Blob): void {
     stageSeen = true
     el('stagewait').classList.add('hidden')
     el('stagecard').classList.remove('hidden')
-    el('stagesplit').classList.remove('hidden')
+    if (!el('stagecard').classList.contains('mini')) el('stagesplit').classList.remove('hidden')
   }
 }
 function pollStage(): void {
@@ -549,6 +549,32 @@ el('stageexpbtn').onclick = (e) => {
 el('stageimg').onclick = openStageFull
 el('stagevideo').onclick = openStageFull
 
+// ---------- hide the screen when the words need the room ----------
+{
+  const card = el('stagecard')
+  const btn = el('stageminbtn')
+  const apply = (mini: boolean): void => {
+    card.classList.toggle('mini', mini)
+    btn.textContent = mini ? 'Show screen' : 'Hide'
+    el('stagesplit').classList.toggle('hidden', mini || card.classList.contains('hidden'))
+  }
+  try {
+    apply(localStorage.getItem('sitka-stage-mini') === '1')
+  } catch {
+    /* ignore */
+  }
+  btn.onclick = (e) => {
+    e.stopPropagation()
+    const mini = !card.classList.contains('mini')
+    apply(mini)
+    try {
+      localStorage.setItem('sitka-stage-mini', mini ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 // ---------- the screen's height is yours: drag the handle ----------
 {
   const split = el('stagesplit')
@@ -604,7 +630,7 @@ function rtcMark(on: boolean): void {
   if (on) {
     card.classList.remove('hidden')
     el('stagewait').classList.add('hidden')
-    el('stagesplit').classList.remove('hidden')
+    if (!card.classList.contains('mini')) el('stagesplit').classList.remove('hidden')
     stageSeen = true
   }
 }

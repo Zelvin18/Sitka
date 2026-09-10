@@ -8,7 +8,7 @@ import NotesPane from './NotesPane'
 import StudyPane from './StudyPane'
 import ReportPane from './ReportPane'
 import Splitter from './Splitter'
-import { clamp, usePersistedNumber } from '../lib/persist'
+import { clamp, usePersistedBool, usePersistedNumber } from '../lib/persist'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -17,6 +17,7 @@ import {
   IconDownload,
   IconEdit,
   IconNotes,
+  IconChevron,
   IconShare,
   IconSparkle,
   IconStar,
@@ -120,6 +121,7 @@ export default function SessionView({
   const videoWrapRef = useRef<HTMLDivElement>(null)
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
+  const [videoHidden, setVideoHidden] = usePersistedBool('sitka.videoHidden', false)
 
   const tabInitializedRef = useRef(false)
   const autoAnalyzedRef = useRef<string | null>(null)
@@ -438,10 +440,20 @@ export default function SessionView({
           </div>
         )}
         <div
-          className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}`}
+          className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}${videoHidden ? ' collapsed' : ''}`}
           ref={videoWrapRef}
-          style={{ height: meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900) }}
+          style={{
+            height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900)
+          }}
         >
+          <button
+            className="video-toggle"
+            onClick={() => setVideoHidden(!videoHidden)}
+            title={videoHidden ? 'Show the picture' : 'Hide the picture — the sound keeps playing'}
+          >
+            <IconChevron size={13} strokeWidth={2.4} />
+            {videoHidden ? 'Show video' : 'Hide'}
+          </button>
           {videoSrc ? (
             <>
               <video

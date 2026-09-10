@@ -306,6 +306,10 @@ header a.brand{color:inherit;text-decoration:none}
 .livetools .savebtn{flex:none;width:38px;height:38px;padding:0;margin:0;border-radius:50%;justify-content:center}
 .livetools .savebtn span{display:none}
 .reactrow{display:none!important}
+.stagemin{position:absolute;right:48px;bottom:8px;z-index:4;border:none;border-radius:20px;background:rgba(0,0,0,.45);color:#fff;font:650 11.5px 'Inter',sans-serif;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px)}
+.stagecard.mini{height:40px!important;aspect-ratio:auto;background:var(--soft);border:1px solid var(--border);box-shadow:none;display:flex;align-items:center;justify-content:center}
+.stagecard.mini > *:not(.stagemin){display:none!important}
+.stagecard.mini .stagemin{position:static;background:var(--bg);color:var(--text);border:1px solid var(--border)}
 .stagevid{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:2;display:none;background:#000}
 .stagecard.rtc .stagevid{display:block}
 .stagecard.rtc .stagepaused{display:none!important}

@@ -20,6 +20,7 @@ import { frameDifference } from '@shared/visionLogic'
 import {
   IconBroadcast,
   IconCamera,
+  IconChevron,
   IconMic,
   IconScreen,
   IconSparkle,
@@ -28,7 +29,7 @@ import {
   Mark
 } from '../lib/icons'
 import { formatTime } from '../lib/format'
-import { clamp, usePersistedNumber } from '../lib/persist'
+import { clamp, usePersistedBool, usePersistedNumber } from '../lib/persist'
 
 const NOTES_INTERVAL_MS = 75000
 
@@ -205,6 +206,8 @@ export default function LiveSession({
   const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
+  // the picture can be folded away to give the words and the chat the room
+  const [videoHidden, setVideoHidden] = usePersistedBool('sitka.videoHidden', false)
   const [markToast, setMarkToast] = useState<string | null>(null)
   const layoutRef = useRef<HTMLDivElement>(null)
   const videoWrapRef = useRef<HTMLDivElement>(null)
@@ -1704,10 +1707,18 @@ export default function LiveSession({
           </div>
         </div>
         <div
-          className="video-wrap"
+          className={`video-wrap${videoHidden ? ' collapsed' : ''}`}
           ref={videoWrapRef}
-          style={{ height: hosting ? 130 : audioOnlyRec ? 116 : clamp(videoH, 140, 900) }}
+          style={{ height: videoHidden ? 40 : hosting ? 130 : audioOnlyRec ? 116 : clamp(videoH, 140, 900) }}
         >
+          <button
+            className="video-toggle"
+            onClick={() => setVideoHidden(!videoHidden)}
+            title={videoHidden ? 'Show the picture' : 'Hide the picture — the recording and the sound continue'}
+          >
+            <IconChevron size={13} strokeWidth={2.4} />
+            {videoHidden ? 'Show video' : 'Hide'}
+          </button>
           {audioOnlyRec ? (
             <div className="audio-stage">
               <AudioLevel stream={micStreamRef.current} bars={44} tall />

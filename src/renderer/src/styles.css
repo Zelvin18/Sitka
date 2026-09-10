@@ -5993,9 +5993,11 @@ body.dragging-row .splitter-h {
 
 /* ---- hosting: Co-Pilot and Room share the right column ---- */
 .right-tabs {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
   padding: 52px 16px 10px;
   border-bottom: 1px solid var(--border);
   flex: none;
@@ -6004,21 +6006,90 @@ body.dragging-row .splitter-h {
 .right-tabs button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   position: relative;
+  width: 140px;
   border: none;
   background: none;
   font: inherit;
   font-size: 14px;
   font-weight: 650;
   color: var(--text-2);
-  padding: 8px 14px;
+  padding: 9px 14px;
   border-radius: 20px;
   cursor: pointer;
 }
 
 .right-live {
-  margin-left: auto;
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+}
+
+/* the picture folds away; sound and recording carry on */
+.video-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 8px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  opacity: 0.85;
+}
+
+.video-toggle:hover {
+  opacity: 1;
+}
+
+.video-toggle .icon {
+  transform: rotate(180deg);
+}
+
+.video-wrap.collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.video-wrap.collapsed > *:not(.video-toggle) {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.video-wrap.collapsed .video-toggle {
+  position: static;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  opacity: 1;
+}
+
+.video-wrap.collapsed .video-toggle .icon {
+  transform: none;
+}
+
+@media (max-width: 860px) {
+  .right-tabs button {
+    width: 120px;
+  }
+  .right-live {
+    right: 12px;
+  }
 }
 
 /* the tabs name the pane, so the pane's own header would only repeat them */
