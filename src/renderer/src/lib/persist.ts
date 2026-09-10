@@ -55,3 +55,49 @@ export function usePersistedBool(
 
 export const clamp = (n: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, n))
+
+// ---- page memory: survives a refresh, forgotten when the tab is closed ----
+
+export function readSession<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw === null ? null : (JSON.parse(raw) as T)
+  } catch {
+    return null
+  }
+}
+
+export function writeSession(key: string, value: unknown): void {
+  try {
+    if (value === undefined || value === null) sessionStorage.removeItem(key)
+    else sessionStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* storage unavailable — the page simply starts fresh */
+  }
+}
+
+/**
+ * State that comes back after a refresh: a chosen tab, a half-filled form.
+ * Keyed so two pages never share a memory.
+ */
+export function useRemembered<T>(
+  key: string,
+  initial: T | (() => T)
+): [T, (v: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    const saved = readSession<T>(key)
+    if (saved !== null) return saved
+    return typeof initial === 'function' ? (initial as () => T)() : initial
+  })
+  const set = useCallback(
+    (v: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const next = typeof v === 'function' ? (v as (p: T) => T)(prev) : v
+        writeSession(key, next)
+        return next
+      })
+    },
+    [key]
+  )
+  return [value, set]
+}

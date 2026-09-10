@@ -8,7 +8,7 @@ import NotesPane from './NotesPane'
 import StudyPane from './StudyPane'
 import ReportPane from './ReportPane'
 import Splitter from './Splitter'
-import { clamp, usePersistedBool, usePersistedNumber } from '../lib/persist'
+import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -53,7 +53,9 @@ export default function SessionView({
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoError, setVideoError] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [tab, setTab] = useState<'transcript' | 'overview' | 'notes' | 'study' | 'report'>(
+  // The chosen tabs come back after a refresh.
+  const [tab, setTab] = useRemembered<'transcript' | 'overview' | 'notes' | 'study' | 'report'>(
+    'sitka.session.tab',
     'transcript'
   )
   const [notesGenerating, setNotesGenerating] = useState(false)
@@ -76,10 +78,10 @@ export default function SessionView({
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
   // Phone: the chat is a tab beside Transcript, open by default, so the screen
   // shows one thing at a time. On a desktop the chat is always the right column.
-  const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
+  const [askOpen, setAskOpen] = useRemembered('sitka.session.ask', () => window.innerWidth < 860)
   // Hosted events keep their room: the host can read the whole conversation
   // again beside Ask Sitka, long after the event ended.
-  const [rightTab, setRightTab] = useState<'ask' | 'room'>('ask')
+  const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.session.right', 'ask')
   const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
 
   useEffect(() => {

@@ -29,7 +29,28 @@ import {
   Mark
 } from '../lib/icons'
 import { formatTime } from '../lib/format'
-import { clamp, usePersistedBool, usePersistedNumber } from '../lib/persist'
+import {
+  clamp,
+  readSession,
+  usePersistedBool,
+  usePersistedNumber,
+  useRemembered,
+  writeSession
+} from '../lib/persist'
+
+/** What the setup page remembers across a refresh. */
+const SETUP_KEY = 'sitka.live.setup'
+type SetupDraft = {
+  picking: boolean
+  recording?: boolean
+  hosting?: boolean
+  kind?: SessionKind
+  captureMode?: 'screen' | 'audio' | 'camera'
+  micOn?: boolean
+  systemAudioOn?: boolean
+  moreOpen?: boolean
+  agendaText?: string
+}
 
 const NOTES_INTERVAL_MS = 75000
 
@@ -140,24 +161,33 @@ export default function LiveSession({
   notesOn,
   readScreen
 }: Props): React.JSX.Element {
-  const [phase, setPhase] = useState<Phase>(presetKind || presetAudio ? 'picking' : 'intent')
-  const [hosting, setHosting] = useState(false)
-  const [kind, setKind] = useState<SessionKind>(presetKind ?? 'other')
+  // The setup page remembers its choices across a refresh (kept with the tab,
+  // cleared the moment a session starts) so nothing has to be picked twice.
+  const draft = useRef(readSession<SetupDraft>(SETUP_KEY)).current
+  const [phase, setPhase] = useState<Phase>(
+    presetKind || presetAudio || draft?.picking ? 'picking' : 'intent'
+  )
+  const [hosting, setHosting] = useState(draft?.hosting ?? false)
+  const [kind, setKind] = useState<SessionKind>(presetKind ?? draft?.kind ?? 'other')
   // ---- capture mode: the screen with its sound, the camera, or the microphone alone ----
   const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(() => {
     if (presetAudio) return 'audio'
-    const wanted = defaultCapture ?? 'screen'
+    const wanted = draft?.captureMode ?? defaultCapture ?? 'screen'
     if (wanted === 'screen' && !CAN_SHARE_SCREEN) return 'camera'
     return wanted
   })
   // the setup page keeps documents behind one quiet link
-  const [moreOpen, setMoreOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(draft?.moreOpen ?? false)
+  // A reload in the middle of a live session ends it; say so once.
+  const [reloadNote, setReloadNote] = useState(draft?.recording === true)
   // The page may be left before start() finishes; nothing must linger.
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      // Leaving the page on purpose forgets the draft; a refresh never gets here.
+      writeSession(SETUP_KEY, null)
     }
   }, [])
   const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
@@ -190,8 +220,8 @@ export default function LiveSession({
   }, [phase, captureMode])
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
-  const [micOn, setMicOn] = useState(true)
-  const [systemAudioOn, setSystemAudioOn] = useState(true)
+  const [micOn, setMicOn] = useState(draft?.micOn ?? true)
+  const [systemAudioOn, setSystemAudioOn] = useState(draft?.systemAudioOn ?? true)
   const [error, setError] = useState<string | null>(null)
   const [session, setSession] = useState<SessionMeta | null>(null)
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
@@ -199,11 +229,12 @@ export default function LiveSession({
   const [sttError, setSttError] = useState<string | null>(null)
   const [notes, setNotes] = useState<SessionNotes | null>(null)
   const [notesUpdating, setNotesUpdating] = useState(false)
-  const [leftTab, setLeftTab] = useState<'transcript' | 'notes' | 'audience' | 'materials'>(
+  const [leftTab, setLeftTab] = useRemembered<'transcript' | 'notes' | 'audience' | 'materials'>(
+    'sitka.live.tab',
     'transcript'
   )
   // Phone: Ask Sitka is a tab beside Transcript, open by default.
-  const [askOpen, setAskOpen] = useState(() => window.innerWidth < 860)
+  const [askOpen, setAskOpen] = useRemembered('sitka.live.ask', () => window.innerWidth < 860)
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
   // the picture can be folded away to give the words and the chat the room
@@ -224,7 +255,7 @@ export default function LiveSession({
   const [availableEvents, setAvailableEvents] = useState<
     import('@shared/types').ScheduledEvent[]
   >([])
-  const [agendaText, setAgendaText] = useState('')
+  const [agendaText, setAgendaText] = useState(draft?.agendaText ?? '')
   const [agendaList, setAgendaList] = useState<string[]>([])
   const [coverage, setCoverage] = useState<boolean[]>([])
   const [pulses, setPulses] = useState<{ at: number; text: string }[]>([])
@@ -262,9 +293,50 @@ export default function LiveSession({
   const [roomError, setRoomError] = useState<string | null>(null)
   const roomListRef = useRef<HTMLDivElement>(null)
   // hosting: the right column is the Co-Pilot by default, the Room on request
-  const [rightTab, setRightTab] = useState<'ask' | 'room'>('ask')
+  const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.live.right', 'ask')
   const roomSeenRef = useRef(0)
   const nudgesShownRef = useRef<string[]>([])
+
+  // ---- page memory ----
+  // While the user is still setting up, every choice is kept with the tab so
+  // a refresh lands on the same page with the same selections. Once the
+  // session is recording, only the fact that it was recording is kept: a
+  // reload cannot carry a live capture across, and the warning below guards it.
+  useEffect(() => {
+    if (phase === 'intent') {
+      writeSession(SETUP_KEY, null)
+      return
+    }
+    if (phase === 'picking' || phase === 'starting') {
+      const d: SetupDraft = {
+        picking: true,
+        hosting,
+        kind,
+        captureMode,
+        micOn,
+        systemAudioOn,
+        moreOpen,
+        agendaText
+      }
+      writeSession(SETUP_KEY, d)
+      return
+    }
+    writeSession(SETUP_KEY, phase === 'recording' ? { picking: true, recording: true, hosting, kind, captureMode } : null)
+  }, [phase, hosting, kind, captureMode, micOn, systemAudioOn, moreOpen, agendaText])
+
+  // A refresh or a closed tab in the middle of a live session would lose what
+  // is still being captured: the browser asks first.
+  useEffect(() => {
+    if (!IS_WEB || (phase !== 'recording' && phase !== 'starting' && phase !== 'stopping')) {
+      return undefined
+    }
+    const guard = (e: BeforeUnloadEvent): void => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [phase])
   const nudgeBusyRef = useRef(false)
   const lastNudgeCountRef = useRef(0)
   const userQuestionsRef = useRef<string[]>([])
@@ -1335,6 +1407,17 @@ export default function LiveSession({
           {error && (
             <div className="notice notice-error">
               <span>{error}</span>
+            </div>
+          )}
+          {reloadNote && (
+            <div className="notice">
+              <span>
+                <strong>The page was reloaded during your live session,</strong> so it ended
+                there. The transcript captured up to that moment is in your library.
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReloadNote(false)}>
+                Dismiss
+              </button>
             </div>
           )}
           {!hasSttKey && (

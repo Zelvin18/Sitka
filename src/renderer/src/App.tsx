@@ -14,7 +14,7 @@ import { applyAppearance } from './lib/prefs'
 
 const PHONE_QUERY = '(max-width: 859px)'
 const drawerWidth = (): number => Math.min(330, Math.round(window.innerWidth * 0.88))
-import { usePersistedBool } from './lib/persist'
+import { readSession, usePersistedBool, writeSession } from './lib/persist'
 import Home from './components/Home'
 import EcosystemView from './components/EcosystemView'
 import SettingsView from './components/SettingsView'
@@ -50,12 +50,31 @@ type View =
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
 
+const VIEW_KEY = 'sitka.view'
+
+/** The page to come back to after a refresh. A live session cannot survive a
+ *  reload, so its page reopens on the setup screen; a replay forgets its seek. */
+function restoreView(saved: View | undefined): View {
+  if (!saved || typeof saved !== 'object' || typeof saved.name !== 'string') {
+    return { name: 'homepage' }
+  }
+  if (saved.name === 'live') return { ...saved, quick: undefined }
+  if (saved.name === 'session') return { name: 'session', id: saved.id }
+  return saved
+}
+
 export default function App(): React.JSX.Element {
-  const [view, setViewRaw] = useState<View>({ name: 'homepage' })
+  // A refresh brings the user back to the page they were on, with the same
+  // way back behind it. The memory lives with the tab, never in the account.
+  const remembered = useRef(readSession<{ view: View; history: View[] }>(VIEW_KEY))
+  const [view, setViewRaw] = useState<View>(() => restoreView(remembered.current?.view))
   // ---- navigation history: every page gets a real "back" ----
-  const historyRef = useRef<View[]>([])
-  const viewRef = useRef<View>({ name: 'homepage' })
-  const [canBack, setCanBack] = useState(false)
+  const savedHistory = remembered.current?.history
+  const historyRef = useRef<View[]>(Array.isArray(savedHistory) ? savedHistory : [])
+  const viewRef = useRef<View>(view)
+  const [canBack, setCanBack] = useState(historyRef.current.length > 0)
+  const rememberView = (): void =>
+    writeSession(VIEW_KEY, { view: viewRef.current, history: historyRef.current.slice(-12) })
   const setView = useCallback((next: View | ((v: View) => View)): void => {
     const resolved = typeof next === 'function' ? next(viewRef.current) : next
     if (resolved.name !== viewRef.current.name || JSON.stringify(resolved) !== JSON.stringify(viewRef.current)) {
@@ -64,6 +83,8 @@ export default function App(): React.JSX.Element {
     }
     viewRef.current = resolved
     setViewRaw(resolved)
+    rememberView()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const goBack = useCallback((): void => {
     const prev = historyRef.current.pop()
@@ -71,6 +92,8 @@ export default function App(): React.JSX.Element {
     viewRef.current = prev
     setViewRaw(prev)
     setCanBack(historyRef.current.length > 0)
+    rememberView()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ---- which ecosystem the user is inside (general by default) ----
