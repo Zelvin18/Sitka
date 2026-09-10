@@ -2720,17 +2720,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!video || video.byteLength < 5000) {
         return { error: 'No recording found for this session.' }
       }
-      const { error } = await sb.storage
+      // A fresh file needs only the insert policy. Only a republish falls back
+      // to replacing the object, which storage checks against update + select.
+      const blob = new Blob([video], { type: 'video/webm' })
+      const path = `${evId}.webm`
+      let { error } = await sb.storage
         .from('replays')
-        .upload(`${evId}.webm`, new Blob([video], { type: 'video/webm' }), {
-          upsert: true,
-          contentType: 'video/webm'
-        })
+        .upload(path, blob, { upsert: false, contentType: 'video/webm' })
+      if (error && /exists|duplicate/i.test(error.message)) {
+        ;({ error } = await sb.storage
+          .from('replays')
+          .update(path, blob, { upsert: true, contentType: 'video/webm' }))
+      }
       if (error) {
+        const detail = error.message || 'unknown error'
         return {
-          error: /row-level security|policy/i.test(error.message)
-            ? 'Upload failed: the replays storage policy is missing. Run supabase/wave3.sql in the Supabase SQL editor, then try again.'
-            : 'Upload failed: ' + error.message
+          error: /row-level security|policy|not found|unauthorized|403/i.test(detail)
+            ? `Upload refused by storage (${detail}). Run supabase/fix-replays.sql in the Supabase SQL editor, then try again.`
+            : /too large|exceeded|413/i.test(detail)
+              ? `Upload failed: the recording is larger than your Supabase plan allows for one file (${detail}).`
+              : 'Upload failed: ' + detail
         }
       }
       await sb
