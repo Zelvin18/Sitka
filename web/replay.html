@@ -66,6 +66,13 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .center{padding:16vh 20px;text-align:center}
 .center h1{margin-bottom:8px}
 .center p{color:var(--t2)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:14px}
+.loader .mark{width:34px;height:34px;color:var(--text)}
+.mark-live circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.loader-words{font-size:14px;font-weight:500;color:var(--t2);min-height:20px}
+.lw{animation:lw .4s ease}
+@keyframes lw{from{opacity:0;transform:translateY(4px)}}
 footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13.5px;color:var(--t3)}
 .cta{display:inline-flex;align-items:center;padding:9px 18px;border-radius:11px;background:var(--text);color:var(--bg);font-size:13.5px;font-weight:650}
 </style>
@@ -76,7 +83,13 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
     <a class="brand" href="/"><svg class="mark" style="width:18px;height:18px;flex:none" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</a>
     <span class="htag" id="htag">REPLAY</span>
   </header>
-  <div id="loading" class="center"><p>Loading…</p></div>
+  <div id="loading" class="center loader">
+    <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
+    <div class="loader-words" data-words="Opening this replay|Fetching the recording|Almost there">Opening this replay</div>
+  </div>
+  <script>
+  (function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0;setInterval(function(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')},2400)})})();
+  </script>
   <div id="notfound" class="center" style="display:none">
     <h1>This page is not available</h1>
     <p>The owner hasn't shared it, has stopped sharing it, or the link is wrong.</p>

@@ -2,10 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionMeta, Settings } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
 import { IconPlus, IconScreen, IconStar, IconTrash } from '../lib/icons'
+import Loading, { LOADING_WORDS } from './Loading'
 import { formatDuration } from '../lib/format'
 
 interface Props {
   sessions: SessionMeta[]
+  /** false until the first list has arrived, so an empty library is never shown by mistake */
+  loaded?: boolean
   settings: Settings | null
   onNewSession: () => void
   onOpenSession: (id: string) => void
@@ -15,6 +18,7 @@ interface Props {
 
 export default function Home({
   sessions,
+  loaded = true,
   settings,
   onNewSession,
   onOpenSession,
@@ -143,7 +147,9 @@ export default function Home({
           </div>
         )}
 
-        {sessions.length === 0 ? (
+        {!loaded && sessions.length === 0 ? (
+          <Loading words={LOADING_WORDS.library} />
+        ) : sessions.length === 0 ? (
           <div className="empty">
             <div className="empty-icon">
               <IconScreen size={36} strokeWidth={1.3} />

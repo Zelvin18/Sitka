@@ -114,6 +114,7 @@ export default function App(): React.JSX.Element {
     }
   }, [space])
   const [sessions, setSessions] = useState<SessionMeta[]>([])
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>()
@@ -258,6 +259,7 @@ export default function App(): React.JSX.Element {
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     setSessions(await window.sitka.listSessions())
+    setSessionsLoaded(true)
   }, [])
 
   // Organisations: a university or a company the user belongs to.
@@ -511,6 +513,7 @@ export default function App(): React.JSX.Element {
         {view.name === 'home' && (
           <Home
             sessions={sessions}
+            loaded={sessionsLoaded}
             settings={settings}
             onNewSession={() => setView({ name: 'live' })}
             onOpenSession={openSession}

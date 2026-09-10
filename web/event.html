@@ -24,10 +24,13 @@
   </div>
 </div></header>
 
-<div id="loading" class="center" style="text-align:center">
-  <div class="hero-art rippling"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="cdot"></span></div>
-  <div class="waiting" style="text-align:center">Connecting to the event…</div>
+<div id="loading" class="center loader">
+  <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
+  <div class="loader-words" data-words="Connecting to the event|Finding your seat|Almost there">Connecting to the event</div>
 </div>
+<script>
+(function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0;setInterval(function(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')},2400)})})();
+</script>
 
 <div id="notfound" class="center hidden" style="text-align:center">
   <h1>Event not found</h1>

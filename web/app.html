@@ -89,6 +89,8 @@
 .gterms a{color:var(--t2)}
 .gwait{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--t2);font-size:14px;font-weight:600}
 .gwait .mark{width:18px;height:18px}
+.lw{animation:lw .4s ease}
+@keyframes lw{from{opacity:0;transform:translateY(4px)}}
 
 @media(max-width:860px){
   #gate{grid-template-columns:1fr;grid-template-rows:auto 1fr;overflow-y:auto}
@@ -147,7 +149,7 @@
       <div class="gswitch" id="gswitch">New to Sitka? <button type="button" id="gto-up">Create an account</button></div>
       <div class="gterms hidden" id="gterms">By creating an account you agree to the <a href="/legal">terms and privacy policy</a>.</div>
     </div>
-    <div class="gcard hidden" id="gateload"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Opening your workspace…</div></div>
+    <div class="gcard hidden" id="gateload"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span data-words="Opening your workspace|Gathering your sessions|Almost there">Opening your workspace</span></div></div>
   </main>
 </div>
 <div id="root"></div>
@@ -187,6 +189,10 @@
   })
   if (location.hash === '#create') setMode('up')
 })()
+</script>
+<script>
+// Loading words move on as the wait grows, and settle on the last line.
+(function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0,t=null;function tick(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')}function stop(){if(t)clearInterval(t);t=null}function start(){stop();i=0;el.textContent=w[0];t=setInterval(tick,2400)}if('IntersectionObserver'in window){new IntersectionObserver(function(es){es.forEach(function(e){e.isIntersecting?start():stop()})}).observe(el)}else start()})})();
 </script>
 <script type="module" src="/src/app-entry.ts"></script>
 </body>

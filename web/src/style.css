@@ -381,3 +381,12 @@ header .brand,header .evtitle{max-width:none;margin:0}
   .segtext{font-size:16px}
   .center{margin:auto}
 }
+
+/* ---- loading: the mark orbiting, a line of words beneath ---- */
+.mark-live circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.loader{align-items:center;justify-content:center;text-align:center;gap:14px}
+.loader .mark{width:34px;height:34px;color:var(--text)}
+.loader-words{font-size:14px;font-weight:500;color:var(--t2);min-height:20px}
+.lw{animation:lw .4s ease}
+@keyframes lw{from{opacity:0;transform:translateY(4px)}}

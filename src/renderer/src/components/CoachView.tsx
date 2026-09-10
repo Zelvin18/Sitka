@@ -9,6 +9,7 @@ import type {
 } from '@shared/types'
 import ChatPane, { type ChatPaneHandle } from './ChatPane'
 import ConfirmDialog from './ConfirmDialog'
+import Loading, { LOADING_WORDS } from './Loading'
 import {
   IconBroadcast,
   IconCalendar,
@@ -604,7 +605,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
   if (!project) {
     return (
       <div className="content">
-        <div className="empty">Loading…</div>
+        <Loading words={LOADING_WORDS.coach} />
       </div>
     )
   }

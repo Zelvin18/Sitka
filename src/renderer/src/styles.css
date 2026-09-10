@@ -4080,6 +4080,61 @@ body {
 
 /* ============ Empty state ============ */
 
+/* ---- loading: the mark orbiting, a line of words beneath ---- */
+.loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 220px;
+  padding: 48px 24px;
+  color: var(--text-2);
+  animation: loading-in 0.35s ease;
+}
+.loading .mark {
+  color: var(--text);
+}
+.loading-words {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  min-height: 20px;
+  text-align: center;
+}
+.loading-word {
+  display: block;
+  animation: loading-word 0.4s ease;
+}
+.loading.compact {
+  flex: none;
+  flex-direction: row;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px;
+}
+.loading.compact .loading-words {
+  font-size: 13px;
+}
+.loading.on-dark {
+  color: rgba(255, 255, 255, 0.72);
+}
+.loading.on-dark .mark {
+  color: #fff;
+}
+@keyframes loading-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes loading-word {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 .empty {
   text-align: center;
   padding: 72px 24px;

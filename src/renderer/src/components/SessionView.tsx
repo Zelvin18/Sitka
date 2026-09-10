@@ -9,6 +9,7 @@ import StudyPane from './StudyPane'
 import ReportPane from './ReportPane'
 import Splitter from './Splitter'
 import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
+import Loading, { LOADING_WORDS } from './Loading'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -274,7 +275,7 @@ export default function SessionView({
   if (!data) {
     return (
       <div className="content">
-        <div className="empty">Loading…</div>
+        <Loading words={LOADING_WORDS.session} />
       </div>
     )
   }
@@ -487,11 +488,13 @@ export default function SessionView({
                 width: '100%'
               }}
             >
-              {meta.readOnly
-                ? 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
-                : videoError
-                  ? 'Could not load this recording.'
-                  : 'Loading recording…'}
+              {meta.readOnly ? (
+                'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
+              ) : videoError ? (
+                'Could not load this recording.'
+              ) : (
+                <Loading compact onDark words={LOADING_WORDS.recording} />
+              )}
             </div>
           )}
         </div>
