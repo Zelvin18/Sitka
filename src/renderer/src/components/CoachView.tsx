@@ -551,7 +551,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                   <input
                     className="input"
                     value={goal}
-                    autoFocus
+                    autoFocus={window.innerWidth >= 860}
                     placeholder="e.g. Investor pitch for my company"
                     onChange={(e) => setGoal(e.target.value)}
                   />

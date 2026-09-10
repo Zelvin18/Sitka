@@ -276,7 +276,7 @@ export default function OrgView({
                   className="input"
                   placeholder={education ? 'Course name, e.g. CS201 Software Security' : 'Name, e.g. Product team'}
                   value={newName}
-                  autoFocus
+                  autoFocus={window.innerWidth >= 860}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void createSpace()

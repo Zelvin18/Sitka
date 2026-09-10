@@ -8402,6 +8402,11 @@ body.dragging-row .splitter-h {
   .session-layout .video-wrap {
     height: min(30dvh, 240px) !important;
   }
+  /* folded away: a slim bar, and the words get the height */
+  .session-layout .video-wrap.collapsed {
+    height: 40px !important;
+    min-height: 40px;
+  }
 
   .session-header-row {
     flex-wrap: wrap;
@@ -8672,6 +8677,9 @@ video {
   .session-layout .video-wrap:has(.audio-stage) .audio-level.tall {
     height: 34px;
     width: min(360px, 62%);
+  }
+  .session-layout .video-wrap.collapsed:has(.audio-stage) {
+    height: 40px !important;
   }
   .session-layout .video-wrap:has(.audio-stage) .audio-stage {
     flex-direction: row;

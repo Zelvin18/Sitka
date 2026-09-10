@@ -778,7 +778,7 @@ export default function EventsView({
                 <input
                   className="input"
                   value={title}
-                  autoFocus
+                  autoFocus={window.innerWidth >= 860}
                   placeholder="e.g. Q3 All-Hands · Marketing 101"
                   onChange={(e) => setTitle(e.target.value)}
                 />
