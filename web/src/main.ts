@@ -1454,6 +1454,48 @@ async function join(newJoin: boolean): Promise<void> {
     )
     .subscribe()
 
+  // Realtime is the fast path; this is the safety net. A phone drops the
+  // socket when its screen sleeps, and an event row that changes while the
+  // socket is down never arrives, which left people on "waiting for the host"
+  // after the host had started. So the page also asks on its own: the event
+  // row every 3s until the event is over, plus any captions it missed while live.
+  let lastSegIdx = -1
+  let watching = false
+  const watchEvent = async (): Promise<void> => {
+    if (watching || !ev || ev.status === 'ended') return
+    watching = true
+    try {
+      const { data: fresh } = await sb.from('events').select('*').eq('id', eventId).single()
+      if (fresh) {
+        const before = ev.status
+        ev = fresh as EventRow
+        if (ev.status !== before) applyEventState()
+      }
+      if (ev.status === 'live') {
+        const { data: rows } = await sb
+          .from('segments')
+          .select('idx,start_sec,label,text')
+          .eq('event_id', eventId)
+          .gt('idx', lastSegIdx)
+          .order('idx', { ascending: true })
+          .limit(60)
+        for (const row of rows ?? []) {
+          const r = row as SegRow
+          lastSegIdx = Math.max(lastSegIdx, r.idx)
+          if (!segEls.has(r.idx)) upsertSeg(r, pendingTranslations.get(r.idx))
+        }
+      }
+    } catch {
+      /* the next tick tries again */
+    } finally {
+      watching = false
+    }
+  }
+  window.setInterval(() => void watchEvent(), 3000)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void watchEvent()
+  })
+
   const { data: segRows } = await sb
     .from('segments')
     .select('idx,start_sec,label,text')
@@ -1470,7 +1512,10 @@ async function join(newJoin: boolean): Promise<void> {
   }
   const wasListening = listening
   listening = false // don't speak the whole backlog
-  for (const row of segRows ?? []) upsertSeg(row as SegRow, transMap.get((row as SegRow).idx))
+  for (const row of segRows ?? []) {
+    lastSegIdx = Math.max(lastSegIdx, (row as SegRow).idx)
+    upsertSeg(row as SegRow, transMap.get((row as SegRow).idx))
+  }
   listening = wasListening
 
   // the room so far, and how many are here
