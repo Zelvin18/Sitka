@@ -92,6 +92,41 @@ function highlightAt(sec: number): void {
     lastActive?.classList.remove('now')
     best.classList.add('now')
     lastActive = best
+    if (!expanded) applyFold()
+  }
+}
+
+// ---------- the transcript fold ----------
+// A two-hour event is thousands of lines; the page shows a handful. While the
+// recording plays the window slides to keep the spoken line in view. Search
+// always looks through everything, and one control opens the whole thing.
+const PREVIEW = 10
+let expanded = false
+let foldBtn: HTMLButtonElement | null = null
+
+function applyFold(): void {
+  const q = (el('rsearch') as HTMLInputElement).value.trim().toLowerCase()
+  const all = expanded || q.length > 0
+  let from = 0
+  if (!all && lastActive) {
+    const at = segEls.findIndex((s) => s.node === lastActive)
+    if (at >= PREVIEW - 3) from = Math.min(Math.max(0, at - 3), Math.max(0, segEls.length - PREVIEW))
+  }
+  const to = from + PREVIEW
+  segEls.forEach((s, i) => {
+    const textOk = !q || (s.node.children[1].textContent || '').toLowerCase().includes(q)
+    const inWindow = all || (i >= from && i < to)
+    s.node.style.display = textOk && inWindow ? 'flex' : 'none'
+  })
+  el('rsegs').classList.toggle('folded', !all)
+  if (!foldBtn) return
+  foldBtn.hidden = q.length > 0 || segEls.length <= PREVIEW
+  if (expanded) {
+    foldBtn.textContent = 'Show less'
+  } else {
+    const last = segEls[segEls.length - 1]
+    const len = last ? ` · ${fmtDuration(last.sec * 1000)}` : ''
+    foldBtn.textContent = `Show the full transcript · ${segEls.length} lines${len}`
   }
 }
 
@@ -137,14 +172,19 @@ function renderLines(lines: Line[]): void {
   if (segEls.length === 0) {
     wrap.innerHTML = '<div class="segtext">No transcript was captured.</div>'
     ;(el('rsearch') as HTMLInputElement).style.display = 'none'
+    return
   }
-  ;(el('rsearch') as HTMLInputElement).oninput = () => {
-    const q = (el('rsearch') as HTMLInputElement).value.trim().toLowerCase()
-    for (const s of segEls) {
-      s.node.style.display =
-        !q || (s.node.children[1].textContent || '').toLowerCase().includes(q) ? 'flex' : 'none'
-    }
+  foldBtn = document.createElement('button')
+  foldBtn.className = 'tfold'
+  foldBtn.type = 'button'
+  foldBtn.onclick = () => {
+    expanded = !expanded
+    applyFold()
+    if (!expanded) el('rsearch').scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+  wrap.after(foldBtn)
+  ;(el('rsearch') as HTMLInputElement).oninput = applyFold
+  applyFold()
 }
 
 function renderHighlights(hl: { time: string; label: string }[] | undefined): void {

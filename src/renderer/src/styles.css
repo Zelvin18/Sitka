@@ -4080,6 +4080,12 @@ body {
 
 /* ============ Empty state ============ */
 
+/* sub-points nest under their item instead of running on as siblings */
+.msg-ai li ul {
+  margin: 4px 0 2px;
+  padding-left: 18px;
+}
+
 /* ---- loading: the mark orbiting, a line of words beneath ---- */
 .loading {
   flex: 1;

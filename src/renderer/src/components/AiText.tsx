@@ -99,9 +99,28 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
   const blocks: React.ReactNode[] = []
   const lines = normalizeCitations(text).split('\n')
   let paragraph: string[] = []
-  let bullets: string[] = []
-  let numbered: string[] = []
+  // list items keep one level of sub-points, so an indented "- " nests
+  // instead of flattening into its parent's list
+  let bullets: { text: string; sub: string[] }[] = []
+  let numbered: { text: string; sub: string[] }[] = []
   let key = 0
+  const indentOf = (line: string): number => line.length - line.trimStart().length
+  const renderItems = (
+    items: { text: string; sub: string[] }[],
+    prefix: string
+  ): React.ReactNode[] =>
+    items.map((b, i) => (
+      <li key={i}>
+        {renderInline(b.text, ctx, `${prefix}-${i}`)}
+        {b.sub.length > 0 && (
+          <ul>
+            {b.sub.map((s, j) => (
+              <li key={j}>{renderInline(s, ctx, `${prefix}-${i}-${j}`)}</li>
+            ))}
+          </ul>
+        )}
+      </li>
+    ))
 
   const flushParagraph = (): void => {
     if (paragraph.length === 0) return
@@ -111,24 +130,12 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
   }
   const flushBullets = (): void => {
     if (bullets.length === 0) return
-    blocks.push(
-      <ul key={`u${key++}`}>
-        {bullets.map((b, i) => (
-          <li key={i}>{renderInline(b, ctx, `u${key}-${i}`)}</li>
-        ))}
-      </ul>
-    )
+    blocks.push(<ul key={`u${key++}`}>{renderItems(bullets, `u${key}`)}</ul>)
     bullets = []
   }
   const flushNumbered = (): void => {
     if (numbered.length === 0) return
-    blocks.push(
-      <ol key={`o${key++}`}>
-        {numbered.map((b, i) => (
-          <li key={i}>{renderInline(b, ctx, `o${key}-${i}`)}</li>
-        ))}
-      </ol>
-    )
+    blocks.push(<ol key={`o${key++}`}>{renderItems(numbered, `o${key}`)}</ol>)
     numbered = []
   }
   const flushAll = (): void => {
@@ -227,17 +234,28 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
 
     const bullet = trimmed.match(/^[-•*]\s+(.*)$/)
     if (bullet) {
+      // indented under an open item: a sub-point of that item
+      if (indentOf(line) >= 2 && (bullets.length > 0 || numbered.length > 0)) {
+        const open = bullets.length > 0 ? bullets : numbered
+        open[open.length - 1].sub.push(bullet[1])
+        continue
+      }
       flushParagraph()
       flushNumbered()
-      bullets.push(bullet[1])
+      bullets.push({ text: bullet[1], sub: [] })
       continue
     }
 
     const num = trimmed.match(/^\d+[.)]\s+(.*)$/)
     if (num) {
+      if (indentOf(line) >= 2 && (bullets.length > 0 || numbered.length > 0)) {
+        const open = bullets.length > 0 ? bullets : numbered
+        open[open.length - 1].sub.push(num[1])
+        continue
+      }
       flushParagraph()
       flushBullets()
-      numbered.push(num[1])
+      numbered.push({ text: num[1], sub: [] })
       continue
     }
 

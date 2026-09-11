@@ -38,6 +38,7 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .recnote{border:1px dashed var(--border);border-radius:12px;padding:12px 14px;color:var(--t3);font-size:13.5px;margin-bottom:22px}
 .recnote[hidden]{display:none}
 .summary.pending{color:var(--t3)}
+li ul{margin:4px 0 2px;padding-left:18px}
 .summary{color:var(--t2);font-size:15px;margin-bottom:22px}
 .sec{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:26px 0 10px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -50,6 +51,11 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .seg:hover{background:var(--soft)}
 .seg.now{background:var(--softer)}
 .seg.flash{box-shadow:inset 0 0 0 1.5px var(--text)}
+#rsegs.folded{position:relative}
+#rsegs.folded::after{content:'';position:absolute;left:0;right:0;bottom:0;height:48px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
+.tfold{display:block;margin:12px auto 0;padding:9px 18px;border:1px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s ease}
+.tfold:hover{background:var(--soft)}
+.tfold[hidden]{display:none}
 .notes{border:1px solid var(--border);border-radius:14px;padding:16px 18px;background:var(--soft)}
 .notes .md,.notes p,.notes li{color:var(--text)}
 .ts{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3);padding-top:4px;min-width:44px;text-align:right;flex-shrink:0}

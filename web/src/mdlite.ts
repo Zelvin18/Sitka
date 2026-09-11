@@ -1,10 +1,15 @@
 /** Compact markdown + [[M:SS]] citation-chip renderer (shared by public pages). */
 
-const RE_FW = /【\s*((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*】/g
-const RE_BR = /\[{1,2}\s*((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\s*\]{1,2}/g
-const RE_CHIP = /\[\[((?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?)\]\]/g
+// A citation is one moment [[12:37]], a range [[1:45-2:05]], or a moment in
+// another session [[ab12cd34@12:37]]. Every variant the models write
+// (fullwidth or single brackets, parentheses) is repaired to [[…]] first.
+const TS = '\\d{1,2}:\\d{2}(?::\\d{2})?'
+const BODY = `((?:[a-fA-F0-9-]{6,}@)?${TS}(?:\\s*[-–—]\\s*${TS})?)`
+const RE_FW = new RegExp(`【\\s*${BODY}\\s*】`, 'g')
+const RE_BR = new RegExp(`\\[{1,2}\\s*${BODY}\\s*\\]{1,2}`, 'g')
+const RE_CHIP = new RegExp(`\\[\\[${BODY}\\]\\]`, 'g')
 
-const RE_PAREN = /\((\d{1,2}:\d{2}(?::\d{2})?)\)/g
+const RE_PAREN = new RegExp(`\\((${TS}(?:\\s*[-–—]\\s*${TS})?)\\)`, 'g')
 export const normCites = (t: string): string =>
   (t || '').replace(RE_FW, '[[$1]]').replace(RE_BR, '[[$1]]').replace(RE_PAREN, '[[$1]]')
 export const escH = (s: string): string =>
@@ -24,8 +29,11 @@ export function inlineMd(s: string): string {
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
   s = s.replace(RE_CHIP, (_m, body: string) => {
     const at = body.indexOf('@')
-    const label = at >= 0 ? body.slice(at + 1) : body
-    const sec = parseTs(label)
+    const span = at >= 0 ? body.slice(at + 1) : body
+    // a range jumps to its start and reads "1:45–2:05"
+    const ends = span.split(/\s*[-–—]\s*/)
+    const sec = parseTs(ends[0])
+    const label = ends.length > 1 ? `${ends[0]}–${ends[1]}` : ends[0]
     if (sec === null || at >= 0) return label
     return `<button class="tchip" data-s="${sec}">${label}</button>`
   })
@@ -46,14 +54,22 @@ export function md(src: string): string {
   let inCode = false
   let codeBuf: string[] = []
   let listType: 'ul' | 'ol' | null = null
-  let listBuf: string[] = []
+  // each item keeps one level of indented sub-points instead of flattening them
+  let listBuf: { html: string; sub: string[] }[] = []
   const flushList = (): void => {
     if (listType) {
-      out.push(`<${listType}>${listBuf.join('')}</${listType}>`)
+      const items = listBuf
+        .map(
+          (it) =>
+            `<li>${it.html}${it.sub.length ? `<ul>${it.sub.map((s) => `<li>${s}</li>`).join('')}</ul>` : ''}</li>`
+        )
+        .join('')
+      out.push(`<${listType}>${items}</${listType}>`)
       listType = null
       listBuf = []
     }
   }
+  const indentOf = (line: string): number => line.length - line.trimStart().length
   while (i < lines.length) {
     const L = lines[i]
     if (/^```/.test(L)) {
@@ -104,21 +120,31 @@ export function md(src: string): string {
     }
     mm = /^\s*[-*+]\s+(.*)$/.exec(L)
     if (mm) {
+      if (listType && listBuf.length && indentOf(L) >= 2) {
+        listBuf[listBuf.length - 1].sub.push(inlineMd(mm[1]))
+        i++
+        continue
+      }
       if (listType !== 'ul') {
         flushList()
         listType = 'ul'
       }
-      listBuf.push(`<li>${inlineMd(mm[1])}</li>`)
+      listBuf.push({ html: inlineMd(mm[1]), sub: [] })
       i++
       continue
     }
     mm = /^\s*\d+[.)]\s+(.*)$/.exec(L)
     if (mm) {
+      if (listType && listBuf.length && indentOf(L) >= 2) {
+        listBuf[listBuf.length - 1].sub.push(inlineMd(mm[1]))
+        i++
+        continue
+      }
       if (listType !== 'ol') {
         flushList()
         listType = 'ol'
       }
-      listBuf.push(`<li>${inlineMd(mm[1])}</li>`)
+      listBuf.push({ html: inlineMd(mm[1]), sub: [] })
       i++
       continue
     }
