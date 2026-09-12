@@ -236,9 +236,15 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       }
       const lang = document.documentElement.lang || navigator.language || 'en'
       setSpeakingIdx(index)
-      speakerRef.current = speakText(cleanForSpeech(content), lang, () => {
+      setError(null)
+      speakerRef.current = speakText(cleanForSpeech(content), lang, (ok) => {
         speakerRef.current = null
         setSpeakingIdx((cur) => (cur === index ? null : cur))
+        if (!ok) {
+          setError(
+            'The voice could not play. Check the device is not muted, then tap the speaker again.'
+          )
+        }
       })
     },
     [speakingIdx]

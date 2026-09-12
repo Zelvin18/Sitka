@@ -74,7 +74,44 @@ async function groqSpeak(key, text) {
   return { wav: Buffer.from(await r.arrayBuffer()) }
 }
 
+async function synthesize(text) {
+  const errors = []
+  const gemini = keysFrom('GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GEMINI_API_KEY')
+  const groq = keysFrom('GROQ_API_KEY', 'GROQ_API_KEYS', 'GROQ_API_KEY')
+  for (const key of gemini) {
+    try {
+      const out = await geminiSpeak(key, text)
+      if (out.wav) return { wav: out.wav, provider: 'gemini', errors }
+      errors.push('Gemini: ' + out.error)
+    } catch (err) {
+      errors.push('Gemini: ' + String(err && err.message ? err.message : err))
+    }
+  }
+  for (const key of groq) {
+    try {
+      const out = await groqSpeak(key, text)
+      if (out.wav) return { wav: out.wav, provider: 'groq', errors }
+      errors.push('Groq: ' + out.error)
+    } catch (err) {
+      errors.push('Groq: ' + String(err && err.message ? err.message : err))
+    }
+  }
+  if (gemini.length === 0 && groq.length === 0) errors.push('No GEMINI_API_KEY(S) or GROQ_API_KEY(S) set')
+  return { wav: null, provider: null, errors }
+}
+
 export default async function handler(req, res) {
+  // GET /api/speak — a check you can open in a browser: which voice answers.
+  if (req.method === 'GET') {
+    const out = await synthesize('Sitka is ready.')
+    res.status(out.wav ? 200 : 503).json({
+      ok: Boolean(out.wav),
+      provider: out.provider,
+      bytes: out.wav ? out.wav.length : 0,
+      errors: out.errors.slice(0, 6)
+    })
+    return
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
     return
@@ -87,34 +124,13 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'Nothing to say.' })
     return
   }
-  const errors = []
-  for (const key of keysFrom('GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GEMINI_API_KEY')) {
-    try {
-      const out = await geminiSpeak(key, text)
-      if (out.wav) {
-        res.setHeader('Content-Type', 'audio/wav')
-        res.setHeader('Cache-Control', 'private, max-age=3600')
-        res.status(200).send(out.wav)
-        return
-      }
-      errors.push(out.error)
-    } catch (err) {
-      errors.push(String(err && err.message ? err.message : err))
-    }
+  const out = await synthesize(text)
+  if (!out.wav) {
+    res.status(503).json({ error: 'No voice available right now.', detail: out.errors.slice(0, 4) })
+    return
   }
-  for (const key of keysFrom('GROQ_API_KEY', 'GROQ_API_KEYS', 'GROQ_API_KEY')) {
-    try {
-      const out = await groqSpeak(key, text)
-      if (out.wav) {
-        res.setHeader('Content-Type', 'audio/wav')
-        res.setHeader('Cache-Control', 'private, max-age=3600')
-        res.status(200).send(out.wav)
-        return
-      }
-      errors.push(out.error)
-    } catch (err) {
-      errors.push(String(err && err.message ? err.message : err))
-    }
-  }
-  res.status(503).json({ error: 'No voice available right now.', detail: errors.slice(0, 4) })
+  res.setHeader('Content-Type', 'audio/wav')
+  res.setHeader('Cache-Control', 'private, max-age=3600')
+  res.setHeader('X-Voice', out.provider)
+  res.status(200).send(out.wav)
 }
