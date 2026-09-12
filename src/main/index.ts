@@ -78,6 +78,7 @@ import {
 import { randomUUID } from 'crypto'
 import { extractMaterialFromBuffer, extractMaterialText } from './materials'
 import { joinMaterials } from '@shared/materialsLogic'
+import { foldAttachments } from '@shared/attachLogic'
 import { deleteMemoryObject, loadMemory, rememberSession, updateMemoryObject } from './memory'
 import {
   buildBrief,
@@ -1246,13 +1247,17 @@ function registerIpc(): void {
         send({ requestId: req.requestId, type: 'done' })
         return
       }
+      // Attached documents ride along as text; an attached picture takes the
+      // image slot when the screen is not already in it.
+      const folded = foldAttachments(req.question, req.attachments)
       const params = {
         apiKey: anthropicApiKey || groqApiKey,
         segments,
         history: req.history,
-        question: req.question,
+        question: folded.question,
         live: req.live,
-        frame: req.frame,
+        frame: req.frame ?? folded.images[0],
+        imageNote: !req.frame && folded.images[0] ? folded.imageNote : undefined,
         priorContext: priorLearningContext(req.question, req.sessionId) ?? undefined,
         materials: store.getSessionMaterialsBlock(req.sessionId),
         answerLanguage: store.getSettings().answerLanguage,

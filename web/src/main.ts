@@ -277,14 +277,24 @@ const refreshVoices = (): void => {
 }
 refreshVoices()
 if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = refreshVoices
+// The nicest voice the phone has for the language. Natural and neural voices
+// first; the old robotic ones only when nothing else is installed.
 function pickVoice(): SpeechSynthesisVoice | null {
   const code = LANG_CODES[myLang] || 'en'
   if (!voiceList.length) refreshVoices()
-  return (
-    voiceList.find((v) => v.lang?.toLowerCase().startsWith(code) && v.localService) ??
-    voiceList.find((v) => v.lang?.toLowerCase().startsWith(code)) ??
-    null
-  )
+  const match = voiceList.filter((v) => v.lang?.toLowerCase().startsWith(code))
+  if (match.length === 0) return null
+  const score = (v: SpeechSynthesisVoice): number => {
+    const n = v.name
+    let s = 0
+    if (/natural|neural|premium|enhanced|wavenet|journey|studio/i.test(n)) s += 40
+    if (/^google/i.test(n)) s += 30
+    if (/microsoft .*online/i.test(n)) s += 25
+    if (/samantha|daniel|karen|moira|siri|ava|allison/i.test(n)) s += 15
+    if (/espeak|compact|robot/i.test(n)) s -= 50
+    return s
+  }
+  return [...match].sort((a, b) => score(b) - score(a))[0] ?? null
 }
 let speakQ: string[] = []
 let speakingNow = false

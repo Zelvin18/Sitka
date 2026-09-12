@@ -8,6 +8,11 @@ import React, {
 } from 'react'
 import type { AiStreamEvent, ChatMessage } from '@shared/types'
 import AiText from './AiText'
+import { ATTACH_ACCEPT, MAX_ATTACHMENTS, attachedLine, foldAttachments } from '@shared/attachLogic'
+import type { ChatAttachment } from '@shared/types'
+import { fileToAttachment } from '../lib/attach'
+import { IconPlus as IconAttach } from '../lib/icons'
+import { speakText, type Speaker } from '../lib/speech'
 import { IconChevron, IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
 import { cleanForSpeech, copyRich } from '../lib/clipboard'
 
@@ -82,6 +87,11 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   const [folded, setFolded] = useState(false)
   /** the current question carries a picture of the screen */
   const [withFrame, setWithFrame] = useState(false)
+  /** files added with + for the next question */
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+  const [attachBusy, setAttachBusy] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const speakerRef = useRef<Speaker | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const activeRequest = useRef<string | null>(null)
@@ -133,23 +143,30 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
 
   const send = useCallback(
     (question: string) => {
-      const q = question.trim()
-      if (!q || streaming) return
+      let q = question.trim()
+      const atts = attachments
+      if ((!q && atts.length === 0) || streaming) return
+      if (!q) q = 'Tell me about what I attached.'
       setError(null)
       const requestId = crypto.randomUUID()
       activeRequest.current = requestId
       streamBuffer.current = ''
       lastQuestionRef.current = q
       const history = messagesRef.current
-      setMessages((prev) => [...prev, { role: 'user', content: q, at: Date.now() }])
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: q + attachedLine(atts), at: Date.now() }
+      ])
       setInput('')
+      setAttachments([])
       setStreaming(true)
       setStreamText('')
       setFolded(false)
       if (askOverride) {
-        askOverride(requestId, q, history)
+        // these transports take text only: documents go in as text
+        askOverride(requestId, foldAttachments(q, atts).question, history)
       } else if (brain) {
-        void window.sitka.askBrain({ requestId, question: q, history })
+        void window.sitka.askBrain({ requestId, question: foldAttachments(q, atts).question, history })
       } else {
         const frame = host ? undefined : getFrame?.() ?? undefined
         setWithFrame(Boolean(frame))
@@ -160,12 +177,31 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           live,
           history,
           host,
-          frame
+          frame,
+          attachments: atts.length > 0 ? atts : undefined
         })
       }
     },
-    [sessionId, live, streaming, getFrame, brain, host, askOverride]
+    [sessionId, live, streaming, getFrame, brain, host, askOverride, attachments]
   )
+
+  const addFiles = useCallback(async (files: FileList | null): Promise<void> => {
+    if (!files || files.length === 0) return
+    setError(null)
+    for (const f of Array.from(files)) {
+      if (attachments.length >= MAX_ATTACHMENTS) {
+        setError(`Up to ${MAX_ATTACHMENTS} files per question.`)
+        break
+      }
+      setAttachBusy(f.name)
+      const res = await fileToAttachment(f)
+      if ('error' in res) setError(res.error)
+      else setAttachments((prev) => (prev.length < MAX_ATTACHMENTS ? [...prev, res] : prev))
+    }
+    setAttachBusy(null)
+    if (fileRef.current) fileRef.current.value = ''
+    inputRef.current?.focus()
+  }, [attachments.length])
 
   const addNote = useCallback((text: string) => {
     setMessages((prev) => [...prev, { role: 'assistant', content: text, at: Date.now(), kind: 'note' }])
@@ -175,7 +211,10 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
 
   // Stop any speech when leaving the pane.
   useEffect(() => {
-    return () => window.speechSynthesis?.cancel()
+    return () => {
+      speakerRef.current?.stop()
+      window.speechSynthesis?.cancel()
+    }
   }, [])
 
   const copyMessage = useCallback((index: number, content: string): void => {
@@ -189,19 +228,18 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
 
   const speakMessage = useCallback(
     (index: number, content: string): void => {
-      const synth = window.speechSynthesis
-      if (!synth) return
+      speakerRef.current?.stop()
+      speakerRef.current = null
       if (speakingIdx === index) {
-        synth.cancel()
         setSpeakingIdx(null)
         return
       }
-      synth.cancel()
-      const utterance = new SpeechSynthesisUtterance(cleanForSpeech(content))
-      utterance.onend = () => setSpeakingIdx((cur) => (cur === index ? null : cur))
-      utterance.onerror = () => setSpeakingIdx((cur) => (cur === index ? null : cur))
+      const lang = document.documentElement.lang || navigator.language || 'en'
       setSpeakingIdx(index)
-      synth.speak(utterance)
+      speakerRef.current = speakText(cleanForSpeech(content), lang, () => {
+        speakerRef.current = null
+        setSpeakingIdx((cur) => (cur === index ? null : cur))
+      })
     },
     [speakingIdx]
   )
@@ -392,7 +430,48 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       )}
 
       <div className="chat-input-wrap">
+        {(attachments.length > 0 || attachBusy) && (
+          <div className="attach-row">
+            {attachments.map((a) => (
+              <span key={a.id} className="attach-chip" title={a.name}>
+                {a.kind === 'image' && a.dataUrl ? <img src={a.dataUrl} alt="" /> : null}
+                <span className="attach-name">{a.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {attachBusy && (
+              <span className="attach-chip busy">
+                <Mark size={14} live />
+                <span className="attach-name">Reading {attachBusy}</span>
+              </span>
+            )}
+          </div>
+        )}
         <div className="chat-input-box">
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ATTACH_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => void addFiles(e.target.files)}
+          />
+          <button
+            type="button"
+            className="attach-btn"
+            title="Add a picture or a document to your question"
+            aria-label="Attach a file"
+            disabled={streaming || Boolean(attachBusy)}
+            onClick={() => fileRef.current?.click()}
+          >
+            <IconAttach size={16} strokeWidth={2.2} />
+          </button>
           <textarea
             ref={inputRef}
             className="chat-input"
@@ -416,7 +495,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           <button
             className="send-btn"
             onClick={() => send(input)}
-            disabled={!input.trim() || streaming}
+            disabled={(!input.trim() && attachments.length === 0) || streaming}
             title="Send"
           >
             <IconSend size={15} strokeWidth={2.2} />

@@ -152,6 +152,17 @@ export interface CaptureSource {
   kind: 'screen' | 'window'
 }
 
+/** Something the user attached to a question: a picture, or a document already turned into text. */
+export interface ChatAttachment {
+  id: string
+  name: string
+  kind: 'image' | 'document'
+  /** JPEG/PNG data URL (images) */
+  dataUrl?: string
+  /** extracted text (documents) */
+  text?: string
+}
+
 export interface AskRequest {
   sessionId: string
   requestId: string
@@ -163,6 +174,8 @@ export interface AskRequest {
   frame?: string
   /** host co-pilot mode: terse, audience-focused answers */
   host?: boolean
+  /** files the user added to this question with the + button */
+  attachments?: ChatAttachment[]
 }
 
 export interface AiStreamEvent {

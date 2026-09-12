@@ -108,6 +108,8 @@ export interface AskParams {
   live: boolean
   /** JPEG data URL of the current screen frame (live sessions) */
   frame?: string
+  /** what the image is, when it is not the screen (a picture the user attached) */
+  imageNote?: string
   /** relevant excerpts from the user's other sessions (teach-to-history) */
   priorContext?: string
   /** the materials block for this session (slides, notes, readings), if any */
@@ -133,7 +135,7 @@ export async function streamAsk(params: AskParams): Promise<string> {
         },
         {
           type: 'text',
-          text: `(The attached image is what is currently on screen in the live session.)\n\n${params.question}`
+          text: `${params.imageNote ?? '(The attached image is what is currently on screen in the live session.)'}\n\n${params.question}`
         }
       ]
     : params.question
@@ -409,7 +411,7 @@ export async function streamAskGroq(params: AskParams): Promise<string> {
           { type: 'image_url', image_url: { url: params.frame } },
           {
             type: 'text',
-            text: `(The attached image is what is currently on screen in the live session.)\n\n${params.question}`
+            text: `${params.imageNote ?? '(The attached image is what is currently on screen in the live session.)'}\n\n${params.question}`
           }
         ]
       : params.question

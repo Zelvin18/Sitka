@@ -5069,9 +5069,78 @@ body.dragging-row .splitter-h {
   gap: 8px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius-lg);
-  padding: 8px 8px 8px 16px;
+  padding: 8px;
   background: var(--bg);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* the + that adds a picture or a document to the question */
+.attach-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.attach-btn:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.attach-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 6px 4px 8px;
+  background: var(--bg-soft);
+}
+.attach-chip img {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+}
+.attach-chip .attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-chip button {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.attach-chip button:hover {
+  color: var(--text);
+}
+.attach-chip.busy .mark {
+  color: var(--text-3);
 }
 
 .chat-input-box:focus-within {

@@ -23,6 +23,7 @@ import {
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX } from '../../src/shared/types'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
+import { foldAttachments } from '../../src/shared/attachLogic'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -2230,19 +2231,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           .map((m) => ({ role: m.role, content: m.content }))
         // Live sessions attach the current screen so Sitka can read what is
         // being presented — graphs, slides, diagrams — not only what is said.
+        // Anything the user attached with + comes too: documents as text ahead
+        // of the question, pictures as images after the screen.
+        const folded = foldAttachments(req.question, req.attachments)
+        const parts: ({ type: 'image'; dataUrl: string } | { type: 'text'; text: string })[] = []
+        const notes: string[] = []
+        if (req.frame && !req.host) {
+          parts.push({ type: 'image', dataUrl: req.frame })
+          notes.push(
+            '(The first image is what is currently on screen in the live session. Read it carefully: when asked what is written or shown, quote it exactly as it appears — equations, labels, names, values.)'
+          )
+        }
+        for (const img of folded.images) parts.push({ type: 'image', dataUrl: img })
+        if (folded.images.length > 0) notes.push(folded.imageNote)
         const last: ChatMsg =
-          req.frame && !req.host
+          parts.length > 0
             ? {
                 role: 'user',
-                content: [
-                  { type: 'image', dataUrl: req.frame },
-                  {
-                    type: 'text',
-                    text: `(The attached image is what is currently on screen in the live session. Read it carefully: when asked what is written or shown, quote it exactly as it appears — equations, labels, names, values.)\n\n${req.question}`
-                  }
-                ]
+                content: [...parts, { type: 'text', text: `${notes.join('\n')}\n\n${folded.question}` }]
               }
-            : { role: 'user', content: req.question }
+            : { role: 'user', content: folded.question }
         const text = await aiChat(system, [...history, last])
         emitAi({ requestId: req.requestId, type: 'delta', text })
         emitAi({ requestId: req.requestId, type: 'done' })
