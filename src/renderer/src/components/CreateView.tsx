@@ -52,19 +52,19 @@ const KINDS: { id: CreationKind; label: string; desc: string; hint: string }[] =
     id: 'document',
     label: 'Document',
     desc: 'Reports, memos, briefs, emails, study guides.',
-    hint: 'e.g. Write a one-page brief of Tuesday’s meeting for the people who missed it'
+    hint: 'e.g. A one-page brief of a session for the people who missed it'
   },
   {
     id: 'presentation',
     label: 'Presentation',
     desc: 'A full slide deck with speaker notes.',
-    hint: 'e.g. Turn the lecture on memory into a 10-slide deck for my study group'
+    hint: 'e.g. A 10-slide deck from a session, one idea per slide'
   },
   {
     id: 'code',
     label: 'Code',
     desc: 'Working code, complete files, ready to run.',
-    hint: 'e.g. Build a small script that turns a CSV of grades into a summary table'
+    hint: 'e.g. A small tool that does one job, built from what a session covered'
   }
 ]
 

@@ -274,7 +274,7 @@ export default function OrgView({
               <div className="org-create-row">
                 <input
                   className="input"
-                  placeholder={education ? 'Course name, e.g. CS201 Software Security' : 'Name, e.g. Product team'}
+                  placeholder={education ? 'Name of the course' : 'Name of the team or space'}
                   value={newName}
                   autoFocus={window.innerWidth >= 860}
                   onChange={(e) => setNewName(e.target.value)}

@@ -101,7 +101,7 @@ export default function OrgGate({ kind, onJoined }: Props): React.JSX.Element {
           <input
             className="input"
             style={{ flex: 1, minWidth: 220 }}
-            placeholder={education ? 'Institution name, e.g. University of Zimbabwe' : 'Organisation name'}
+            placeholder={education ? 'Name of the institution' : 'Name of the organisation'}
             value={name}
             autoFocus={window.innerWidth >= 860}
             onChange={(e) => setName(e.target.value)}

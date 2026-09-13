@@ -545,7 +545,7 @@ export default function EventsView({
                 <input
                   className="input"
                   value={pasteName}
-                  placeholder="e.g. Keynote outline"
+                  placeholder="A name for this material"
                   onChange={(e) => setPasteName(e.target.value)}
                 />
               </div>
@@ -780,7 +780,7 @@ export default function EventsView({
                   className="input"
                   value={title}
                   autoFocus={window.innerWidth >= 860}
-                  placeholder="e.g. Q3 All-Hands · Marketing 101"
+                  placeholder="Title of the event"
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </div>

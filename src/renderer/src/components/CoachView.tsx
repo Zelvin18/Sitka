@@ -553,7 +553,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                     className="input"
                     value={goal}
                     autoFocus={window.innerWidth >= 860}
-                    placeholder="e.g. Investor pitch for my company"
+                    placeholder="What you are presenting, in a few words"
                     onChange={(e) => setGoal(e.target.value)}
                   />
                 </div>
@@ -562,7 +562,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                   <input
                     className="input"
                     value={audience}
-                    placeholder="e.g. Potential investors"
+                    placeholder="Who will be listening"
                     onChange={(e) => setAudience(e.target.value)}
                   />
                 </div>
@@ -1173,7 +1173,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
               <div className="dialog-title">Paste material</div>
               <div className="field">
                 <label className="field-label">Name</label>
-                <input className="input" value={pasteName} placeholder="e.g. Pitch deck notes" onChange={(e) => setPasteName(e.target.value)} />
+                <input className="input" value={pasteName} placeholder="A name for these notes" onChange={(e) => setPasteName(e.target.value)} />
               </div>
               <div className="field">
                 <label className="field-label">Content</label>

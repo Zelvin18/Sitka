@@ -126,7 +126,7 @@ export default function MaterialsPanel({
         <div className="mat-paste">
           <input
             className="input"
-            placeholder="Name (e.g. Lecture 4 notes)"
+            placeholder="A name for these notes"
             value={pasteName}
             onChange={(e) => setPasteName(e.target.value)}
           />
