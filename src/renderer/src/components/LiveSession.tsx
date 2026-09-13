@@ -1834,7 +1834,7 @@ export default function LiveSession({
         <div className="session-header">
           <div className="session-header-row">
             <h1>{session?.title ?? 'Live session'}</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div className="live-actions">
               {hosting &&
                 (confUrl ? (
                   <button
@@ -1881,7 +1881,14 @@ export default function LiveSession({
                 disabled={phase === 'stopping'}
               >
                 <IconStop size={13} strokeWidth={2.4} />
-                {phase === 'stopping' ? 'Finishing…' : 'End session'}
+                {phase === 'stopping' ? (
+                  'Finishing…'
+                ) : (
+                  <>
+                    <span className="wide">End session</span>
+                    <span className="narrow">End</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

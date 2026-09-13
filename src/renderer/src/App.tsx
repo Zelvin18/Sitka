@@ -224,8 +224,10 @@ export default function App(): React.JSX.Element {
     if (settings) applyAppearance(settings.theme, settings.textSize)
   }, [settings])
 
-  // Quick record: one tap (or Ctrl+Shift+R) starts an audio session right now,
-  // filed under whichever ecosystem the user is standing in.
+  // Quick record: one tap (or Ctrl+Shift+R) opens a new session with Audio
+  // already chosen, filed under whichever ecosystem the user is standing in.
+  // It stops at the setup page — recording begins only when they press Start,
+  // so nothing is captured before they have chosen what they want.
   const quickRecord = useCallback((): void => {
     if (recordingSessionId) {
       setView({ name: 'live' })
@@ -236,7 +238,7 @@ export default function App(): React.JSX.Element {
       space,
       presetKind: space === 'business' ? 'meeting' : space === 'education' ? 'lecture' : 'other',
       audioOnly: true,
-      quick: true
+      quick: false
     })
     closeDrawer()
     // eslint-disable-next-line react-hooks/exhaustive-deps

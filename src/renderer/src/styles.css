@@ -7728,6 +7728,36 @@ body.dragging-row .splitter-h {
   cursor: pointer;
 }
 
+/* ---- the live header's controls: one row on a laptop, their own row on a phone ---- */
+.live-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.live-actions .narrow {
+  display: none;
+}
+@media (max-width: 859px) {
+  .session-header-row {
+    flex-wrap: wrap;
+  }
+  .live-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .live-actions .timer {
+    margin-left: auto;
+  }
+  .live-actions .wide {
+    display: none;
+  }
+  .live-actions .narrow {
+    display: inline;
+  }
+}
+
 /* ---- a crash on one page never blanks the app ---- */
 .crash {
   min-height: 100dvh;

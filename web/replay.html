@@ -59,9 +59,9 @@ li ul{margin:4px 0 2px;padding-left:18px}
 .tfold{display:block;margin:12px auto 0;padding:9px 18px;border:1px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s ease}
 .tfold:hover{background:var(--soft)}
 .tfold[hidden]{display:none}
-.secrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.secrow .sec{margin-bottom:10px}
-.rlangwrap{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--t3);margin-bottom:8px}
+.hdr-right{display:flex;align-items:center;gap:12px}
+.rlangwrap{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--t3)}
+@media(max-width:520px){.rlangwrap>span{display:none}}
 .rlangwrap[hidden]{display:none}
 .rlang{font:inherit;font-size:13px;color:var(--text);background:var(--soft);border:1px solid var(--border);border-radius:10px;padding:6px 10px}
 #rsegs.translating .segtext{opacity:.85}
@@ -110,7 +110,13 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
 <div class="wrap">
   <header>
     <a class="brand" href="/"><svg class="mark" style="width:18px;height:18px;flex:none" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</a>
-    <span class="htag" id="htag">REPLAY</span>
+    <span class="hdr-right">
+      <label class="rlangwrap" id="rlangwrap" hidden>
+        <span>Read in</span>
+        <select id="rlang" class="rlang"></select>
+      </label>
+      <span class="htag" id="htag">REPLAY</span>
+    </span>
   </header>
   <div id="loading" class="center loader">
     <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
@@ -145,13 +151,7 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
     </div>
     <div class="sec" id="momtitle" style="display:none">Key moments — tap to jump</div>
     <div class="chips" id="rchips"></div>
-    <div class="secrow">
-      <div class="sec">Transcript — tap any line to jump</div>
-      <label class="rlangwrap" id="rlangwrap" hidden>
-        <span>Read in</span>
-        <select id="rlang" class="rlang"></select>
-      </label>
-    </div>
+    <div class="sec">Transcript — tap any line to jump</div>
     <input class="search" id="rsearch" placeholder="Search the transcript…">
     <div id="rsegs"></div>
     <footer>
