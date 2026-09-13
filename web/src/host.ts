@@ -11,7 +11,7 @@ const el = (id: string): HTMLElement => document.getElementById(id) as HTMLEleme
 const input = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement
 
 const ALL_LANGS = [
-  'Shona', 'Ndebele', 'Swahili', 'French', 'Portuguese',
+  'Shona', 'Ndebele', 'Nyankole', 'Swahili', 'French', 'Portuguese',
   'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi'
 ]
 

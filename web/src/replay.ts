@@ -200,6 +200,7 @@ const LANGS = [
   'English',
   'Shona',
   'Ndebele',
+  'Nyankole',
   'Swahili',
   'French',
   'Portuguese',

@@ -113,7 +113,7 @@ async function sendRoom(text: string): Promise<void> {
 }
 
 const LANG_CODES: Record<string, string> = {
-  English: 'en', Shona: 'sn', Ndebele: 'nr', Swahili: 'sw', French: 'fr',
+  English: 'en', Shona: 'sn', Ndebele: 'nr', Nyankole: 'nyn', Swahili: 'sw', French: 'fr',
   Portuguese: 'pt', Spanish: 'es', German: 'de', Arabic: 'ar', Chinese: 'zh', Hindi: 'hi'
 }
 

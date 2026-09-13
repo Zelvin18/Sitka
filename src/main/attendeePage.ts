@@ -157,7 +157,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
   <div class="chips" id="personas"></div>
   <div class="label">My language — AI answers, captions &amp; voice</div>
   <select id="lang">
-    <option>English</option><option>Shona</option><option>Ndebele</option><option>Swahili</option>
+    <option>English</option><option>Shona</option><option>Ndebele</option><option>Nyankole</option><option>Swahili</option>
     <option>French</option><option>Portuguese</option><option>Spanish</option><option>German</option>
     <option>Arabic</option><option>Chinese</option><option>Hindi</option>
   </select>
@@ -226,7 +226,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
 
 <script>
 var attId=null,persona=null,ended=false,myLang='English',listening=false;
-var LANG_CODES={'English':'en','Shona':'sn','Ndebele':'nr','Swahili':'sw','French':'fr','Portuguese':'pt','Spanish':'es','German':'de','Arabic':'ar','Chinese':'zh','Hindi':'hi'};
+var LANG_CODES={'English':'en','Shona':'sn','Ndebele':'nr','Nyankole':'nyn','Swahili':'sw','French':'fr','Portuguese':'pt','Spanish':'es','German':'de','Arabic':'ar','Chinese':'zh','Hindi':'hi'};
 function el(id){return document.getElementById(id)}
 function ico(paths,size){return '<svg class="ic" width="'+(size||17)+'" height="'+(size||17)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+paths+'</svg>'}
 var IC_SPK='<path d="M11.5 5 7 9H3.5v6H7l4.5 4z"/><path d="M15 9.2a4 4 0 0 1 0 5.6M17.7 6.6a7.6 7.6 0 0 1 0 10.8"/>';

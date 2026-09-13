@@ -20,6 +20,7 @@ const MAX_CONCURRENT_AI = 3
 export const LIVE_VOICE_LANGUAGES = [
   'Shona',
   'Ndebele',
+  'Nyankole',
   'Swahili',
   'French',
   'Portuguese',

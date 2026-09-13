@@ -64,7 +64,7 @@ import type {
 } from '../../src/shared/types'
 
 const ALL_LANGS = [
-  'Shona', 'Ndebele', 'Swahili', 'French', 'Portuguese',
+  'Shona', 'Ndebele', 'Nyankole', 'Swahili', 'French', 'Portuguese',
   'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi'
 ]
 

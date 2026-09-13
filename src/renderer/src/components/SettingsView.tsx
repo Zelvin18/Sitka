@@ -20,6 +20,7 @@ const LANGUAGES = [
   ['English', 'English'],
   ['Shona', 'Shona'],
   ['Ndebele', 'Ndebele'],
+  ['Nyankole', 'Nyankole'],
   ['Swahili', 'Swahili'],
   ['French', 'French'],
   ['Portuguese', 'Portuguese'],

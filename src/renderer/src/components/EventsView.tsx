@@ -14,6 +14,7 @@ interface Props {
 const ALL_VOICE_LANGS = [
   'Shona',
   'Ndebele',
+  'Nyankole',
   'Swahili',
   'French',
   'Portuguese',
