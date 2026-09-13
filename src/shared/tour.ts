@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * "How Sitka works" — a guided walkthrough built from the app's own interface,
  * so it always matches the real product. It follows the exact path a new user

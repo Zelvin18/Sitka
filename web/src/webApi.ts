@@ -2039,7 +2039,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const durationMs = cache.get(id)?.meta.durationMs ?? (await loadSession(id))?.meta.durationMs
           if (file === 'video' && durationMs) {
             try {
-              const fixed = await fixWebmDuration(new Blob([out], { type: 'video/webm' }), durationMs)
+              const fixed = await fixWebmDuration(
+                new Blob([out.buffer as ArrayBuffer], { type: 'video/webm' }),
+                durationMs
+              )
               return new Uint8Array(await fixed.arrayBuffer())
             } catch {
               /* the plain file still plays */
@@ -2863,7 +2866,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       // A fresh file needs only the insert policy. Only a republish falls back
       // to replacing the object, which storage checks against update + select.
-      const blob = new Blob([video], { type: 'video/webm' })
+      const blob = new Blob([video.slice().buffer], { type: 'video/webm' })
       const path = `${evId}.webm`
       let { error } = await sb.storage
         .from('replays')

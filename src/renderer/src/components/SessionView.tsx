@@ -193,7 +193,7 @@ export default function SessionView({
           setVideoError(true)
           return
         }
-        const blob = new Blob([bytes], { type: 'video/webm' })
+        const blob = new Blob([bytes.slice().buffer], { type: 'video/webm' })
         objectUrl = URL.createObjectURL(blob)
         setVideoSrc(objectUrl)
       } catch {
@@ -266,7 +266,7 @@ export default function SessionView({
     if (!reelStamp) return undefined
     void window.sitka.readVideo(sessionId, 'reel').then((bytes) => {
       if (cancelled || !bytes || bytes.byteLength === 0) return
-      url = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }))
+      url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' }))
       setReelSrc(url)
     })
     return () => {
@@ -651,7 +651,8 @@ export default function SessionView({
             style={{ marginLeft: 'auto' }}
             title="Copy this tab's content"
             onClick={() => {
-              void window.sitka.getExportText(meta.id, tab).then((text) => {
+              // the event report has no export of its own: the overview stands in
+              void window.sitka.getExportText(meta.id, tab === 'report' ? 'overview' : tab).then((text) => {
                 if (!text) return
                 void copyRich(text).then((ok) => {
                   if (ok) {
@@ -669,7 +670,7 @@ export default function SessionView({
             className="btn btn-ghost btn-sm"
             title="Export this tab as a Markdown file"
             onClick={() => {
-              void window.sitka.exportSession(meta.id, tab).then((res) => {
+              void window.sitka.exportSession(meta.id, tab === 'report' ? 'overview' : tab).then((res) => {
                 if (res.ok) {
                   setExported(true)
                   setTimeout(() => setExported(false), 2000)

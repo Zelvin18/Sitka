@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * MediaRecorder writes WebM files without a Duration in their header: the
  * browser had no way of knowing how long the recording would be. Players then
@@ -142,12 +143,15 @@ export async function fixWebmDuration(blob: Blob, durationMs: number): Promise<B
         if (newSeg.length === segSize.length) before.set(newSeg, segSizePos)
         else return blob // would shift everything: leave the file as it is
       }
+      // plain ArrayBuffers: a typed array over a shared buffer is not a BlobPart
+      const buf = (u: Uint8Array): ArrayBuffer =>
+        u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer
       const parts: BlobPart[] = [
-        before,
-        infoIdBytes,
-        newSizeBytes,
-        infoBody,
-        extra,
+        buf(before),
+        buf(infoIdBytes),
+        buf(newSizeBytes),
+        buf(infoBody),
+        buf(extra),
         blob.slice(infoEnd)
       ]
       return new Blob(parts, { type: blob.type || 'video/webm' })

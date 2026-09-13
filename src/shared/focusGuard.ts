@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * On a phone, the keyboard must only appear when the person taps a field.
  * Anything else that moves focus into a text field on its own — a dialog that

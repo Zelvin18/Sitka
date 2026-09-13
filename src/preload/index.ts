@@ -224,6 +224,10 @@ const api = {
     running: boolean
     url?: string
     ended?: boolean
+    /** live but nobody has joined yet (cloud events) */
+    waiting?: boolean
+    /** the scheduled event this broadcast belongs to (cloud events) */
+    eventId?: string
     attendees?: number
     questions?: { topic: string; items: { text: string; at: number; votes?: number }[] }[]
     reactions?: { landed: number; lost: number; recentLost: number }

@@ -161,8 +161,7 @@ export function syncCloudEvent(eventId: string): void {
   void cloud.client
     .from('events')
     .upsert(eventRow(event, cloud.sessionId ? 'live' : 'waiting', cloud.sessionId))
-    .then(() => undefined)
-    .catch(() => undefined)
+    .then(() => undefined, () => undefined)
 }
 
 // ---------- live push ----------
@@ -250,8 +249,7 @@ export function updateCloudFrame(dataUrl: string): void {
   void cloud.client.storage
     .from('stage')
     .upload(`${cloud.eventId}.jpg`, buf, { upsert: true, contentType: 'image/jpeg' })
-    .then(() => undefined)
-    .catch(() => undefined)
+    .then(() => undefined, () => undefined)
     .finally(() => {
       if (cloud) cloud.frameBusy = false
     })
@@ -354,8 +352,7 @@ async function answerAsk(row: AskRow): Promise<void> {
       .from('asks')
       .update({ status: 'error', answer: 'Sitka could not answer — try again.' })
       .eq('id', row.id)
-      .then(() => undefined)
-      .catch(() => undefined)
+      .then(() => undefined, () => undefined)
   } finally {
     state.answering.delete(row.id)
   }
@@ -407,8 +404,7 @@ async function reviewCloudQuestion(row: QuestionRow): Promise<void> {
       .from('speaker_questions')
       .update({ status: 'error' })
       .eq('id', row.id)
-      .then(() => undefined)
-      .catch(() => undefined)
+      .then(() => undefined, () => undefined)
   } finally {
     state.answering.delete(row.id)
   }
@@ -611,8 +607,7 @@ export function endCloudEvent(sessionId: string): void {
   void state.client
     .from('events')
     .upsert(event ? eventRow(event, 'ended', sessionId) : { id: state.eventId, status: 'ended' })
-    .then(() => undefined)
-    .catch(() => undefined)
+    .then(() => undefined, () => undefined)
     .then(() =>
       // The room gets its recap link at once: the words now, the summary and
       // the recording as soon as they are ready (see cloudPublishReplay).
@@ -890,6 +885,5 @@ export async function cloudClosePoll(): Promise<void> {
     .update({ status: 'closed' })
     .eq('event_id', cloud.eventId)
     .eq('status', 'open')
-    .then(() => undefined)
-    .catch(() => undefined)
+    .then(() => undefined, () => undefined)
 }
