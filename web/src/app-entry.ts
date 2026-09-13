@@ -69,7 +69,10 @@ async function launch(): Promise<void> {
   await installWebApi(sb)
   resolveReady()
   await rendererModule
-  el('gate').classList.add('hidden')
+  // The sign-in form leaves the page entirely. Left in the document, hidden,
+  // it still counts as a login form: an iPhone would offer to fill the
+  // password into it at odd moments, keyboard and all.
+  el('gate').remove()
 }
 
 async function boot(): Promise<void> {

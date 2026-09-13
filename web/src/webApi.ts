@@ -379,15 +379,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return out.filter(Boolean)
   }
 
+  // A phone changing from Wi-Fi to data, or a lift, drops requests for a few
+  // seconds ("Load failed" on iPhone, "Failed to fetch" elsewhere). A save is
+  // retried before anyone hears about it; the banner is for problems that stay.
+  const isNetworkError = (msg: string): boolean =>
+    /load failed|failed to fetch|network|timed? ?out|ECONN|ENOTFOUND|aborted/i.test(msg)
+  const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
   async function patchSession(id: string, patch: Record<string, unknown>): Promise<void> {
-    const { error } = await sb
-      .from('sessions')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) {
-      storageProblem(error.message)
-      backupSession(id)
+    const delays = [0, 1200, 3000, 7000]
+    let lastError = ''
+    for (const d of delays) {
+      if (d) await wait(d)
+      try {
+        const { error } = await sb
+          .from('sessions')
+          .update({ ...patch, updated_at: new Date().toISOString() })
+          .eq('id', id)
+        if (!error) return
+        lastError = error.message
+        if (!isNetworkError(lastError)) break
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err)
+        if (!isNetworkError(lastError)) break
+      }
     }
+    storageProblem(lastError)
+    backupSession(id)
   }
 
   // ---------- the recording never leaves the device until the cloud has it ----------
@@ -2193,16 +2211,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           bin += String.fromCharCode(...bytes.subarray(i, i + step))
         }
         const k = storedSettings()
-        const r = await fetch('/api/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            keys: { openaiApiKey: k.openaiApiKey, groqApiKey: k.groqApiKey },
-            audioB64: btoa(bin),
-            mime: 'audio/webm',
-            offsetSec
-          })
+        const body = JSON.stringify({
+          keys: { openaiApiKey: k.openaiApiKey, groqApiKey: k.groqApiKey },
+          audioB64: btoa(bin),
+          mime: 'audio/webm',
+          offsetSec
         })
+        // a dropped request is tried again before it counts as a problem
+        let r: Response | null = null
+        let lastErr = ''
+        for (const d of [0, 1500, 4000]) {
+          if (d) await wait(d)
+          try {
+            r = await fetch('/api/transcribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body
+            })
+            break
+          } catch (err) {
+            lastErr = err instanceof Error ? err.message : String(err)
+            if (!isNetworkError(lastErr)) throw err
+          }
+        }
+        if (!r) return { error: 'Connection dropped for a moment. Still listening.' }
         const j = await r.json()
         if (!r.ok) return { error: j.error || 'Transcription failed.' }
         const segments: TranscriptSegment[] = j.segments || []

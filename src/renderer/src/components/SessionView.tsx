@@ -11,6 +11,7 @@ import Splitter from './Splitter'
 import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
+import { IconPlay } from '../lib/icons'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -54,6 +55,12 @@ export default function SessionView({
   const [data, setData] = useState<SessionData | null>(null)
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoError, setVideoError] = useState(false)
+  // On the website the recording is fetched from the cloud, which can be a
+  // long download on a phone: it waits for a tap (or a jump to a moment).
+  // On the desktop it is a local file and loads at once.
+  const [videoWanted, setVideoWanted] = useState(
+    (window as unknown as { sitkaWeb?: boolean }).sitkaWeb !== true
+  )
   const [currentTime, setCurrentTime] = useState(0)
   // The chosen tabs come back after a refresh.
   const [tab, setTab] = useRemembered<'transcript' | 'overview' | 'notes' | 'study' | 'report'>(
@@ -170,9 +177,9 @@ export default function SessionView({
     let cancelled = false
     let objectUrl: string | null = null
     durationFixedRef.current = false
-    pendingSeekRef.current = null
     setVideoSrc(null)
     setVideoError(false)
+    if (!videoWanted) return undefined
     void (async () => {
       try {
         // Remux on first open if needed — gives the file a real duration and
@@ -197,6 +204,12 @@ export default function SessionView({
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
+  }, [sessionId, videoWanted])
+
+  // A different session starts folded again on the website.
+  useEffect(() => {
+    setVideoWanted((window as unknown as { sitkaWeb?: boolean }).sitkaWeb !== true)
+    pendingSeekRef.current = null
   }, [sessionId])
 
   // MediaRecorder webm files report Infinity duration; force Chrome to compute
@@ -230,7 +243,9 @@ export default function SessionView({
     const v = videoRef.current
     if (!v || !durationFixedRef.current) {
       // Video still loading or duration not repaired yet — apply once ready.
+      // A jump to a moment also asks for the recording when it is still folded.
       pendingSeekRef.current = seconds
+      setVideoWanted(true)
       return
     }
     v.currentTime = seconds
@@ -531,6 +546,22 @@ export default function SessionView({
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
                 'Could not load this recording.'
+              ) : !videoWanted ? (
+                <button
+                  type="button"
+                  className="video-gate"
+                  onClick={() => setVideoWanted(true)}
+                  title="Fetch the recording"
+                >
+                  <span className="video-gate-ring">
+                    <IconPlay size={20} strokeWidth={2.2} />
+                  </span>
+                  <span className="video-gate-text">
+                    Play the recording
+                    {meta.durationMs ? ` · ${formatDuration(meta.durationMs)}` : ''}
+                  </span>
+                  <span className="video-gate-sub">Loads when you tap</span>
+                </button>
               ) : (
                 <Loading compact onDark words={LOADING_WORDS.recording} />
               )}
