@@ -4,12 +4,14 @@
 // another session [[ab12cd34@12:37]]. Every variant the models write
 // (fullwidth or single brackets, parentheses) is repaired to [[…]] first.
 const TS = '\\d{1,2}:\\d{2}(?::\\d{2})?'
-const BODY = `((?:[a-fA-F0-9-]{6,}@)?${TS}(?:\\s*[-–—]\\s*${TS})?)`
+// any dash a model might put between two times: hyphen, en/em dashes, minus, "to"
+const DASH = '(?:\\s*[-\\u2010-\\u2015\\u2212]\\s*|\\s+to\\s+)'
+const BODY = `((?:[a-fA-F0-9-]{6,}@)?${TS}(?:${DASH}${TS})?)`
 const RE_FW = new RegExp(`【\\s*${BODY}\\s*】`, 'g')
 const RE_BR = new RegExp(`\\[{1,2}\\s*${BODY}\\s*\\]{1,2}`, 'g')
 const RE_CHIP = new RegExp(`\\[\\[${BODY}\\]\\]`, 'g')
 
-const RE_PAREN = new RegExp(`\\((${TS}(?:\\s*[-–—]\\s*${TS})?)\\)`, 'g')
+const RE_PAREN = new RegExp(`\\((${TS}(?:${DASH}${TS})?)\\)`, 'g')
 export const normCites = (t: string): string =>
   (t || '').replace(RE_FW, '[[$1]]').replace(RE_BR, '[[$1]]').replace(RE_PAREN, '[[$1]]')
 export const escH = (s: string): string =>
@@ -31,7 +33,7 @@ export function inlineMd(s: string): string {
     const at = body.indexOf('@')
     const span = at >= 0 ? body.slice(at + 1) : body
     // a range jumps to its start and reads "1:45–2:05"
-    const ends = span.split(/\s*[-–—]\s*/)
+    const ends = span.split(/\s*[-‐-―−]\s*|\s+to\s+/)
     const sec = parseTs(ends[0])
     const label = ends.length > 1 ? `${ends[0]}–${ends[1]}` : ends[0]
     if (sec === null || at >= 0) return label

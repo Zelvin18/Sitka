@@ -3036,6 +3036,20 @@ body {
   flex-shrink: 0;
 }
 
+/* phones: the steps read top to bottom, one card each, no arrows */
+@media (max-width: 859px) {
+  .ev-steps {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ev-step {
+    padding: 16px;
+  }
+  .ev-step-arrow {
+    display: none;
+  }
+}
+
 .ev-chips {
   display: flex;
   flex-wrap: wrap;
@@ -7712,6 +7726,82 @@ body.dragging-row .splitter-h {
   font-weight: 600;
   padding: 8px;
   cursor: pointer;
+}
+
+/* ---- a crash on one page never blanks the app ---- */
+.crash {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+}
+.crash-card {
+  max-width: 440px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px 26px;
+  background: var(--bg-soft);
+  text-align: center;
+}
+.crash-card h2 {
+  font-size: 18px;
+  margin: 12px 0 6px;
+  letter-spacing: -0.015em;
+}
+.crash-card p {
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 16px;
+}
+.crash-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.crash-detail {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--text-3);
+  word-break: break-word;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+/* ---- answers on a phone: air between the parts ---- */
+@media (max-width: 859px) {
+  .msg-ai {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .msg-ai p {
+    margin: 0 0 12px;
+  }
+  .msg-ai p:last-child {
+    margin-bottom: 0;
+  }
+  .msg-ai ul,
+  .msg-ai ol {
+    margin: 0 0 12px;
+    padding-left: 20px;
+  }
+  .msg-ai li {
+    margin: 6px 0;
+  }
+  .msg-ai .msg-h {
+    margin: 16px 0 6px;
+    font-size: 15px;
+  }
+  .msg-ai .ts-chip {
+    white-space: normal;
+    text-align: left;
+    max-width: 100%;
+  }
 }
 
 /* ---- phones: the app is a fixed frame; only its panels scroll ---- */

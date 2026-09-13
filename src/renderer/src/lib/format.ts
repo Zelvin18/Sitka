@@ -41,17 +41,28 @@ export function videoUrl(sessionId: string): string {
   return `sitka://sessions/${sessionId}/video.webm`
 }
 
-const CITE_BODY = '((?:[a-fA-F0-9-]{6,}@)?\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[-–—]\\s*\\d{1,2}:\\d{2}(?::\\d{2})?)?)'
+// any dash a model might put between two times: hyphen, en/em dashes, minus, "to"
+const DASH = '(?:\\s*[-\\u2010-\\u2015\\u2212]\\s*|\\s+to\\s+)'
+const TS = '\\d{1,2}:\\d{2}(?::\\d{2})?'
+const CITE_BODY = `((?:[a-fA-F0-9-]{6,}@)?${TS}(?:${DASH}${TS})?)`
 
 /**
  * Models occasionally write citations with fullwidth brackets (【…】) or single
- * brackets instead of the required [[…]]. Repair every variant so the chips
- * always render and stay clickable.
+ * brackets instead of the required [[…]], and sometimes as a range. Repair
+ * every variant so the chips always render and stay clickable. A range keeps
+ * only the moment it starts, which is where a tap should land anyway.
  */
 export function normalizeCitations(text: string): string {
-  return text
-    .replace(new RegExp(`【\\s*${CITE_BODY}\\s*】`, 'g'), '[[$1]]')
-    .replace(new RegExp(`(?<!\\[)\\[\\s*${CITE_BODY}\\s*\\](?!\\])`, 'g'), '[[$1]]')
-    // some models write (12:37) — a timestamp in parentheses is still a citation
-    .replace(/\((\d{1,2}:\d{2}(?::\d{2})?)\)/g, '[[$1]]')
+  return (
+    text
+      .replace(new RegExp(`【\\s*${CITE_BODY}\\s*】`, 'g'), '[[$1]]')
+      .replace(new RegExp(`(?<!\\[)\\[\\s*${CITE_BODY}\\s*\\](?!\\])`, 'g'), '[[$1]]')
+      // some models write (12:37) — a timestamp in parentheses is still a citation
+      .replace(new RegExp(`\\((${TS}(?:${DASH}${TS})?)\\)`, 'g'), '[[$1]]')
+      // a range becomes its start
+      .replace(
+        new RegExp(`\\[\\[((?:[a-fA-F0-9-]{6,}@)?${TS})${DASH}${TS}\\]\\]`, 'g'),
+        '[[$1]]'
+      )
+  )
 }

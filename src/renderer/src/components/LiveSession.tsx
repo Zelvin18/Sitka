@@ -1214,7 +1214,7 @@ export default function LiveSession({
       if (message !== 'left') setError(message)
       setPhase('picking')
     }
-  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, rotateStt, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])
+  }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])
 
   // Quick record: the floating button lands here already in audio mode and
   // starts on arrival — one tap, no setup.
