@@ -53,6 +53,7 @@ export function md(src: string): string {
   let i = 0
   let inCode = false
   let codeBuf: string[] = []
+  let codeLang = ''
   let listType: 'ul' | 'ol' | null = null
   // each item keeps one level of indented sub-points instead of flattening them
   let listBuf: { html: string; sub: string[] }[] = []
@@ -74,12 +75,25 @@ export function md(src: string): string {
     const L = lines[i]
     if (/^```/.test(L)) {
       if (inCode) {
-        out.push(`<pre><code>${codeBuf.join('\n')}</code></pre>`)
+        if (codeLang === 'document' || codeLang === 'doc') {
+          // a document Sitka wrote: its title, then its body as markdown
+          const first = codeBuf[0] || ''
+          const titled = /^\s*title\s*:/i.test(first)
+          const title = titled ? first.replace(/^\s*title\s*:\s*/i, '').trim() : ''
+          const body = (titled ? codeBuf.slice(1) : codeBuf).join('\n')
+          out.push(
+            `<div class="doccard">${title ? `<div class="doccard-title">${title}</div>` : ''}<div class="doccard-body">${md(body)}</div></div>`
+          )
+        } else {
+          out.push(`<pre><code>${codeBuf.join('\n')}</code></pre>`)
+        }
         codeBuf = []
         inCode = false
+        codeLang = ''
       } else {
         flushList()
         inCode = true
+        codeLang = L.replace(/^```/, '').trim().toLowerCase()
       }
       i++
       continue

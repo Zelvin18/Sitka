@@ -68,6 +68,8 @@ export interface SessionMeta {
   space?: Space
   /** recorded from the microphone only — no screen */
   audioOnly?: boolean
+  /** optional picture shown where the video would be, for audio sessions (JPEG data URL) */
+  banner?: string
   /** the built-in sample lecture, created on first run so the app is never empty */
   sample?: boolean
   /** public recap page, set while the session is shared */

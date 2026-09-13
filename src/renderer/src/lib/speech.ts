@@ -62,10 +62,22 @@ export function bestVoice(lang = 'en'): SpeechSynthesisVoice | null {
   return [...voices].sort((a, b) => score(b) - score(a))[0] ?? null
 }
 
-/** Split long text at sentence ends so each piece stays a comfortable size. */
+/**
+ * Split long text at sentence ends so each piece stays a comfortable size.
+ * The first piece is kept short so the voice starts within a second or two;
+ * the rest is fetched while that plays.
+ */
 function chunks(text: string): string[] {
   const out: string[] = []
   let rest = text.trim()
+  const FIRST = 220
+  if (rest.length > FIRST) {
+    const slice = rest.slice(0, FIRST)
+    const cut = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('? '), slice.lastIndexOf('! '), slice.lastIndexOf('\n'))
+    const at = cut > 40 ? cut + 1 : FIRST
+    out.push(rest.slice(0, at).trim())
+    rest = rest.slice(at).trim()
+  }
   while (rest.length > CHUNK) {
     const slice = rest.slice(0, CHUNK)
     const cut = Math.max(
@@ -133,11 +145,25 @@ async function fetchSpeech(text: string): Promise<Blob | null> {
  * for the reading. `onEnd(ok)` fires when the reading finishes or fails, not
  * when it is stopped.
  */
-export function speakText(text: string, lang: string, onEnd: (ok: boolean) => void): Speaker {
-  if (!IS_WEB) return speakWithBrowser(text, lang, onEnd)
+export function speakText(
+  text: string,
+  lang: string,
+  onEnd: (ok: boolean) => void,
+  onStart?: () => void
+): Speaker {
+  if (!IS_WEB) {
+    onStart?.()
+    return speakWithBrowser(text, lang, onEnd)
+  }
 
   let cancelled = false
   let fallback: Speaker | null = null
+  let started = false
+  const markStarted = (): void => {
+    if (started) return
+    started = true
+    onStart?.()
+  }
   const parts = chunks(text)
 
   // Created and started inside the tap so the browser lets it make sound.
@@ -162,6 +188,7 @@ export function speakText(text: string, lang: string, onEnd: (ok: boolean) => vo
       }
       audio.onplaying = () => {
         played = true
+        markStarted()
       }
       audio.onended = () => finish(true)
       audio.onerror = () => finish(played)
@@ -177,6 +204,7 @@ export function speakText(text: string, lang: string, onEnd: (ok: boolean) => vo
       if (!blob || !unlocked) {
         // no voice from the server, or sound is blocked: the browser reads it
         if (i === 0) {
+          markStarted()
           fallback = speakWithBrowser(text, lang, onEnd)
           return
         }
@@ -187,6 +215,7 @@ export function speakText(text: string, lang: string, onEnd: (ok: boolean) => vo
       if (cancelled) return
       if (!ok) {
         if (i === 0) {
+          markStarted()
           fallback = speakWithBrowser(text, lang, onEnd)
           return
         }

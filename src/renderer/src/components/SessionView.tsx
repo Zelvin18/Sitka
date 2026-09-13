@@ -10,6 +10,7 @@ import ReportPane from './ReportPane'
 import Splitter from './Splitter'
 import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
 import Loading, { LOADING_WORDS } from './Loading'
+import { shrinkImageFile } from '../lib/attach'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -468,11 +469,49 @@ export default function SessionView({
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
               />
               {meta.audioOnly && (
-                <div className="audio-overlay">
-                  <span className="audio-overlay-icon">
-                    <IconMic size={20} strokeWidth={1.6} />
-                  </span>
-                  <span>Audio session</span>
+                <div className={`audio-overlay${meta.banner ? ' with-banner' : ''}`}>
+                  {meta.banner ? (
+                    <img className="audio-banner" src={meta.banner} alt="" />
+                  ) : (
+                    <>
+                      <span className="audio-overlay-icon">
+                        <IconMic size={20} strokeWidth={1.6} />
+                      </span>
+                      <span>Audio session</span>
+                    </>
+                  )}
+                  {!meta.readOnly && (
+                    <label className="banner-set" title="A picture shown here instead of video">
+                      {meta.banner ? 'Change banner' : 'Add banner'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          e.target.value = ''
+                          if (!f) return
+                          void shrinkImageFile(f, 1280, 0.8).then(async (url) => {
+                            const m = await window.sitka.setSessionBanner(meta.id, url)
+                            if (m) setData((d) => (d ? { ...d, meta: m } : d))
+                          })
+                        }}
+                      />
+                    </label>
+                  )}
+                  {!meta.readOnly && meta.banner && (
+                    <button
+                      type="button"
+                      className="banner-set banner-clear"
+                      onClick={() => {
+                        void window.sitka.setSessionBanner(meta.id, null).then((m) => {
+                          if (m) setData((d) => (d ? { ...d, meta: m } : d))
+                        })
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               )}
             </>

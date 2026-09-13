@@ -83,6 +83,8 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   const [error, setError] = useState<string | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null)
+  /** true from the tap on the speaker until the first sound plays */
+  const [speakPrep, setSpeakPrep] = useState(false)
   /** Phone only: fold the conversation away so the content above gets the screen. */
   const [folded, setFolded] = useState(false)
   /** the current question carries a picture of the screen */
@@ -200,7 +202,8 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     }
     setAttachBusy(null)
     if (fileRef.current) fileRef.current.value = ''
-    inputRef.current?.focus()
+    // on a phone the keyboard waits for a tap on the box
+    if (window.innerWidth >= 860) inputRef.current?.focus()
   }, [attachments.length])
 
   const addNote = useCallback((text: string) => {
@@ -236,16 +239,23 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       }
       const lang = document.documentElement.lang || navigator.language || 'en'
       setSpeakingIdx(index)
+      setSpeakPrep(true)
       setError(null)
-      speakerRef.current = speakText(cleanForSpeech(content), lang, (ok) => {
-        speakerRef.current = null
-        setSpeakingIdx((cur) => (cur === index ? null : cur))
-        if (!ok) {
-          setError(
-            'The voice could not play. Check the device is not muted, then tap the speaker again.'
-          )
-        }
-      })
+      speakerRef.current = speakText(
+        cleanForSpeech(content),
+        lang,
+        (ok) => {
+          speakerRef.current = null
+          setSpeakPrep(false)
+          setSpeakingIdx((cur) => (cur === index ? null : cur))
+          if (!ok) {
+            setError(
+              'The voice could not play. Check the device is not muted, then tap the speaker again.'
+            )
+          }
+        },
+        () => setSpeakPrep(false)
+      )
     },
     [speakingIdx]
   )
@@ -381,7 +391,16 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
                   title={speakingIdx === i ? 'Stop reading' : 'Read aloud'}
                   onClick={() => speakMessage(i, m.content)}
                 >
-                  {speakingIdx === i ? <IconStop size={13} /> : <IconSpeaker size={13} />}
+                  {speakingIdx === i ? (
+                    speakPrep ? (
+                      <Mark size={13} live />
+                    ) : (
+                      <IconStop size={13} />
+                    )
+                  ) : (
+                    <IconSpeaker size={13} />
+                  )}
+                  {speakingIdx === i && speakPrep && <span>Preparing</span>}
                 </button>
                 <span className="msg-time">{timeLabel(m.at)}</span>
               </div>

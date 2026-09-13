@@ -5,6 +5,11 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
+import { installFocusGuard } from '../../src/shared/focusGuard'
+import { fixWebmDuration } from '../../src/shared/webmDuration'
+
+// Phones: the keyboard appears only when a field is tapped, never on its own.
+installFocusGuard()
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -187,6 +192,118 @@ function renderLines(lines: Line[]): void {
   applyFold()
 }
 
+// ---------- read it in your language ----------
+// The words stay as spoken; a reader picks a language and the lines are
+// translated in place, a batch at a time from the top, so the page fills in
+// while they read. Answers to questions come in that language too.
+const LANGS = [
+  'English',
+  'Shona',
+  'Ndebele',
+  'Swahili',
+  'French',
+  'Portuguese',
+  'Spanish',
+  'German',
+  'Arabic',
+  'Chinese',
+  'Hindi'
+]
+let readLang = 'English'
+const originals = new Map<HTMLElement, string>()
+let translateRun = 0
+
+async function translateBatch(texts: string[], lang: string): Promise<string[] | null> {
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keys: {},
+        system: `You translate into ${lang}. The user sends numbered lines. Reply with ONLY the translated lines, one per line, keeping the same numbers in the form "N: text". No notes, no extra lines.`,
+        messages: [{ role: 'user', content: texts.map((t, i) => `${i + 1}: ${t}`).join('\n') }],
+        maxTokens: 2000
+      })
+    })
+    if (!r.ok) return null
+    const j = await r.json()
+    const out: string[] = new Array(texts.length).fill('')
+    for (const line of String(j.text || '').split('\n')) {
+      const m = /^\s*(\d+)\s*[:.)-]\s*(.*)$/.exec(line)
+      if (!m) continue
+      const i = Number(m[1]) - 1
+      if (i >= 0 && i < texts.length) out[i] = m[2].trim()
+    }
+    return out
+  } catch {
+    return null
+  }
+}
+
+async function applyLanguage(lang: string): Promise<void> {
+  readLang = lang
+  try {
+    localStorage.setItem('sitka-replay-lang', lang)
+  } catch {
+    /* private mode */
+  }
+  const run = ++translateRun
+  const wrap = el('rsegs')
+  const nodes = segEls.map((s) => s.node.children[1] as HTMLElement)
+  const summary = el('rsummary')
+  for (const n of [...nodes, summary]) if (!originals.has(n)) originals.set(n, n.textContent || '')
+  if (lang === 'English') {
+    for (const n of [...nodes, summary]) n.textContent = originals.get(n) ?? n.textContent
+    wrap.classList.remove('translating')
+    return
+  }
+  wrap.classList.add('translating')
+  // the summary first: it is what most people read
+  if (!summary.dataset.pending && (originals.get(summary) || '').trim()) {
+    const s = await translateBatch([originals.get(summary) || ''], lang)
+    if (run !== translateRun) return
+    if (s && s[0]) summary.textContent = s[0]
+  }
+  const BATCH = 40
+  for (let i = 0; i < nodes.length; i += BATCH) {
+    if (run !== translateRun) return
+    const slice = nodes.slice(i, i + BATCH)
+    const out = await translateBatch(
+      slice.map((n) => originals.get(n) || ''),
+      lang
+    )
+    if (run !== translateRun) return
+    if (!out) break
+    slice.forEach((n, k) => {
+      if (out[k]) n.textContent = out[k]
+    })
+  }
+  wrap.classList.remove('translating')
+}
+
+function mountLangPicker(): void {
+  const sel = el('rlang') as HTMLSelectElement
+  if (!sel || segEls.length === 0) return
+  sel.innerHTML = LANGS.map((l) => `<option>${l}</option>`).join('')
+  let saved = ''
+  try {
+    saved = localStorage.getItem('sitka-replay-lang') || ''
+    // someone who attended chose a language on the event page: start there
+    if (!saved) {
+      const att = JSON.parse(localStorage.getItem('sitka-att-' + pageId) || 'null') as {
+        lang?: string
+      } | null
+      if (att?.lang) saved = att.lang
+    }
+  } catch {
+    /* ignore */
+  }
+  if (saved && LANGS.includes(saved)) sel.value = saved
+  el('rlangwrap').hidden = false
+  sel.onchange = () => void applyLanguage(sel.value)
+  if (sel.value && sel.value !== 'English') void applyLanguage(sel.value)
+}
+
 function renderHighlights(hl: { time: string; label: string }[] | undefined): void {
   if (!hl || hl.length === 0) return
   el('momtitle').style.display = 'block'
@@ -202,17 +319,23 @@ function renderHighlights(hl: { time: string; label: string }[] | undefined): vo
 }
 
 function wireAsk(title: string, transcript: string, materials: string, kindWord: string): void {
-  const askSystem = [
-    `You are Sitka, answering questions about a recorded ${kindWord}: "${title}".`,
-    'Ground every answer in the transcript (and materials) below; if something was not covered, say so plainly.',
-    'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the transcript — plain ASCII double square brackets. These become tap-to-jump links.',
-    'If asked for your view, give a reasoned one based on what was said, and make clear it is your reading rather than something the speaker stated.',
-    'Keep answers short and direct by default; use markdown structure only when it genuinely helps.',
-    materials ? `\nMaterials:\n${materials}` : '',
-    `\nTranscript:\n${transcript || '(no transcript captured)'}`
-  ]
-    .filter(Boolean)
-    .join('\n')
+  // Built per question: the reader may change their language at any time.
+  const askSystem = (): string =>
+    [
+      `You are Sitka, answering questions about a recorded ${kindWord}: "${title}".`,
+      'Ground every answer in the transcript (and materials) below; if something was not covered, say so plainly.',
+      'Talking to the reader, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said". The word transcript is for you, not for them.',
+      'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the transcript — plain ASCII double square brackets. These become tap-to-jump links.',
+      'If asked for your view, give a reasoned one based on what was said, and make clear it is your reading rather than something the speaker stated.',
+      'Keep answers short and direct by default; use markdown structure only when it genuinely helps.',
+      readLang !== 'English'
+        ? `Always answer in ${readLang}, whatever language the session or the question is in, unless the reader asks for another language.`
+        : '',
+      materials ? `\nMaterials:\n${materials}` : '',
+      `\nTranscript:\n${transcript || '(no transcript captured)'}`
+    ]
+      .filter(Boolean)
+      .join('\n')
   const history: { role: 'user' | 'assistant'; content: string }[] = []
   let asking = false
 
@@ -236,7 +359,7 @@ function wireAsk(title: string, transcript: string, materials: string, kindWord:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           keys: {},
-          system: askSystem,
+          system: askSystem(),
           messages: [...history.slice(-8), { role: 'user', content: q }],
           maxTokens: 1000
         })
@@ -287,6 +410,7 @@ function wireAsk(title: string, transcript: string, materials: string, kindWord:
 let playerReady = false
 let loadingParts = false
 let pendingSeek: number | null = null
+let knownDurationMs = 0
 
 function applySummary(r: Replay): void {
   const s = el('rsummary')
@@ -347,7 +471,12 @@ async function loadParts(owner: string, sessionId: string): Promise<void> {
       blobs.push(blob)
     }
     gate.hidden = true
-    v.src = URL.createObjectURL(new Blob(blobs, { type: 'video/webm' }))
+    // the header gets its length written in, so the timeline shows at once
+    const whole = await fixWebmDuration(
+      new Blob(blobs, { type: 'video/webm' }),
+      knownDurationMs
+    ).catch(() => new Blob(blobs, { type: 'video/webm' }))
+    v.src = URL.createObjectURL(whole)
     armVideo(v)
   } catch {
     txt.textContent = 'The recording could not be loaded. The host may have removed it.'
@@ -368,6 +497,7 @@ function setupPlayer(
   const note = el('recnote')
   const v = el('rvideo') as HTMLVideoElement
   const mins = r.durationMs ? ` · ${fmtDuration(r.durationMs)}` : ''
+  if (r.durationMs) knownDurationMs = r.durationMs
   if (r.video === true) {
     playerReady = true
     hasVideo = true
@@ -423,6 +553,7 @@ async function bootEvent(): Promise<boolean> {
     .order('idx', { ascending: true })
   const rows = (segs ?? []) as SegRow[]
   renderLines(rows.map((s) => ({ sec: Number(s.start_sec), label: s.label, text: s.text })))
+  mountLangPicker()
 
   // The recording loads only when asked for: one tap on the player.
   const v = el('rvideo') as HTMLVideoElement
@@ -496,6 +627,7 @@ async function bootRecap(): Promise<boolean> {
     text: s.text
   }))
   renderLines(lines)
+  mountLangPicker()
   el('rnotes').addEventListener('click', (e) => {
     const chip = (e.target as HTMLElement).closest?.('.tchip') as HTMLElement | null
     if (!chip) return

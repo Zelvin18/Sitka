@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Sitka — Replay</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -37,6 +37,9 @@ h1{font-size:clamp(22px,4vw,30px);letter-spacing:-.02em;margin-bottom:4px}
 .playgate.failed{color:#bbb;cursor:default}
 .recnote{border:1px dashed var(--border);border-radius:12px;padding:12px 14px;color:var(--t3);font-size:13.5px;margin-bottom:22px}
 .recnote[hidden]{display:none}
+.doccard{border:1px solid var(--border);border-radius:14px;background:var(--bg);margin:10px 0;overflow:hidden}
+.doccard-title{font-weight:650;font-size:13.5px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--soft)}
+.doccard-body{padding:12px 14px;font-size:13.5px;color:var(--t2)}
 .summary.pending{color:var(--t3)}
 li ul{margin:4px 0 2px;padding-left:18px}
 .summary{color:var(--t2);font-size:15px;margin-bottom:22px}
@@ -56,6 +59,13 @@ li ul{margin:4px 0 2px;padding-left:18px}
 .tfold{display:block;margin:12px auto 0;padding:9px 18px;border:1px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s ease}
 .tfold:hover{background:var(--soft)}
 .tfold[hidden]{display:none}
+.secrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.secrow .sec{margin-bottom:10px}
+.rlangwrap{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--t3);margin-bottom:8px}
+.rlangwrap[hidden]{display:none}
+.rlang{font:inherit;font-size:13px;color:var(--text);background:var(--soft);border:1px solid var(--border);border-radius:10px;padding:6px 10px}
+#rsegs.translating .segtext{opacity:.85}
+#rsegs.translating::before{content:'Translating…';display:block;font-size:12px;color:var(--t3);padding:0 10px 6px}
 .notes{border:1px solid var(--border);border-radius:14px;padding:16px 18px;background:var(--soft)}
 .notes .md,.notes p,.notes li{color:var(--text)}
 .ts{font-family:ui-monospace,monospace;font-size:11px;color:var(--t3);padding-top:4px;min-width:44px;text-align:right;flex-shrink:0}
@@ -135,7 +145,13 @@ footer{border-top:1px solid var(--border);margin-top:50px;padding-top:22px;displ
     </div>
     <div class="sec" id="momtitle" style="display:none">Key moments — tap to jump</div>
     <div class="chips" id="rchips"></div>
-    <div class="sec">Transcript — tap any line to jump</div>
+    <div class="secrow">
+      <div class="sec">Transcript — tap any line to jump</div>
+      <label class="rlangwrap" id="rlangwrap" hidden>
+        <span>Read in</span>
+        <select id="rlang" class="rlang"></select>
+      </label>
+    </div>
     <input class="search" id="rsearch" placeholder="Search the transcript…">
     <div id="rsegs"></div>
     <footer>

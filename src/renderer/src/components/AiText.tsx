@@ -3,6 +3,86 @@ import { normalizeCitations, parseTimestamp } from '../lib/format'
 import { IconPlay } from '../lib/icons'
 import { renderMath } from '../lib/math'
 import { Chart, Flow, parseChart, parseFlow } from '../lib/figures'
+import { IconDoc } from '../lib/icons'
+import { mdToHtml, wordDocument } from '../lib/mdToHtml'
+import { markdownToPdf } from '../lib/pdf'
+
+/**
+ * A document Sitka wrote in the conversation (a ```document block): shown as
+ * a card with the title, the body, and the ways to take it away.
+ */
+function DocCard({
+  text,
+  onSeek,
+  resolveLabel
+}: {
+  text: string
+  onSeek: Props['onSeek']
+  resolveLabel?: Props['resolveLabel']
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+  const lines = text.split('\n')
+  const first = lines[0] ?? ''
+  const titled = /^\s*title\s*:/i.test(first)
+  const title = titled ? first.replace(/^\s*title\s*:\s*/i, '').trim() || 'Document' : 'Document'
+  const body = (titled ? lines.slice(1) : lines).join('\n').trim()
+  const fileName = (title.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'document') as string
+  const save = (name: string, bytes: Uint8Array): void => {
+    const copy = new ArrayBuffer(bytes.byteLength)
+    new Uint8Array(copy).set(bytes)
+    void window.sitka.saveBinaryFile(name, copy)
+  }
+  return (
+    <div className="doc-card">
+      <div className="doc-card-head">
+        <span className="doc-icon">
+          <IconDoc size={15} strokeWidth={1.8} />
+        </span>
+        <span className="doc-card-title" title={title}>
+          {title}
+        </span>
+        <span className="doc-card-actions">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              void navigator.clipboard.writeText(`# ${title}\n\n${body}`).then(() => {
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1600)
+              })
+            }}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Save as a Word document"
+            onClick={() =>
+              save(`${fileName}.doc`, new TextEncoder().encode(wordDocument(title, mdToHtml(body))))
+            }
+          >
+            Word
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Save as a PDF"
+            onClick={() => save(`${fileName}.pdf`, markdownToPdf(title, body))}
+          >
+            PDF
+          </button>
+        </span>
+      </div>
+      <div className={`doc-card-body${open ? ' open' : ''}`}>
+        <AiText text={body} onSeek={onSeek} resolveLabel={resolveLabel} />
+      </div>
+      {body.length > 1200 && (
+        <button className="doc-card-more" onClick={() => setOpen(!open)}>
+          {open ? 'Show less' : 'Show the whole document'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   text: string
@@ -167,7 +247,11 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
       const text = body.join('\n')
       const chart = lang === 'chart' ? parseChart(text) : null
       const flow = lang === 'flow' || lang === 'diagram' ? parseFlow(text) : null
-      if (chart) blocks.push(<Chart key={`f${key++}`} spec={chart} />)
+      if (lang === 'document' || lang === 'doc') {
+        blocks.push(
+          <DocCard key={`f${key++}`} text={text} onSeek={onSeek} resolveLabel={resolveLabel} />
+        )
+      } else if (chart) blocks.push(<Chart key={`f${key++}`} spec={chart} />)
       else if (flow) blocks.push(<Flow key={`f${key++}`} spec={flow} />)
       else
         blocks.push(

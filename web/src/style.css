@@ -385,6 +385,10 @@ header .brand,header .evtitle{max-width:none;margin:0}
 /* sub-points nest under their item instead of running on as siblings */
 li ul{margin:4px 0 2px;padding-left:18px}
 
+/* phones: no rubber-band, and the frame does not drift when the keyboard opens */
+html,body{overscroll-behavior:none}
+@media(max-width:899px){body{position:fixed;inset:0;width:100%;height:100dvh;overflow:hidden}}
+
 /* ---- the end of the event: a card with the recap one tap away ---- */
 .endcard{border:1px solid var(--border);border-radius:16px;padding:20px 18px 18px;margin:12px 0 16px;background:var(--bg);text-align:center;animation:fadeup .5s ease}
 .endcard .mark{width:26px;height:26px;display:block;margin:0 auto 8px}

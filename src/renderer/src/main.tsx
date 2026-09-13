@@ -4,8 +4,11 @@ import App from './App'
 import './styles.css'
 import { installBrowserMockIfNeeded } from './lib/browserMock'
 import { applyCachedAppearance } from './lib/prefs'
+import { installFocusGuard } from '@shared/focusGuard'
 
 applyCachedAppearance()
+// Phones: the keyboard appears only when a field is tapped, never on its own.
+installFocusGuard()
 
 function render(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(

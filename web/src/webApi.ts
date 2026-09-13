@@ -24,6 +24,7 @@ import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '../../src/share
 import { ON_SCREEN_PREFIX } from '../../src/shared/types'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
+import { fixWebmDuration } from '../../src/shared/webmDuration'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -688,6 +689,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
       '- Do not end answers with offers like "let me know if you want more" — just answer.',
+      '- Talking to the user, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said", not "the transcript shows" or "according to the transcript". The word transcript is for you, not for them.',
+      '- When the user asks you to write, draft, design or develop a document — a report, letter, plan, memo, proposal, agenda, study notes, one-pager, a set of slides in outline — produce the whole document inside one fenced block that starts with ```document, whose first line is "Title: <the title>" and whose body is markdown (headings, paragraphs, lists, tables). The app shows it as a document the user can open, copy and download. Keep any words outside the block to one short sentence.',
       '',
       'Transcript of the session (each line is prefixed with its start time):'
     ].join('\n')
@@ -2012,6 +2015,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             out.set(new Uint8Array(b), at)
             at += b.byteLength
           }
+          // The stitched file has no length in its header, which hides the
+          // timeline on phones. Write the session's length in.
+          const durationMs = cache.get(id)?.meta.durationMs ?? (await loadSession(id))?.meta.durationMs
+          if (file === 'video' && durationMs) {
+            try {
+              const fixed = await fixWebmDuration(new Blob([out], { type: 'video/webm' }), durationMs)
+              return new Uint8Array(await fixed.arrayBuffer())
+            } catch {
+              /* the plain file still plays */
+            }
+          }
           return out
         }
       }
@@ -2051,6 +2065,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const d = await loadSession(id)
       if (!d) return null
       d.meta.title = title
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+      return d.meta
+    },
+
+    setSessionBanner: async (id, banner) => {
+      const d = await loadSession(id)
+      if (!d) return null
+      if (banner && banner.length < 600_000) d.meta.banner = banner
+      else delete d.meta.banner
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
       return d.meta

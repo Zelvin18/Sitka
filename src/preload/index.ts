@@ -127,6 +127,9 @@ const api = {
     ipcRenderer.invoke('session:prepare', id),
   renameSession: (id: string, title: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:rename', id, title),
+  /** the picture shown in place of video for an audio session (a JPEG data URL), or null to clear it */
+  setSessionBanner: (id: string, banner: string | null): Promise<SessionMeta | null> =>
+    ipcRenderer.invoke('session:banner', id, banner),
   exportSession: (
     id: string,
     kind: 'transcript' | 'notes' | 'study' | 'overview'

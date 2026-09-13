@@ -58,6 +58,8 @@ const NOTES_INTERVAL_MS = 75000
 const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
 /** Phones cannot share their screen (no getDisplayMedia); their camera is the eye instead. */
 const CAN_SHARE_SCREEN = typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+// eslint-disable-next-line import/first
+import { shrinkImageFile } from '../lib/attach'
 const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -192,6 +194,10 @@ export default function LiveSession({
   }, [])
   const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
   const [audioOnlyRec, setAudioOnlyRec] = useState(false)
+  /** optional picture for an audio session, shown where the video would be */
+  const [banner, setBanner] = useState<string | null>(null)
+  const bannerRef = useRef<string | null>(null)
+  bannerRef.current = banner
   // ---- materials: slides/notes shared before the session exists (pending) and after ----
   const [pendingMats, setPendingMats] = useState<(SessionMaterial & { text: string })[]>([])
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
@@ -897,6 +903,35 @@ export default function LiveSession({
     }
   }, [])
 
+  // While recording, keep the phone's screen awake. A screen that switches
+  // off slows the page down and can pause the microphone; the attendee page
+  // does the same while an event is live.
+  useEffect(() => {
+    if (phase !== 'recording') return undefined
+    const nav = navigator as Navigator & {
+      wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> }
+    }
+    if (!nav.wakeLock) return undefined
+    let lock: { release: () => Promise<void> } | null = null
+    let gone = false
+    const grab = async (): Promise<void> => {
+      if (gone || document.visibilityState !== 'visible') return
+      try {
+        lock = await nav.wakeLock!.request('screen')
+      } catch {
+        /* not granted: nothing else to do */
+      }
+    }
+    void grab()
+    const onVis = (): void => void grab()
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      gone = true
+      document.removeEventListener('visibilitychange', onVis)
+      void lock?.release().catch(() => undefined)
+    }
+  }, [phase])
+
   const enqueueAppend = useCallback((blob: Blob): void => {
     const id = sessionIdRef.current
     if (!id) return
@@ -929,24 +964,40 @@ export default function LiveSession({
     const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
     const chunkStart = Date.now()
     sttChunkStartRef.current = chunkStart
+    // The recorder's own timeslice drives the rotation. A JavaScript timer is
+    // slowed to once a minute when a phone's screen is off, which left the
+    // recording running with nothing being transcribed; the media pipeline
+    // keeps its own clock. Each piece is a complete file: the timeslice part
+    // (with the header) plus the remainder delivered on stop.
+    const parts: Blob[] = []
+    let rotating = false
+    let flushed = false
+    const flush = (): void => {
+      if (flushed || parts.length === 0) return
+      flushed = true
+      void transcribeBlob(
+        new Blob(parts, { type: 'audio/webm' }),
+        (chunkStart - sessionStartRef.current) / 1000
+      )
+    }
     rec.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        void transcribeBlob(e.data, (chunkStart - sessionStartRef.current) / 1000)
+      if (e.data && e.data.size > 0) parts.push(e.data)
+      if (rec.state === 'recording') {
+        if (rotating) return
+        rotating = true
+        rec.onstop = () => {
+          flush()
+          if (!stoppingRef.current) startSttRecorder()
+        }
+        rec.stop()
+      } else if (!rotating) {
+        // stopped from outside (the end of the session): the last words count too
+        flush()
       }
     }
-    rec.start()
+    rec.start(STT_CHUNK_MS)
     sttRecorderRef.current = rec
   }, [transcribeBlob])
-
-  const rotateStt = useCallback((): void => {
-    const rec = sttRecorderRef.current
-    if (rec && rec.state !== 'inactive') {
-      rec.onstop = () => {
-        if (!stoppingRef.current) startSttRecorder()
-      }
-      rec.stop()
-    }
-  }, [startSttRecorder])
 
   // ---- start recording ----
   const start = useCallback(async (): Promise<void> => {
@@ -1124,7 +1175,6 @@ export default function LiveSession({
       if (audioInputs > 0 && hasSttKey) {
         sttStreamRef.current = dest.stream
         startSttRecorder()
-        sttTimerRef.current = setInterval(rotateStt, STT_CHUNK_MS)
       }
 
       clockTimerRef.current = setInterval(() => {
@@ -1141,6 +1191,9 @@ export default function LiveSession({
       setPhase('recording')
       // Only now is there a recording: the app's timer and the sidebar dot start here.
       onSessionCreated(meta)
+      if (captureMode === 'audio' && bannerRef.current) {
+        void window.sitka.setSessionBanner(meta.id, bannerRef.current)
+      }
 
       // Hosted events broadcast immediately — the QR is the first thing shown.
       if (hosting) {
@@ -1561,6 +1614,50 @@ export default function LiveSession({
                       <span>{micPreview ? 'Microphone ready — say something' : 'Waiting for microphone access…'}</span>
                     </div>
                     <AudioLevel stream={micPreview} />
+                    {!CAN_SHARE_SCREEN && (
+                      <div className="mic-card-tip">
+                        On a call or in a meeting on this phone? Put it on speaker so Sitka hears both
+                        sides. Keep Sitka on screen, or open it in split screen with the other app, so
+                        the phone keeps recording.
+                      </div>
+                    )}
+                    <div className="banner-pick">
+                      {banner ? (
+                        <>
+                          <img src={banner} alt="" className="banner-pick-img" />
+                          <div className="banner-pick-text">
+                            <div className="banner-pick-title">Banner</div>
+                            <div className="banner-pick-sub">Shown where the video would be.</div>
+                          </div>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="banner-pick-text">
+                            <div className="banner-pick-title">Banner (optional)</div>
+                            <div className="banner-pick-sub">
+                              A picture shown where the video would be: a poster, a logo, the speaker.
+                            </div>
+                          </div>
+                          <label className="btn btn-ghost btn-sm">
+                            Add picture
+                            <input
+                              type="file"
+                              accept="image/*"
+                              hidden
+                              onChange={(e) => {
+                                const f = e.target.files?.[0]
+                                if (!f) return
+                                void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
+                                e.target.value = ''
+                              }}
+                            />
+                          </label>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ) : captureMode === 'camera' ? (
                   <button
@@ -1803,7 +1900,8 @@ export default function LiveSession({
             {videoHidden ? 'Show video' : 'Hide'}
           </button>
           {audioOnlyRec ? (
-            <div className="audio-stage">
+            <div className={`audio-stage${banner ? ' with-banner' : ''}`}>
+              {banner && <img className="audio-banner" src={banner} alt="" />}
               <AudioLevel stream={micStreamRef.current} bars={44} tall />
               <div className="audio-stage-label">
                 <Mark size={14} live /> Audio session · listening

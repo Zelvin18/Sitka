@@ -1,6 +1,7 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import './style.css'
 import { mountAttendTour } from './attendTour'
+import { installFocusGuard } from '../../src/shared/focusGuard'
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -269,6 +270,9 @@ document.addEventListener('click', (e) => {
   const t = (e.target as HTMLElement).closest?.('.tchip') as HTMLElement | null
   if (t) jumpToTime(parseFloat(t.dataset.s || '0'))
 })
+
+// Phones: the keyboard appears only when a field is tapped, never on its own.
+installFocusGuard()
 
 // ---------- voice (Listen) ----------
 let voiceList: SpeechSynthesisVoice[] = []
@@ -1350,20 +1354,9 @@ const myChat: { role: string; content: string }[] = []
 }
 
 // ---------- join + realtime ----------
-const personas = ['Student', 'Business owner', 'Investor', 'Developer', 'Expert', 'Just curious']
-const pwrap = el('personas')
-personas.forEach((p) => {
-  const b = document.createElement('button')
-  b.className = 'chip'
-  b.textContent = p
-  b.onclick = () => {
-    persona = p
-    Array.from(pwrap.children).forEach((c) => c.classList.remove('sel'))
-    b.classList.add('sel')
-  }
-  pwrap.appendChild(b)
-})
-
+// Joining asks for a language and, if they like, a name. The "I am a…" chips
+// were more to read than they were worth on a phone; the persona stays in the
+// data model as an optional field for hosts who ask for it later.
 const storeKey = 'sitka-att-' + eventId
 async function join(newJoin: boolean): Promise<void> {
   if (newJoin) {

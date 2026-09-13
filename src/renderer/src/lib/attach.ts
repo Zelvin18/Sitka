@@ -4,8 +4,13 @@ const MAX_IMAGE_SIDE = 1600
 
 /** A picture, downsized so it travels quickly and still reads clearly. */
 async function shrinkImage(file: File): Promise<string> {
+  return shrinkImageFile(file, MAX_IMAGE_SIDE, 0.85)
+}
+
+/** Downsize any image file to a JPEG data URL no wider or taller than `maxSide`. */
+export async function shrinkImageFile(file: File, maxSide: number, quality: number): Promise<string> {
   const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(bitmap.width, bitmap.height))
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
   const w = Math.max(1, Math.round(bitmap.width * scale))
   const h = Math.max(1, Math.round(bitmap.height * scale))
   const canvas = document.createElement('canvas')
@@ -15,7 +20,7 @@ async function shrinkImage(file: File): Promise<string> {
   if (!ctx) throw new Error('Could not read the image.')
   ctx.drawImage(bitmap, 0, 0, w, h)
   bitmap.close()
-  return canvas.toDataURL('image/jpeg', 0.85)
+  return canvas.toDataURL('image/jpeg', quality)
 }
 
 /**

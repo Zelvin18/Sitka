@@ -1146,6 +1146,15 @@ function registerIpc(): void {
     return meta
   })
 
+  ipcMain.handle('session:banner', (_e, id: string, banner: string | null) => {
+    const meta = store.getMeta(id)
+    if (!meta) return null
+    if (banner && banner.length < 600_000) meta.banner = banner
+    else delete meta.banner
+    store.saveMeta(meta)
+    mainWindow?.webContents.send('session:updated', meta)
+    return meta
+  })
   ipcMain.handle('session:rename', (_e, id: string, title: string) => {
     const meta = store.getMeta(id)
     if (!meta) return null
