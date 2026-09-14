@@ -663,5 +663,10 @@ async function boot(): Promise<void> {
   }
   el('loading').style.display = 'none'
   el('main').style.display = 'block'
+  // for the owners' dashboard: a recap was opened, and which kind
+  void sb
+    .from('usage_events')
+    .insert({ name: 'recap_open', props: { kind: hasVideo ? 'event' : 'recap' }, platform: 'recap', ua: navigator.userAgent.slice(0, 200) })
+    .then(() => undefined, () => undefined)
 }
 void boot()

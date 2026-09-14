@@ -418,6 +418,13 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
               Privacy &amp; Terms
             </a>
           </Row>
+          {isWeb && (window as unknown as { sitkaIsAdmin?: boolean }).sitkaIsAdmin && (
+            <Row title="Operations" desc="How Sitka is doing across everyone: growth, usage, what is live, what broke. For the team.">
+              <a className="btn btn-sm" href="/admin">
+                Open the dashboard
+              </a>
+            </Row>
+          )}
         </div>
       </div>
     </div>

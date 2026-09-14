@@ -27,7 +27,8 @@ export default defineConfig({
         host: resolve(__dirname, 'host.html'),
         legal: resolve(__dirname, 'legal.html'),
         replay: resolve(__dirname, 'replay.html'),
-        stage: resolve(__dirname, 'stage.html')
+        stage: resolve(__dirname, 'stage.html'),
+        admin: resolve(__dirname, 'admin.html')
       }
     }
   }

@@ -12,6 +12,10 @@ import { ATTACH_ACCEPT, MAX_ATTACHMENTS, attachedLine, foldAttachments } from '@
 import type { ChatAttachment } from '@shared/types'
 import { fileToAttachment } from '../lib/attach'
 import { IconPlus as IconAttach } from '../lib/icons'
+
+/** A named usage event for the owners' dashboard; a no-op on the desktop. */
+const trackUse = (name: string, props: Record<string, unknown> = {}): void =>
+  (window as unknown as { sitkaTrack?: (n: string, p: Record<string, unknown>) => void }).sitkaTrack?.(name, props)
 import { speakText, type Speaker } from '../lib/speech'
 import { IconChevron, IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
 import { cleanForSpeech, copyRich } from '../lib/clipboard'
@@ -198,7 +202,10 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       setAttachBusy(f.name)
       const res = await fileToAttachment(f)
       if ('error' in res) setError(res.error)
-      else setAttachments((prev) => (prev.length < MAX_ATTACHMENTS ? [...prev, res] : prev))
+      else {
+        trackUse('attach', { kind: res.kind })
+        setAttachments((prev) => (prev.length < MAX_ATTACHMENTS ? [...prev, res] : prev))
+      }
     }
     setAttachBusy(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -241,6 +248,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       setSpeakingIdx(index)
       setSpeakPrep(true)
       setError(null)
+      trackUse('listen', { chars: content.length })
       speakerRef.current = speakText(
         cleanForSpeech(content),
         lang,
@@ -249,6 +257,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           setSpeakPrep(false)
           setSpeakingIdx((cur) => (cur === index ? null : cur))
           if (!ok) {
+            trackUse('voice_error', {})
             setError(
               'The voice could not play. Check the device is not muted, then tap the speaker again.'
             )

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Sitka · Operations</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#141416">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a;--ink:#1a1a1c;--ink-soft:rgba(26,26,28,.08);--ink-mid:rgba(26,26,28,.28)}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--ink:#ededf0;--ink-soft:rgba(237,237,240,.08);--ink-mid:rgba(237,237,240,.3)}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
+a{color:inherit}
+button{font:inherit;color:inherit}
+.hidden{display:none!important}
+.mark{display:block;flex:none}
+.mark-live circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
+
+/* ---- frame ---- */
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:56px;padding:0 22px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:15px;text-decoration:none}
+.brand .mark{width:18px;height:18px}
+.tag{font-size:10px;font-weight:800;letter-spacing:.09em;color:var(--t3);border:1px solid var(--border);border-radius:6px;padding:2px 7px;text-transform:uppercase}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.range{display:inline-flex;background:var(--soft);border:1px solid var(--border);border-radius:11px;padding:3px;gap:2px}
+.range button{border:0;background:transparent;border-radius:8px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--t2);cursor:pointer}
+.range button.on{background:var(--bg);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.updated{font-size:12px;color:var(--t3);white-space:nowrap}
+.refresh{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2)}
+.refresh:hover{color:var(--text)}
+.refresh.busy svg{animation:orbit 1.2s linear infinite}
+
+.shell{display:grid;grid-template-columns:210px 1fr;max-width:1320px;margin:0 auto}
+.rail{position:sticky;top:56px;align-self:start;height:calc(100vh - 56px);padding:22px 14px;border-right:1px solid var(--border)}
+.rail a{display:block;padding:8px 12px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--t2);text-decoration:none}
+.rail a.on,.rail a:hover{background:var(--soft);color:var(--text)}
+.rail .rail-foot{position:absolute;bottom:22px;left:14px;right:14px;font-size:11.5px;color:var(--t3);line-height:1.5}
+.content{padding:26px 28px 80px;min-width:0}
+section{margin-bottom:40px;scroll-margin-top:72px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+.sec-head h2{font-size:17px;letter-spacing:-.015em;margin:0}
+.sec-head .sub{font-size:12.5px;color:var(--t3)}
+
+/* ---- cards ---- */
+.grid{display:grid;gap:12px}
+.g6{grid-template-columns:repeat(6,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g21{grid-template-columns:2fr 1fr}
+.card{border:1px solid var(--border);border-radius:16px;background:var(--bg);padding:16px 18px;min-width:0}
+.card.soft{background:var(--soft)}
+.card h3{margin:0 0 10px;font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--t3)}
+.card .note{font-size:12.5px;color:var(--t3);margin-top:8px}
+
+/* KPI tiles */
+.kpi{position:relative;padding:14px 16px 12px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.kpi .k-label{font-size:12px;font-weight:600;color:var(--t2)}
+.kpi .k-value{font-size:28px;font-weight:750;letter-spacing:-.03em;line-height:1.15;font-variant-numeric:tabular-nums}
+.kpi .k-delta{font-size:11.5px;color:var(--t3);display:flex;align-items:center;gap:5px;margin-top:2px}
+.kpi .k-delta b{color:var(--text);font-weight:650}
+.kpi .k-delta.down b{color:var(--danger)}
+.kpi .k-spark{position:absolute;right:12px;bottom:10px;width:76px;height:26px;opacity:.9}
+.kpi .k-spark polyline{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.kpi .k-spark polygon{fill:var(--ink-soft)}
+
+/* charts */
+.chart{position:relative;width:100%}
+.chart svg{width:100%;height:auto;display:block;overflow:visible}
+.chart .grid-line{stroke:var(--border);stroke-width:1}
+.chart .axis{fill:var(--t3);font-size:10.5px}
+.chart .area{fill:var(--ink-soft)}
+.chart .line{fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round}
+.chart .line.second{stroke:var(--ink-mid);stroke-dasharray:3 3;stroke-width:1.5}
+.chart .bar{fill:var(--ink-mid)}
+.chart .hover-line{stroke:var(--t3);stroke-width:1;stroke-dasharray:2 3;opacity:0}
+.chart .hover-dot{fill:var(--ink);opacity:0}
+.chart .hit{fill:transparent}
+.tip{position:absolute;pointer-events:none;background:var(--text);color:var(--bg);font-size:12px;border-radius:9px;padding:6px 9px;white-space:nowrap;transform:translate(-50%,-115%);opacity:0;transition:opacity .12s ease;z-index:5}
+.tip b{font-weight:700}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--t2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:0;border-top:2px solid var(--ink);vertical-align:middle;margin-right:6px;border-radius:2px}
+.legend i.second{border-top:2px dashed var(--ink-mid)}
+.legend i.bar{width:10px;height:10px;border:0;background:var(--ink-mid);border-radius:2px}
+
+/* horizontal bars */
+.hbars{display:flex;flex-direction:column;gap:8px}
+.hbar{display:grid;grid-template-columns:120px 1fr 44px;align-items:center;gap:10px;font-size:12.5px}
+.hbar .n{color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .t{height:8px;border-radius:4px;background:var(--softer);overflow:hidden}
+.hbar .t i{display:block;height:100%;background:var(--ink);border-radius:4px;transition:width .5s ease}
+.hbar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+.hbar .v small{color:var(--t3);font-weight:500}
+
+/* split bar */
+.split{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--softer);margin:8px 0 10px}
+.split i{display:block;height:100%}
+.split-legend{display:flex;gap:16px;font-size:12.5px;color:var(--t2);flex-wrap:wrap}
+.split-legend b{color:var(--text);font-weight:650}
+.split-legend em{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;font-style:normal}
+
+/* cohorts */
+.cohort{width:100%;border-collapse:separate;border-spacing:3px;font-size:12px;font-variant-numeric:tabular-nums}
+.cohort th{font-weight:600;color:var(--t3);text-align:left;padding:2px 6px;font-size:11px}
+.cohort th.c{text-align:center}
+.cohort td{padding:7px 6px;border-radius:7px;text-align:center;color:var(--text);background:var(--soft)}
+.cohort td.w{text-align:left;font-weight:600;color:var(--t2);background:transparent;white-space:nowrap}
+.cohort td.s{color:var(--t3);background:transparent}
+.cohort td.empty{background:transparent;color:var(--t3)}
+
+/* live */
+.live-row{display:flex;gap:12px;flex-wrap:wrap}
+.live-card{flex:1 1 260px;border:1px solid var(--border);border-radius:14px;padding:14px 16px;background:var(--bg)}
+.live-card .t{font-weight:650;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 0 rgba(200,68,58,.5);animation:pulse 1.6s ease-out infinite;flex:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(200,68,58,.45)}100%{box-shadow:0 0 0 9px rgba(200,68,58,0)}}
+.live-card .m{font-size:12.5px;color:var(--t2);display:flex;gap:14px;flex-wrap:wrap}
+.live-card .m b{color:var(--text);font-weight:650}
+.calm{border:1px dashed var(--border);border-radius:14px;padding:22px;text-align:center;color:var(--t3);font-size:13px}
+
+/* lists and tables */
+.errs{display:flex;flex-direction:column;gap:0}
+.err{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);font-size:12.5px}
+.err:first-child{border-top:0}
+.err .when{color:var(--t3);white-space:nowrap}
+.err .msg{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-word}
+.err .meta{color:var(--t3);margin-top:2px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t3);padding:8px 10px;border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;font-variant-numeric:tabular-nums}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td.num,.tbl th.num{text-align:right}
+.tbl .who{display:flex;align-items:center;gap:9px;min-width:0}
+.tbl .av{width:26px;height:26px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
+.tbl .em{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.tbl .chip{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--t3);border:1px solid var(--border);border-radius:5px;padding:1px 5px;margin-left:6px}
+.search{width:260px;max-width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--soft);color:var(--text);font:inherit;font-size:13px}
+.search:focus{outline:none;border-color:var(--text)}
+
+/* health */
+.health{display:flex;flex-direction:column;gap:10px}
+.hrow{display:flex;align-items:center;gap:10px;font-size:13px}
+.hrow .dot{width:8px;height:8px;border-radius:50%;background:var(--t3);flex:none}
+.hrow .dot.ok{background:var(--text)}
+.hrow .dot.bad{background:var(--danger)}
+.hrow .lbl{flex:1}
+.hrow .val{color:var(--t3);font-size:12.5px}
+
+/* gate states */
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.gate-card{max-width:420px;width:100%;border:1px solid var(--border);border-radius:18px;padding:30px 28px;text-align:center;background:var(--soft)}
+.gate-card h1{font-size:19px;margin:12px 0 6px;letter-spacing:-.015em}
+.gate-card p{color:var(--t2);margin:0 0 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--text);background:var(--text);color:var(--bg);border-radius:11px;padding:10px 16px;font-weight:650;text-decoration:none;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--text)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--t2);padding:30vh 0}
+.loader .mark{width:34px;height:34px}
+
+@media(max-width:1100px){.g6{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:sticky;top:56px;height:auto;border-right:0;border-bottom:1px solid var(--border);padding:8px 12px;display:flex;gap:4px;overflow-x:auto;background:var(--bg);z-index:10}
+  .rail a{white-space:nowrap;padding:7px 11px}
+  .rail .rail-foot{display:none}
+  .content{padding:18px 16px 60px}
+  .g3,.g2,.g21{grid-template-columns:1fr}
+  .g6{grid-template-columns:repeat(2,1fr)}
+  .updated{display:none}
+  .hbar{grid-template-columns:96px 1fr 44px}
+  .err{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="loading" class="loader">
+  <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
+  <div>Opening the operations view</div>
+</div>
+
+<div id="gate" class="gate hidden">
+  <div class="gate-card">
+    <svg class="mark" style="width:28px;height:28px;margin:0 auto" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
+    <h1 id="gate-title">Sign in to continue</h1>
+    <p id="gate-text">The operations view uses your Sitka sign-in.</p>
+    <a class="btn" id="gate-btn" href="/app">Open Sitka</a>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="top">
+    <a class="brand" href="/app"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</a>
+    <span class="tag">Operations</span>
+    <div class="top-right">
+      <span class="updated" id="updated"></span>
+      <div class="range" id="range">
+        <button data-days="7">7 days</button>
+        <button data-days="30" class="on">30 days</button>
+        <button data-days="90">90 days</button>
+      </div>
+      <button class="refresh" id="refresh" title="Refresh now" aria-label="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
+    </div>
+  </div>
+  <div class="shell">
+    <nav class="rail" id="rail">
+      <a href="#overview" class="on">Overview</a>
+      <a href="#growth">Growth</a>
+      <a href="#usage">Usage</a>
+      <a href="#live">Live now</a>
+      <a href="#reliability">Reliability</a>
+      <a href="#people">People</a>
+      <div class="rail-foot" id="railfoot"></div>
+    </nav>
+    <main class="content">
+      <section id="overview">
+        <div class="sec-head"><h2>Overview</h2><span class="sub" id="overview-sub"></span></div>
+        <div class="grid g6" id="kpis"></div>
+      </section>
+
+      <section id="growth">
+        <div class="sec-head"><h2>Growth</h2><span class="sub">People, and whether they come back</span></div>
+        <div class="grid g21">
+          <div class="card">
+            <h3>Active people each day</h3>
+            <div class="legend"><span><i></i>Active</span><span><i class="bar"></i>New sign-ups</span></div>
+            <div class="chart" id="chart-people"></div>
+          </div>
+          <div class="card">
+            <h3>Weekly cohorts</h3>
+            <div id="cohorts"></div>
+            <div class="note">Of the people who joined in a given week, the share seen again in each following week.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="usage">
+        <div class="sec-head"><h2>Usage</h2><span class="sub">What is captured, and what people do with it</span></div>
+        <div class="grid g2" style="margin-bottom:12px">
+          <div class="card">
+            <h3>Sessions and hours each day</h3>
+            <div class="legend"><span><i></i>Sessions</span><span><i class="second"></i>Hours captured</span></div>
+            <div class="chart" id="chart-sessions"></div>
+          </div>
+          <div class="card">
+            <h3>Questions and attendees each day</h3>
+            <div class="legend"><span><i></i>Questions to Sitka</span><span><i class="second"></i>Attendees joined</span></div>
+            <div class="chart" id="chart-asks"></div>
+          </div>
+        </div>
+        <div class="grid g3">
+          <div class="card"><h3>What people capture</h3><div id="kinds" class="hbars"></div><div id="capture"></div></div>
+          <div class="card"><h3>Features used</h3><div id="features" class="hbars"></div><div class="note">Uses in the period, and how many different people used each.</div></div>
+          <div class="card"><h3>Attendee languages</h3><div id="languages" class="hbars"></div><div id="platforms" class="note"></div></div>
+        </div>
+      </section>
+
+      <section id="live">
+        <div class="sec-head"><h2>Live now</h2><span class="sub" id="live-sub"></span></div>
+        <div id="live-body"></div>
+      </section>
+
+      <section id="reliability">
+        <div class="sec-head"><h2>Reliability</h2><span class="sub">Errors people saw, and whether the services behind Sitka are answering</span></div>
+        <div class="grid g3" style="margin-bottom:12px" id="rel-kpis"></div>
+        <div class="grid g21">
+          <div class="card"><h3>Recent errors</h3><div id="errors" class="errs"></div></div>
+          <div class="card"><h3>Services</h3><div id="health" class="health"></div><div class="note" id="health-note"></div></div>
+        </div>
+      </section>
+
+      <section id="people">
+        <div class="sec-head"><h2>People</h2><input class="search" id="people-search" placeholder="Find by email…"></div>
+        <div class="card" style="padding:4px 6px;overflow:auto"><table class="tbl" id="people-table"></table></div>
+      </section>
+    </main>
+  </div>
+</div>
+<script type="module" src="/src/admin.ts"></script>
+</body>
+</html>

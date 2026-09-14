@@ -1380,6 +1380,11 @@ async function join(newJoin: boolean): Promise<void> {
     }
   }
   joined = true
+  // for the owners' dashboard: a join, its language, nothing else
+  void sb
+    .from('usage_events')
+    .insert({ name: 'attendee_join', props: { lang: myLang, fresh: newJoin }, platform: 'attendee', ua: navigator.userAgent.slice(0, 200) })
+    .then(() => undefined, () => undefined)
   el('join').classList.add('hidden')
   el('loading').classList.add('hidden')
   el('wait').classList.remove('hidden')

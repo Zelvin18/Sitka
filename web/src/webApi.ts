@@ -105,10 +105,54 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const { data: sess } = await sb.auth.getSession()
   const user: User = sess!.session!.user
 
+  // ---------- what people do, for the owners' dashboard ----------
+  // Named events only: which feature, when, roughly where. Never the words
+  // someone said or asked. Sent in small batches, and a failure is ignored:
+  // the dashboard must never slow the app or break it.
+  const UA = navigator.userAgent.slice(0, 200)
+  let usageQueue: { user_id: string; name: string; props: Record<string, unknown>; platform: string; ua: string }[] = []
+  let usageTimer = 0
+  const flushUsage = (): void => {
+    usageTimer = 0
+    if (usageQueue.length === 0) return
+    const batch = usageQueue.splice(0, 50)
+    void sb
+      .from('usage_events')
+      .insert(batch)
+      .then(() => undefined, () => undefined)
+  }
+  function track(name: string, props: Record<string, unknown> = {}): void {
+    usageQueue.push({ user_id: user.id, name, props, platform: 'web', ua: UA })
+    if (!usageTimer) usageTimer = window.setTimeout(flushUsage, 1500)
+  }
+  function reportError(page: string, message: string, stack?: string): void {
+    void sb
+      .from('client_errors')
+      .insert({ user_id: user.id, page, message: message.slice(0, 2000), stack: (stack || '').slice(0, 4000), ua: UA })
+      .then(() => undefined, () => undefined)
+  }
+  window.addEventListener('pagehide', flushUsage)
+  ;(window as unknown as { sitkaTrack: typeof track }).sitkaTrack = track
+  ;(window as unknown as { sitkaReportError: typeof reportError }).sitkaReportError = reportError
+  window.addEventListener('error', (e) => reportError(location.pathname, e.message || 'error', e.error?.stack))
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e.reason as { message?: string; stack?: string } | string | undefined
+    reportError(location.pathname, typeof r === 'string' ? r : r?.message || 'unhandled rejection', typeof r === 'object' ? r?.stack : undefined)
+  })
+  track('app_open', { path: location.pathname, w: window.innerWidth })
+  // owners see a link to the dashboard in Settings
+  void sb
+    .rpc('is_admin')
+    .then((r) => {
+      ;(window as unknown as { sitkaIsAdmin?: boolean }).sitkaIsAdmin = r.data === true
+    }, () => undefined)
+
   // ---------- storage health: saving must never fail silently ----------
   let bannerShown = false
   function storageProblem(reason: string): void {
     console.error('[sitka] storage problem:', reason)
+    track('db_error', { reason: reason.slice(0, 120) })
+    reportError(location.pathname, 'Save failed: ' + reason)
     if (bannerShown) return
     bannerShown = true
     const bar = document.createElement('div')
@@ -1577,6 +1621,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
+      track('session_start', { kind, hosted: Boolean(hosted), audio: Boolean(audioOnly), space: space ?? null })
       const meta: SessionMeta = {
         id: uid(),
         title: title || 'Untitled session',
@@ -2173,6 +2218,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!d) return null
       d.meta.durationMs = durationMs
       d.meta.status = 'complete'
+      track('session_end', {
+        kind: d.meta.kind,
+        minutes: Math.round(durationMs / 60000),
+        hosted: Boolean(d.meta.hosted),
+        audio: Boolean(d.meta.audioOnly),
+        captions: d.segments.length
+      })
       await endConf(id)
       if (d.meta.hosted && d.meta.eventId) d.meta.replayUrl = replayUrlFor(d.meta.eventId)
 
@@ -2237,9 +2289,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             if (!isNetworkError(lastErr)) throw err
           }
         }
-        if (!r) return { error: 'Connection dropped for a moment. Still listening.' }
+        if (!r) {
+          track('stt_error', { reason: 'network' })
+          return { error: 'Connection dropped for a moment. Still listening.' }
+        }
         const j = await r.json()
-        if (!r.ok) return { error: j.error || 'Transcription failed.' }
+        if (!r.ok) {
+          track('stt_error', { reason: String(j.error || r.status).slice(0, 80) })
+          return { error: j.error || 'Transcription failed.' }
+        }
         const segments: TranscriptSegment[] = j.segments || []
         if (segments.length > 0) {
           const d = await loadSession(id)
@@ -2257,6 +2315,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     askAi: async (req: AskRequest) => {
+      track('ask', {
+        live: req.live,
+        host: Boolean(req.host),
+        screen: Boolean(req.frame),
+        files: req.attachments?.length ?? 0
+      })
       try {
         const d = await loadSession(req.sessionId)
         const segments = d?.segments ?? []
@@ -2324,6 +2388,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     askBrain: async (req: BrainAskRequest) => {
+      track('ask_overview', {})
       try {
         const rows = await allSessions()
         const hits = rankHits(rows, req.question, 40)

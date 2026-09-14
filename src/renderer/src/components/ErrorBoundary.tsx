@@ -20,6 +20,10 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error('Sitka: the page crashed', error, info.componentStack)
+    // the owners' dashboard lists crashes people actually saw
+    const report = (window as unknown as { sitkaReportError?: (p: string, m: string, s?: string) => void })
+      .sitkaReportError
+    report?.(location.hash || location.pathname, `${error.name}: ${error.message}`, error.stack || info.componentStack || undefined)
   }
 
   render(): React.ReactNode {
