@@ -1734,6 +1734,19 @@ export default function LiveSession({
           )}
           {/* The stage: a dark band with the one question, and the answer chips inside it. */}
           <div className="setup2-hero">
+            {/* A real photograph behind the words: web/public/setup-hero.jpg. Blurred and
+                toned to the app's greys, with a light veil so the words stay crisp. Until
+                a photo is there, the calm gradient beneath shows instead. */}
+            <img
+              className="setup2-photo"
+              src={IS_WEB ? '/setup-hero.jpg' : 'https://sitka-blue.vercel.app/setup-hero.jpg'}
+              alt=""
+              aria-hidden="true"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+            <div className="setup2-veil" aria-hidden="true" />
             <div className="setup2-kicker">
               <Mark size={14} live />
               {eventLocked

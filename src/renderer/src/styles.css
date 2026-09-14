@@ -7625,6 +7625,32 @@ body.dragging-row .splitter-h {
 .setup2-hero > * {
   position: relative;
 }
+/* the photograph: blurred a touch, drained to the app's greys, sitting under a light veil */
+.setup2-hero .setup2-photo {
+  position: absolute;
+  inset: -12px;
+  width: calc(100% + 24px);
+  height: calc(100% + 24px);
+  object-fit: cover;
+  object-position: center;
+  filter: blur(3px) grayscale(0.85) contrast(0.9) brightness(1.05);
+  opacity: 0.9;
+  z-index: 0;
+}
+.setup2-hero .setup2-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--bg) 88%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 72%, transparent) 55%,
+    color-mix(in srgb, var(--bg) 40%, transparent) 100%
+  );
+}
+.setup2-hero > :not(.setup2-photo):not(.setup2-veil) {
+  z-index: 2;
+}
 .setup2-kicker {
   display: inline-flex;
   align-items: center;
