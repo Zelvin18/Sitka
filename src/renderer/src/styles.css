@@ -7578,6 +7578,260 @@ body.dragging-row .splitter-h {
   color: var(--text-2);
 }
 
+/* ---- theatre: the picture fills the screen, Sitka floats beside it ---- */
+.video-wrap.theatre {
+  position: fixed !important;
+  inset: 0;
+  z-index: 300;
+  height: 100dvh !important;
+  min-height: 0;
+  border-radius: 0;
+  background: #000;
+}
+.video-wrap.theatre > video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.video-expand {
+  position: absolute;
+  top: 10px;
+  right: 92px;
+  z-index: 4;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(20, 20, 22, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.video-wrap:hover .video-expand,
+.video-wrap.theatre .video-expand,
+.video-expand:focus-visible {
+  opacity: 1;
+}
+.video-wrap.theatre .video-expand {
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+}
+.video-expand:hover {
+  background: rgba(20, 20, 22, 0.85);
+}
+@media (pointer: coarse) {
+  .video-expand {
+    opacity: 1;
+  }
+}
+video.is-hidden {
+  visibility: hidden;
+}
+.dvr-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  z-index: 2;
+}
+
+/* the live bar: pause, drag back, go live */
+.live-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(20, 20, 22, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.video-wrap:hover .live-controls,
+.video-wrap.theatre .live-controls,
+.live-controls.dvr,
+.live-controls:focus-within {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .live-controls {
+    opacity: 1;
+  }
+}
+.video-wrap.theatre .live-controls {
+  left: 24px;
+  right: 24px;
+  bottom: 22px;
+  padding: 8px 12px;
+}
+.live-controls button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font: inherit;
+}
+.live-controls button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+.live-controls button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.live-controls input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #fff;
+  height: 4px;
+  cursor: pointer;
+}
+.lc-time {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+.lc-livepill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+.lc-livepill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.live-controls .lc-live {
+  width: auto;
+  padding: 0 11px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Sitka in the corner, and the glass chat it opens */
+.theatre-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 320;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(20, 20, 22, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.theatre-fab:hover {
+  transform: scale(1.06);
+  background: rgba(20, 20, 22, 0.9);
+}
+.session-right.theatre-hidden {
+  display: none;
+}
+.session-right.theatre-open {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(400px, calc(100vw - 32px)) !important;
+  z-index: 330;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(22, 22, 24, 0.6);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.5);
+  animation: theatre-in 0.22s ease;
+  /* the chat inside takes a dark glass palette whatever the app's theme */
+  --bg: transparent;
+  --bg-soft: rgba(255, 255, 255, 0.07);
+  --text: #f1f1f3;
+  --text-2: #c9c9cf;
+  --text-3: #8f8f97;
+  --border: rgba(255, 255, 255, 0.14);
+  --border-2: rgba(255, 255, 255, 0.2);
+  color: #f1f1f3;
+}
+@keyframes theatre-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+.theatre-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 5;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 20px;
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.theatre-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+@media (max-width: 859px) {
+  .session-right.theatre-open {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto !important;
+    height: 62dvh;
+    transform: none !important;
+  }
+  .theatre-fab {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
 /* ---- a blank shared picture is named, with the fix ---- */
 .blank-note {
   position: absolute;

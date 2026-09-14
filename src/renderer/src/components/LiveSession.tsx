@@ -60,6 +60,8 @@ const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
 const CAN_SHARE_SCREEN = typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 // eslint-disable-next-line import/first
 import { shrinkImageFile } from '../lib/attach'
+// eslint-disable-next-line import/first
+import { fixWebmDuration } from '@shared/webmDuration'
 const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -1837,9 +1839,10 @@ export default function LiveSession({
                         </div>
                         <div className="web-pick-title">Tap to choose your screen</div>
                         <div className="web-pick-sub">
-                          Like sharing in a call. For a video call, pick the tab where the call is
-                          running: its picture and its sound come with it. A single window of a call
-                          can come through blank and silent.
+                          Like sharing in a call. For a video call in this browser, pick the tab where
+                          the call is running: its picture and its sound come with it. If the call is
+                          in a different Chrome window or profile, pick the entire screen. A single
+                          window of a call can come through blank and silent.
                         </div>
                       </div>
                     )}
@@ -1969,6 +1972,84 @@ export default function LiveSession({
     )
   }
 
+  // ---- theatre: the picture fills the screen, Sitka floats beside it ----
+  // The same chat panel is used, restyled as a glass card, so the conversation
+  // is never lost when the view changes. Escape, or the browser leaving full
+  // screen, brings the page back.
+  const [theatre, setTheatre] = useState(false)
+  const [theatreChat, setTheatreChat] = useState(false)
+  useEffect(() => {
+    if (!theatre) return undefined
+    const root = document.documentElement
+    if (root.requestFullscreen && !document.fullscreenElement) {
+      root.requestFullscreen().catch(() => undefined)
+    }
+    const onChange = (): void => {
+      if (!document.fullscreenElement) setTheatre(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setTheatre(false)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('keydown', onKey)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
+    }
+  }, [theatre])
+
+  // ---- watch back while it records ----
+  // Pause, or drag the bar back, and the recording so far plays, built from
+  // what is already saved. The live capture and the captions carry on
+  // underneath the whole time; "Go live" (or reaching the end) returns.
+  const [dvr, setDvr] = useState<{ url: string; length: number } | null>(null)
+  const [dvrBusy, setDvrBusy] = useState(false)
+  const [dvrTime, setDvrTime] = useState(0)
+  const [dvrPaused, setDvrPaused] = useState(false)
+  const dvrRef = useRef<HTMLVideoElement>(null)
+  const pendingDvrSeekRef = useRef<number | null>(null)
+  const goLiveAgain = useCallback((): void => {
+    setDvr((old) => {
+      if (old) URL.revokeObjectURL(old.url)
+      return null
+    })
+    setDvrPaused(false)
+  }, [])
+  const openDvr = useCallback(
+    async (at?: number): Promise<void> => {
+      const id = sessionIdRef.current
+      if (!id || dvrBusy) return
+      setDvrBusy(true)
+      try {
+        const bytes = await window.sitka.readVideo(id, 'video')
+        if (!bytes || bytes.byteLength < 5000) return
+        const length = Date.now() - sessionStartRef.current
+        const blob = await fixWebmDuration(
+          new Blob([bytes.slice().buffer], { type: 'video/webm' }),
+          length
+        ).catch(() => new Blob([bytes.slice().buffer], { type: 'video/webm' }))
+        // pausing lands a little before the present; a drag lands where it was let go
+        pendingDvrSeekRef.current = at ?? Math.max(0, length / 1000 - 15)
+        setDvr((old) => {
+          if (old) URL.revokeObjectURL(old.url)
+          return { url: URL.createObjectURL(blob), length }
+        })
+        setDvrPaused(at === undefined)
+      } finally {
+        setDvrBusy(false)
+      }
+    },
+    [dvrBusy]
+  )
+  const mmss = (s: number): string => {
+    const t = Math.max(0, Math.floor(s))
+    const h = Math.floor(t / 3600)
+    const m = Math.floor((t % 3600) / 60)
+    const r = t % 60
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
+  }
+
   // ============ recording UI ============
   return (
     <div className={`session-layout${askOpen ? ' ask-open' : ''}`} ref={layoutRef}>
@@ -2036,18 +2117,41 @@ export default function LiveSession({
           </div>
         </div>
         <div
-          className={`video-wrap${videoHidden ? ' collapsed' : ''}`}
+          className={`video-wrap${videoHidden ? ' collapsed' : ''}${theatre ? ' theatre' : ''}`}
           ref={videoWrapRef}
-          style={{ height: videoHidden ? 40 : hosting ? 130 : audioOnlyRec ? 116 : clamp(videoH, 140, 900) }}
+          style={
+            theatre
+              ? undefined
+              : { height: videoHidden ? 40 : hosting ? 130 : audioOnlyRec ? 116 : clamp(videoH, 140, 900) }
+          }
         >
-          <button
-            className="video-toggle"
-            onClick={() => setVideoHidden(!videoHidden)}
-            title={videoHidden ? 'Show the picture' : 'Hide the picture — the recording and the sound continue'}
-          >
-            <IconChevron size={13} strokeWidth={2.4} />
-            {videoHidden ? 'Show video' : 'Hide'}
-          </button>
+          {!theatre && (
+            <button
+              className="video-toggle"
+              onClick={() => setVideoHidden(!videoHidden)}
+              title={videoHidden ? 'Show the picture' : 'Hide the picture — the recording and the sound continue'}
+            >
+              <IconChevron size={13} strokeWidth={2.4} />
+              {videoHidden ? 'Show video' : 'Hide'}
+            </button>
+          )}
+          {!audioOnlyRec && !videoHidden && (
+            <button
+              className="video-expand"
+              onClick={() => {
+                setTheatre(!theatre)
+                setTheatreChat(false)
+              }}
+              title={theatre ? 'Back to the page (Esc)' : 'Fill the screen'}
+              aria-label={theatre ? 'Back to the page' : 'Fill the screen'}
+            >
+              {theatre ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+              )}
+            </button>
+          )}
           {audioOnlyRec ? (
             <div className={`audio-stage${banner ? ' with-banner' : ''}`}>
               {banner && <img className="audio-banner" src={banner} alt="" />}
@@ -2058,15 +2162,124 @@ export default function LiveSession({
             </div>
           ) : (
             <>
-              <video ref={previewRef} autoPlay muted playsInline />
+              <video ref={previewRef} autoPlay muted playsInline className={dvr ? 'is-hidden' : ''} />
+              {dvr && (
+                <video
+                  ref={dvrRef}
+                  className="dvr-video"
+                  src={dvr.url}
+                  playsInline
+                  onLoadedMetadata={(e) => {
+                    const v = e.currentTarget
+                    const at = pendingDvrSeekRef.current
+                    if (at !== null) {
+                      v.currentTime = at
+                      pendingDvrSeekRef.current = null
+                    }
+                    if (dvrPaused) v.pause()
+                    else void v.play().catch(() => undefined)
+                  }}
+                  onTimeUpdate={(e) => setDvrTime(e.currentTarget.currentTime)}
+                  onPlay={() => setDvrPaused(false)}
+                  onPause={() => setDvrPaused(true)}
+                  onEnded={goLiveAgain}
+                />
+              )}
+              {phase === 'recording' && (
+                <div className={`live-controls${dvr ? ' dvr' : ''}`}>
+                  {dvr ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = dvrRef.current
+                          if (!v) return
+                          if (v.paused) void v.play().catch(() => undefined)
+                          else v.pause()
+                        }}
+                        title={dvrPaused ? 'Play' : 'Pause'}
+                        aria-label={dvrPaused ? 'Play' : 'Pause'}
+                      >
+                        {dvrPaused ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+                        )}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(1, dvr.length / 1000)}
+                        step={0.5}
+                        value={dvrTime}
+                        onChange={(e) => {
+                          const t = Number(e.target.value)
+                          setDvrTime(t)
+                          const v = dvrRef.current
+                          if (v) v.currentTime = t
+                        }}
+                        aria-label="Position in the recording so far"
+                      />
+                      <span className="lc-time">
+                        {mmss(dvrTime)} / {mmss(dvr.length / 1000)}
+                      </span>
+                      <button type="button" className="lc-live" onClick={goLiveAgain}>
+                        Go live
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void openDvr()}
+                        disabled={dvrBusy}
+                        title="Pause and watch back — the recording and the captions carry on"
+                        aria-label="Pause"
+                      >
+                        {dvrBusy ? (
+                          <Mark size={14} live />
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+                        )}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(1, elapsed)}
+                        step={1}
+                        value={elapsed}
+                        onChange={(e) => void openDvr(Number(e.target.value))}
+                        aria-label="Drag back to watch what was already recorded"
+                      />
+                      <span className="lc-time">{mmss(elapsed)}</span>
+                      <span className="lc-livepill">
+                        <i />
+                        LIVE
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               {blankPicture && (
                 <div className="blank-note">
                   <b>The shared picture is blank.</b> The browser is not passing on the presented
                   video from this window. In the browser's sharing bar, switch to the tab where the
-                  call is running, or to the whole screen.
+                  call is running, or to the whole screen. If the call runs in a different Chrome
+                  window or profile, the whole screen is the one that works.
                 </div>
               )}
             </>
+          )}
+          {theatre && !theatreChat && (
+            <button
+              type="button"
+              className="theatre-fab"
+              onClick={() => setTheatreChat(true)}
+              title="Ask Sitka"
+              aria-label="Ask Sitka"
+            >
+              <Mark size={24} live />
+            </button>
           )}
         </div>
         {!hosting && !audioOnlyRec && (
@@ -2437,7 +2650,20 @@ export default function LiveSession({
       />
       {markToast && <div className="toast fade-in">{markToast}</div>}
       {dialogs}
-      <div className="session-right" style={{ width: clamp(chatW, 300, 900) }}>
+      <div
+        className={`session-right${theatre ? (theatreChat ? ' theatre-open' : ' theatre-hidden') : ''}`}
+        style={{ width: clamp(chatW, 300, 900) }}
+      >
+        {theatre && theatreChat && (
+          <button
+            type="button"
+            className="theatre-close"
+            onClick={() => setTheatreChat(false)}
+            title="Fold Sitka away — the conversation stays"
+          >
+            Close
+          </button>
+        )}
         {hosting && session && (
           <div className="right-tabs">
             <button className={rightTab === 'ask' ? 'on' : ''} onClick={() => setRightTab('ask')}>
