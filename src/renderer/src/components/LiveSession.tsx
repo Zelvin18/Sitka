@@ -1672,7 +1672,7 @@ export default function LiveSession({
                 <span className="art-pulse" />
               </span>
               <span className="intent-title">
-                <IconBroadcast size={17} /> Go live for a room now
+                <IconBroadcast size={17} /> Go live
                 {availableEvents.length > 0 && (
                   <span className="intent-badge">
                     {availableEvents.length} planned
@@ -1680,8 +1680,7 @@ export default function LiveSession({
                 )}
               </span>
               <span className="intent-desc">
-                I'm presenting or teaching right now — a QR goes on screen and the room joins
-                in seconds. A planned event can be picked up here too.
+                I'm presenting or teaching — the room joins me by QR code.
               </span>
               <span className="intent-feats">
                 <span>Personal AI for every attendee</span>
