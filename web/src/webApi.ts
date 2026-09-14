@@ -306,8 +306,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     )
     if (!mime) return { ok: false, error: 'This browser cannot write MP4. Use Chrome or Edge on a laptop.' }
     converting.add(id)
-    const announce = (pct: number, done = false, error?: string): void =>
+    const announce = (pct: number, done = false, error?: string): void => {
       window.dispatchEvent(new CustomEvent('sitka:convert', { detail: { id, pct, done, error } }))
+    }
     try {
       const bytes = await api.readVideo(id, 'video')
       if (!bytes || bytes.byteLength < 5000) return { ok: false, error: 'No recording to prepare.' }
