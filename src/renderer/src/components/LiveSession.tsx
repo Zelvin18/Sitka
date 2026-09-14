@@ -373,8 +373,23 @@ export default function LiveSession({
   const pickWebScreen = useCallback(async (): Promise<void> => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 12 } },
-        audio: systemAudioOn
+        // The picker opens on the whole screen. A single window of a video
+        // call often comes through with its presented picture black (the
+        // browser composites that video outside what a window capture can
+        // see); the whole screen or the call's tab always carries it.
+        video: {
+          width: { max: 1280 },
+          height: { max: 720 },
+          frameRate: { max: 12 },
+          displaySurface: 'monitor'
+        } as MediaTrackConstraints,
+        audio: systemAudioOn,
+        ...({
+          selfBrowserSurface: 'exclude',
+          surfaceSwitching: 'include',
+          monitorTypeSurfaces: 'include',
+          systemAudio: 'include'
+        } as Record<string, string>)
       })
       webStreamRef.current?.getTracks().forEach((t) => t.stop())
       webStreamRef.current = stream
@@ -423,6 +438,46 @@ export default function LiveSession({
       void webPreviewRef.current.play().catch(() => undefined)
     }
   }, [webStream])
+  // ---- a blank picture is caught, never recorded in silence ----
+  // Every two seconds the picture being captured is sampled. Three dark
+  // samples in a row mean the browser is sending black where the presented
+  // video should be, and the person is told what to switch to.
+  const [blankPicture, setBlankPicture] = useState(false)
+  const blankCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  useEffect(() => {
+    if (captureMode !== 'screen') {
+      setBlankPicture(false)
+      return undefined
+    }
+    const active = phase === 'recording' || Boolean(webStream)
+    if (!active) {
+      setBlankPicture(false)
+      return undefined
+    }
+    let dark = 0
+    const t = window.setInterval(() => {
+      const v = phase === 'recording' ? previewRef.current : webPreviewRef.current
+      if (!v || v.videoWidth === 0) return
+      const c = blankCanvasRef.current ?? (blankCanvasRef.current = document.createElement('canvas'))
+      c.width = 48
+      c.height = 27
+      const ctx = c.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return
+      try {
+        ctx.drawImage(v, 0, 0, 48, 27)
+        const d = ctx.getImageData(6, 4, 36, 19).data
+        let sum = 0
+        for (let i = 0; i < d.length; i += 4) sum += (d[i] * 3 + d[i + 1] * 6 + d[i + 2]) / 10
+        const mean = sum / (d.length / 4)
+        dark = mean < 10 ? dark + 1 : 0
+        setBlankPicture(dark >= 3)
+      } catch {
+        /* a frame that cannot be read is not a blank one */
+      }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [captureMode, phase, webStream])
+
   const webLabel = (s: MediaStream): string => {
     const settings = s.getVideoTracks()[0]?.getSettings() as { displaySurface?: string }
     const kind = settings?.displaySurface
@@ -1688,6 +1743,7 @@ export default function LiveSession({
                     )}
                   </button>
                 ) : IS_WEB ? (
+                  <>
                   <button
                     type="button"
                     className={`web-pick${webStream ? ' has-stream' : ''}`}
@@ -1711,10 +1767,24 @@ export default function LiveSession({
                         <div className="web-pick-title">Tap to choose your screen</div>
                         <div className="web-pick-sub">
                           Your entire screen, one window, or a browser tab — like sharing in a call.
+                          For a video call, choose the whole screen or the call's tab: a single window
+                          of a call can come through blank.
                         </div>
                       </div>
                     )}
                   </button>
+                  {blankPicture && webStream && (
+                    <div className="web-pick-warn">
+                      <span>
+                        The shared picture is blank: the browser is not passing on the presented video
+                        from this window. Choose the whole screen or the call's tab instead.
+                      </span>
+                      <button type="button" className="btn btn-sm" onClick={() => void pickWebScreen()}>
+                        Choose again
+                      </button>
+                    </div>
+                  )}
+                  </>
                 ) : (
                   <div className="source-grid">
                     {sources.map((s) => (
@@ -1915,7 +1985,16 @@ export default function LiveSession({
               </div>
             </div>
           ) : (
-            <video ref={previewRef} autoPlay muted playsInline />
+            <>
+              <video ref={previewRef} autoPlay muted playsInline />
+              {blankPicture && (
+                <div className="blank-note">
+                  <b>The shared picture is blank.</b> The browser is not passing on the presented
+                  video from this window. In the browser's sharing bar, switch to the whole screen or
+                  the call's tab. The sound and the words carry on meanwhile.
+                </div>
+              )}
+            </>
           )}
         </div>
         {!hosting && !audioOnlyRec && (
