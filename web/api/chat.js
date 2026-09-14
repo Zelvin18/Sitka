@@ -76,17 +76,22 @@ async function listGroqModels(key) {
   return ids
 }
 
+// For a quick reply — a greeting, a short question over a recap — the small
+// fast models go first; they answer in a second where the biggest take ten.
+const FAST_FIRST = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b']
+
 /** Chat-capable models for this key, best first. Never a speech or guard model. */
-async function chatCandidates(key) {
+async function chatCandidates(key, fast = false) {
+  const order = fast ? [...FAST_FIRST, ...KNOWN_CHAT.filter((id) => !FAST_FIRST.includes(id))] : KNOWN_CHAT
   let ids
   try {
     ids = await listGroqModels(key)
   } catch (err) {
     if (err.status === 401 || err.status === 403) throw err
-    return KNOWN_CHAT.slice(0, 5)
+    return order.slice(0, 5)
   }
   const usable = ids.filter((id) => !NON_CHAT_RE.test(id))
-  const known = KNOWN_CHAT.filter((id) => usable.includes(id))
+  const known = order.filter((id) => usable.includes(id))
   const rest = usable.filter((id) => !known.includes(id))
   const plain = rest.filter((id) => !REASONING_RE.test(id)).sort((a, b) => sizeOf(b) - sizeOf(a))
   const reasoning = rest.filter((id) => REASONING_RE.test(id)).sort((a, b) => sizeOf(b) - sizeOf(a))
@@ -235,7 +240,7 @@ function orderKeys(keys, ownKey) {
  * try the vision models first; if none can answer the images are dropped
  * (with a note so the model does not invent what it cannot see).
  */
-async function groqChain(keys, system, messages, maxTokens, withImages, requireVision) {
+async function groqChain(keys, system, messages, maxTokens, withImages, requireVision, fast = false) {
   let lastError = 'no Groq key'
   let keyErrors = 0
   for (const key of keys) {
@@ -249,7 +254,7 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
         }
         plan = vis.map((id) => ({ id, keepImages: true }))
       } else {
-        const chat = (await chatCandidates(key)).filter((id) => !isDead(id))
+        const chat = (await chatCandidates(key, fast)).filter((id) => !isDead(id))
         plan = [...vis.map((id) => ({ id, keepImages: true })), ...chat.map((id) => ({ id, keepImages: false }))]
       }
     } catch (err) {
@@ -414,7 +419,7 @@ export default async function handler(req, res) {
     return
   }
   try {
-    const { keys = {}, system = '', messages = [], maxTokens = 1600, requireVision = false } = req.body || {}
+    const { keys = {}, system = '', messages = [], maxTokens = 1600, requireVision = false, fast = false } = req.body || {}
     const usingOwnKeys = Boolean(keys.anthropicApiKey || keys.groqApiKey)
     if (!usingOwnKeys) {
       const ip = String(req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim()
@@ -478,7 +483,7 @@ export default async function handler(req, res) {
     }
 
     if (groqKeys.length > 0) {
-      const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision)
+      const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision, Boolean(fast))
       if (out.text) {
         res.status(200).json({ text: out.text, vision: out.vision, model: out.model })
         return

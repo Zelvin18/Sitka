@@ -165,6 +165,8 @@ let mediaPromise: Promise<boolean> | null = null
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
 let candidateAt = 0
+/** what arrived: parts, size, first bytes — shown when nothing will open */
+let mediaDiag = ''
 function tryNextCandidate(): boolean {
   const v = video()
   candidateAt++
@@ -210,9 +212,34 @@ function loadMedia(): Promise<boolean> {
         // refuses one: the file with its length written in, the plain
         // joined parts, and the first part alone. Whichever opens, plays.
         const raw = new Blob(blobs, { type: 'video/webm' })
-        const patched = await fixWebmDuration(raw, data.durationMs).catch(() => raw)
-        candidates = [patched, raw, blobs[0]]
-        if (patched === raw) candidates = [raw, blobs[0]]
+        // What did we actually receive? A WebM starts 1A 45 DF A3. If the first
+        // part does not, the header is found further in and the file is
+        // opened from there; and the finding is written down for the pill.
+        const headBytes = new Uint8Array(await blobs[0].slice(0, 8).arrayBuffer())
+        const hex = Array.from(headBytes)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join(' ')
+        const total = blobs.reduce((n, b) => n + b.size, 0)
+        mediaDiag = `${paths.length} part${paths.length === 1 ? '' : 's'} · ${(total / 1048576).toFixed(1)} MB · starts ${hex}`
+        console.info('[recap] recording', mediaDiag)
+        const isWebm = headBytes[0] === 0x1a && headBytes[1] === 0x45 && headBytes[2] === 0xdf && headBytes[3] === 0xa3
+        let repaired: Blob | null = null
+        if (!isWebm) {
+          const scan = new Uint8Array(await raw.slice(0, 4 * 1024 * 1024).arrayBuffer())
+          for (let i = 0; i < scan.length - 4; i++) {
+            if (scan[i] === 0x1a && scan[i + 1] === 0x45 && scan[i + 2] === 0xdf && scan[i + 3] === 0xa3) {
+              repaired = raw.slice(i, raw.size, 'video/webm')
+              mediaDiag += ` · header found at ${i}`
+              break
+            }
+          }
+          if (!repaired) mediaDiag += ' · no WebM header anywhere in the first 4 MB'
+        }
+        const patched = isWebm ? await fixWebmDuration(raw, data.durationMs).catch(() => raw) : raw
+        candidates = []
+        if (repaired) candidates.push(repaired)
+        if (patched !== raw) candidates.push(patched)
+        candidates.push(raw, blobs[0])
         v.src = URL.createObjectURL(candidates[0])
       }
       v.hidden = false
@@ -299,9 +326,9 @@ function wireMedia(): void {
             ? 'The connection dropped while loading.'
             : 'The recording could not be opened.'
     el('playtext').textContent = 'Could not play'
-    el('playsub').textContent = why + (v.error?.message ? ` (${v.error.message.slice(0, 80)})` : '')
+    el('playsub').textContent = why + (mediaDiag ? ` · ${mediaDiag}` : '')
     el('playbig').classList.add('dim')
-    console.error('[recap] media error', code, v.error?.message)
+    console.error('[recap] media error', code, v.error?.message, mediaDiag)
   })
   // a picture is a picture once a frame has decoded; only then is "audio only" decided
   v.addEventListener('loadeddata', () => {
@@ -654,26 +681,74 @@ function wireLang(): void {
 
 // ---------- ask ----------
 function wireAsk(d: Loaded): void {
-  // a leaner brief answers faster: the words, capped, plus a short reply budget
-  const transcript = d.lines
-    .map((l) => `[${fmt(l.sec)}] ${l.text}`)
-    .join('\n')
-    .slice(0, 60000)
-  const system = (): string =>
+  // The brief sent with a question is built for that question: the lines
+  // that share its words, with a little around them, capped small. A whole
+  // hour of words on every "hi" is what made replies take half a minute —
+  // the free models refuse prompts that big and the request limps through
+  // the fallbacks. A small brief answers in a second or two.
+  const STOP = new Set(
+    'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only into onto over under after before earlier later show shown showed said say tell explain please hello hi thanks thank'.split(' ')
+  )
+  const excerptFor = (q: string): string => {
+    const words = q
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length >= 4 && !STOP.has(w))
+    const lines = d.lines
+    const keep = new Set<number>()
+    if (words.length > 0) {
+      lines.forEach((l, i) => {
+        const t = l.text.toLowerCase()
+        if (words.some((w) => t.includes(w))) {
+          for (let k = Math.max(0, i - 2); k <= Math.min(lines.length - 1, i + 2); k++) keep.add(k)
+        }
+      })
+    }
+    // a general question, or nothing matched: the shape of the session instead
+    if (keep.size < 12) {
+      const step = Math.max(1, Math.floor(lines.length / 60))
+      for (let i = 0; i < lines.length; i += step) keep.add(i)
+    }
+    let out = ''
+    for (const i of [...keep].sort((a, b) => a - b)) {
+      const line = `[${fmt(lines[i].sec)}] ${lines[i].text}\n`
+      if (out.length + line.length > 14000) break
+      out += line
+    }
+    return out
+  }
+  const system = (q: string): string =>
     [
       `You are Sitka, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
-      'Ground every answer in the transcript (and materials) below; if something was not covered, say so plainly.',
-      'Talking to the reader, call it "the session", never "the transcript".',
-      'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the transcript — plain ASCII double square brackets, one moment, never a range. These become tap-to-play links.',
+      d.summary ? `Summary of the session: ${d.summary}` : '',
+      'Ground every answer in the excerpt (and materials) below; if something was not covered there, say so plainly rather than guessing.',
+      'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
+      'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the excerpt — plain ASCII double square brackets, one moment, never a range. These become tap-to-play links.',
       'Cite a moment when the reader would want to jump to it; a summary reads as prose.',
-      'Keep answers short and direct by default; use markdown structure only when it genuinely helps.',
+      'Keep answers short and direct; a greeting gets one friendly line.',
       readLang !== 'English' ? `Always answer in ${readLang}.` : '',
-      d.materials ? `\nMaterials:\n${d.materials}` : '',
-      `\nTranscript:\n${transcript || '(no transcript captured)'}`
+      d.materials ? `\nMaterials:\n${d.materials.slice(0, 4000)}` : '',
+      `\nExcerpt of the session (each line starts with its time):\n${excerptFor(q) || '(no words captured)'}`
     ]
       .filter(Boolean)
       .join('\n')
-  const history: { role: 'user' | 'assistant'; content: string }[] = []
+  // The conversation survives a reload, a closed sheet, or coming back later:
+  // it is kept on this device for this recap, and drawn again on open.
+  const CHAT_KEY = 'sitka-recap-chat-' + pageId
+  let history: { role: 'user' | 'assistant'; content: string }[] = []
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || localStorage.getItem(CHAT_KEY) || '[]')
+    if (Array.isArray(saved)) history = saved.slice(-20)
+  } catch {
+    history = []
+  }
+  const remember = (): void => {
+    try {
+      localStorage.setItem(CHAT_KEY, JSON.stringify(history.slice(-20)))
+    } catch {
+      /* private mode */
+    }
+  }
   let asking = false
   const input = el('ask') as HTMLInputElement
   const send = el('asksend') as HTMLButtonElement
@@ -716,10 +791,16 @@ function wireAsk(d: Loaded): void {
   }
   const countBadge = (): void => {
     const n = el('chatn')
-    const k = history.length / 2
+    const k = Math.floor(history.length / 2)
     n.textContent = String(k)
     n.hidden = k === 0
   }
+  // what was said before, back on screen
+  for (const turn of history) {
+    if (turn.role === 'user') bubble('bub-u', '', turn.content)
+    else bubble('bub-a md', md(turn.content))
+  }
+  countBadge()
   ;(el('dock') as HTMLFormElement).onsubmit = async (e) => {
     e.preventDefault()
     const q = input.value.trim()
@@ -736,9 +817,10 @@ function wireAsk(d: Loaded): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           keys: {},
-          system: system(),
+          system: system(q),
           messages: [...history.slice(-6), { role: 'user', content: q }],
-          maxTokens: 700
+          maxTokens: 700,
+          fast: true
         })
       })
       const j = await r.json()
@@ -749,6 +831,7 @@ function wireAsk(d: Loaded): void {
         bubble('bub-a md', md(j.text || ''))
         history.push({ role: 'user', content: q }, { role: 'assistant', content: j.text || '' })
         countBadge()
+        remember()
       }
     } catch {
       typing.remove()
