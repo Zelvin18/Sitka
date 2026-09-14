@@ -1672,15 +1672,16 @@ export default function LiveSession({
                 <span className="art-pulse" />
               </span>
               <span className="intent-title">
-                <IconBroadcast size={17} /> Host for an audience
+                <IconBroadcast size={17} /> Go live for a room now
                 {availableEvents.length > 0 && (
                   <span className="intent-badge">
-                    {availableEvents.length} scheduled
+                    {availableEvents.length} planned
                   </span>
                 )}
               </span>
               <span className="intent-desc">
-                I'm presenting or teaching — the room joins me by QR code.
+                I'm presenting or teaching right now — a QR goes on screen and the room joins
+                in seconds. A planned event can be picked up here too.
               </span>
               <span className="intent-feats">
                 <span>Personal AI for every attendee</span>
@@ -2352,10 +2353,14 @@ export default function LiveSession({
               type="button"
               className="theatre-fab"
               onClick={() => setTheatreChat(true)}
-              title="Ask Sitka"
+              title="Open the conversation with Sitka"
               aria-label="Ask Sitka"
             >
-              <Mark size={24} live />
+              <Mark size={20} live />
+              <span className="theatre-fab-text">
+                <b>Ask Sitka</b>
+                <small>about what is happening</small>
+              </span>
             </button>
           )}
         </div>

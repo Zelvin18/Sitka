@@ -37,6 +37,7 @@ interface SegRow {
   text: string
 }
 interface RecapRow {
+  owner?: string | null
   title: string
   summary: string
   highlights: { time: string; label: string }[]
@@ -429,6 +430,8 @@ function applySummary(r: Replay): void {
 function armVideo(v: HTMLVideoElement): void {
   v.hidden = false
   v.onloadedmetadata = () => {
+    // sound alone: the player becomes a slim audio bar rather than a black box
+    el('player').classList.toggle('audio-only', v.videoWidth === 0)
     // A recording stitched from parts may not know its length yet: ask the
     // browser to find the end once, so the timeline and seeking work.
     if (!Number.isFinite(v.duration)) {
@@ -514,13 +517,40 @@ function setupPlayer(
     return
   }
   if (r.video === 'parts' && row.owner && row.session_id) {
-    playerReady = true
-    hasVideo = true
-    player.style.display = ''
-    note.hidden = true
-    gate.hidden = false
-    el('playgate-text').textContent = 'Watch the recording' + mins
-    gate.onclick = () => void loadParts(row.owner as string, row.session_id as string)
+    // Only offer play once the parts are really there. A recording made in
+    // the desktop app stays on that computer, and the page says so instead.
+    const owner = row.owner
+    const sid = row.session_id
+    player.style.display = 'none'
+    note.hidden = false
+    note.textContent = 'Looking for the recording…'
+    void sb.storage
+      .from('recordings')
+      .list(`${owner}/${sid}`, { limit: 1000 })
+      .then(async ({ data }) => {
+        let found = (data ?? []).some((f) => /^part-\d+\.webm$/.test(f.name))
+        if (!found) {
+          const legacy = await sb.storage.from('recordings').list(owner, { search: `${sid}.webm`, limit: 5 })
+          found = (legacy.data ?? []).some((f) => f.name === `${sid}.webm`)
+        }
+        if (playerReady) return
+        if (!found) {
+          note.textContent =
+            'The recording stays with the person who captured it. The summary, the moments and the words are all here.'
+          return
+        }
+        playerReady = true
+        hasVideo = true
+        player.style.display = ''
+        note.hidden = true
+        gate.hidden = false
+        el('playgate-text').textContent = 'Play the recording' + mins
+        gate.onclick = () => void loadParts(owner, sid)
+      })
+      .catch(() => {
+        note.textContent =
+          'The recording could not be reached. The summary, the moments and the words are all here.'
+      })
     return
   }
   player.style.display = 'none'
@@ -600,8 +630,13 @@ async function bootRecap(): Promise<boolean> {
   const rc = (data ?? null) as RecapRow | null
   if (!rc || !rc.enabled) return false
 
-  hasVideo = false
-  el('player').style.display = 'none'
+  // The recording plays here too, from the owner's own storage (wave12.sql),
+  // whether it is a picture or sound alone; a tap on any moment lands in it.
+  if (rc.duration_ms) knownDurationMs = rc.duration_ms
+  setupPlayer(
+    { enabled: true, video: 'parts', durationMs: rc.duration_ms || undefined },
+    { owner: rc.owner ?? null, session_id: pageId }
+  )
   el('htag').textContent = 'RECAP'
   const title = rc.title || 'Session recap'
   document.title = title + ' — Sitka'

@@ -7781,29 +7781,52 @@ video.is-hidden {
 }
 
 /* Sitka in the corner, and the glass chat it opens */
+/* a pill that says what it is: the mark, "Ask Sitka", and what about */
 .theatre-fab {
   position: fixed;
   right: 22px;
   bottom: 22px;
   z-index: 320;
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(20, 20, 22, 0.72);
+  height: 56px;
+  padding: 0 20px 0 16px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(20, 20, 22, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   color: #fff;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
   cursor: pointer;
+  font-family: inherit;
+  text-align: left;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
   transition: transform 0.15s ease, background 0.15s ease;
+  animation: fab-in 0.35s ease;
 }
 .theatre-fab:hover {
-  transform: scale(1.06);
-  background: rgba(20, 20, 22, 0.9);
+  transform: translateY(-1px);
+  background: rgba(20, 20, 22, 0.94);
+}
+.theatre-fab-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.theatre-fab-text b {
+  font-size: 14px;
+  font-weight: 700;
+}
+.theatre-fab-text small {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.62);
+}
+@keyframes fab-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 .session-right.theatre-hidden {
   display: none;
@@ -7826,12 +7849,36 @@ video.is-hidden {
   /* the chat inside takes a dark glass palette whatever the app's theme */
   --bg: transparent;
   --bg-soft: rgba(255, 255, 255, 0.07);
+  --bg-softer: rgba(255, 255, 255, 0.14);
   --text: #f1f1f3;
   --text-2: #c9c9cf;
   --text-3: #8f8f97;
   --border: rgba(255, 255, 255, 0.14);
   --border-2: rgba(255, 255, 255, 0.2);
+  --accent: #f1f1f3;
+  --accent-fg: #141416;
+  --accent-hover: #ffffff;
   color: #f1f1f3;
+}
+/* your own messages stay readable on the glass: a light tint, white words */
+.session-right.theatre-open .msg-user {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.session-right.theatre-open .chat-input-box {
+  background: rgba(0, 0, 0, 0.35);
+}
+.session-right.theatre-open .chat-input {
+  color: #fff;
+}
+.session-right.theatre-open .chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+.session-right.theatre-open .ts-chip,
+.session-right.theatre-open .suggestion {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
 }
 @keyframes theatre-in {
   from {

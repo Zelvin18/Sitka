@@ -135,10 +135,10 @@ export default function HomeView({
             <span className="home-action-icon">
               <IconBroadcast size={19} strokeWidth={1.7} />
             </span>
-            <span className="home-action-title">Host an event</span>
+            <span className="home-action-title">Plan an event</span>
             <span className="home-action-desc">
-              Plan it, brief the AI with your documents, and give every attendee a
-              companion.
+              For a date ahead: set the agenda, add your documents, and share the link or
+              QR before the day. To go live this minute, start a session instead.
             </span>
           </button>
           <button className="home-action" onClick={onGoOverview}>
