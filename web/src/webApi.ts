@@ -885,8 +885,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       delete d.meta.analysisError
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
-      // The event recap gets the summary and the moments as soon as they exist.
+      // The event recap gets the summary and the moments as soon as they exist,
+      // and so does a shared session recap: its title, summary and moments
+      // follow the session rather than freezing at the moment it was shared.
       await syncReplayText(d.meta).catch(() => undefined)
+      await sb
+        .from('recaps')
+        .update({
+          title: d.meta.title,
+          summary: d.meta.summary ?? '',
+          highlights: d.meta.highlights ?? [],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .then(() => undefined, () => undefined)
       // Memory: decisions, promises, people and concepts, pinned to their moments.
       await rememberSession(d.meta, d.segments).catch(() => undefined)
     } catch (err) {

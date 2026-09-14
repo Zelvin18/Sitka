@@ -136,7 +136,6 @@ async function loadRecap(): Promise<Loaded | null> {
 let data: Loaded
 const video = (): HTMLVideoElement => el('video') as HTMLVideoElement
 let mediaReady = false
-let mediaLoading = false
 let pendingSeek: number | null = null
 let lineEls: { sec: number; node: HTMLElement }[] = []
 let chapterEls: { sec: number; node: HTMLElement }[] = []
@@ -147,62 +146,91 @@ const originals = new Map<HTMLElement, string>()
 let translateRun = 0
 
 // ---------- the recording ----------
-async function loadMedia(): Promise<boolean> {
-  if (mediaReady) return true
-  if (mediaLoading || !data.video) return false
-  mediaLoading = true
+// The recording starts loading the moment the page opens, all parts at
+// once, so the stage shows the first frame within seconds rather than a
+// black box. Play then happens inside the tap itself, which browsers allow;
+// a play started after a long download is the one they refuse.
+let mediaPromise: Promise<boolean> | null = null
+function loadMedia(): Promise<boolean> {
+  if (mediaReady) return Promise.resolve(true)
+  if (mediaPromise) return mediaPromise
+  if (!data.video) return Promise.resolve(false)
   const big = el('playbig')
   big.classList.add('busy')
+  el('playtext').textContent = 'Fetching the recording'
   const v = video()
-  try {
-    if (data.video === 'public') {
-      v.src = `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
-    } else {
-      const dir = `${data.owner}/${data.sessionId}`
-      const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
-      if (error) throw error
-      const parts = (files ?? [])
-        .map((f) => f.name)
-        .filter((n) => /^part-\d+\.webm$/.test(n))
-        .sort()
-      const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
-      const blobs: Blob[] = []
-      for (let i = 0; i < paths.length; i++) {
-        el('playtext').textContent = `Loading · ${i + 1} of ${paths.length}`
-        const { data: blob, error: e2 } = await sb.storage.from('recordings').download(paths[i])
-        if (e2 || !blob) throw e2 ?? new Error('missing part')
-        blobs.push(blob)
+  mediaPromise = (async () => {
+    try {
+      if (data.video === 'public') {
+        v.src = `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
+      } else {
+        const dir = `${data.owner}/${data.sessionId}`
+        const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
+        if (error) throw error
+        const parts = (files ?? [])
+          .map((f) => f.name)
+          .filter((n) => /^part-\d+\.webm$/.test(n))
+          .sort()
+        const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
+        let done = 0
+        const blobs = await Promise.all(
+          paths.map(async (p) => {
+            const { data: blob, error: e2 } = await sb.storage.from('recordings').download(p)
+            if (e2 || !blob) throw e2 ?? new Error('missing part')
+            done++
+            el('playtext').textContent = `Fetching · ${done} of ${paths.length}`
+            return blob
+          })
+        )
+        const whole = await fixWebmDuration(new Blob(blobs, { type: 'video/webm' }), data.durationMs).catch(
+          () => new Blob(blobs, { type: 'video/webm' })
+        )
+        v.src = URL.createObjectURL(whole)
       }
-      const whole = await fixWebmDuration(new Blob(blobs, { type: 'video/webm' }), data.durationMs).catch(
-        () => new Blob(blobs, { type: 'video/webm' })
-      )
-      v.src = URL.createObjectURL(whole)
+      v.hidden = false
+      mediaReady = true
+      el('stage').classList.add('hasvideo')
+      el('playtext').textContent = 'Play'
+      el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+      // the first frame becomes the picture behind the title
+      v.currentTime = 0.1
+      return true
+    } catch {
+      el('playtext').textContent = 'The recording could not be loaded'
+      el('playsub').textContent = 'The owner may have removed it, or their storage rules need updating.'
+      big.classList.add('dim')
+      return false
+    } finally {
+      big.classList.remove('busy')
     }
-    v.hidden = false
-    mediaReady = true
-    el('stage').classList.add('hasvideo')
-    return true
-  } catch {
-    el('playtext').textContent = 'The recording could not be loaded'
-    el('playsub').textContent = 'The owner may have removed it, or their storage rules need updating.'
-    big.classList.add('dim')
-    return false
-  } finally {
-    big.classList.remove('busy')
-    mediaLoading = false
-  }
+  })()
+  return mediaPromise
 }
 
-async function play(at?: number): Promise<void> {
+/**
+ * Play from `at` (or from where it is). When the recording is already in
+ * hand this runs inside the tap and always works; while it is still coming
+ * the request is kept and honoured the moment it lands.
+ */
+function play(at?: number): void {
   const v = video()
-  if (!mediaReady) {
-    pendingSeek = at ?? null
-    const ok = await loadMedia()
-    if (!ok) return
-  } else if (at !== undefined) {
-    v.currentTime = at
+  if (mediaReady) {
+    if (at !== undefined) v.currentTime = at
+    v.play().catch(() => {
+      // refused by the browser: the next tap on the pill plays it directly
+      el('playtext').textContent = 'Tap to play'
+    })
+    return
   }
-  void v.play().catch(() => undefined)
+  pendingSeek = at ?? pendingSeek
+  void loadMedia().then((ok) => {
+    if (!ok) return
+    if (pendingSeek !== null) v.currentTime = pendingSeek
+    pendingSeek = null
+    v.play().catch(() => {
+      el('playtext').textContent = 'Tap to play'
+    })
+  })
 }
 
 function wireMedia(): void {
@@ -362,9 +390,16 @@ function renderStory(lines: Line[]): void {
       words = 0
     }
     const span = document.createElement('span')
-    span.className = 'l'
-    span.textContent = l.text
-    span.onclick = () => void play(l.sec)
+    const onScreen = l.text.startsWith('[On screen] ')
+    span.className = onScreen ? 'l screen' : 'l'
+    // the words as words: bold kept as bold, stray markdown marks removed
+    const raw = onScreen ? l.text.slice('[On screen] '.length) : l.text
+    span.innerHTML = esc(raw)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/__(.+?)__/g, '<b>$1</b>')
+      .replace(/(^|\s)\*(\S[^*]*?)\*(?=\s|$|[.,;:!?])/g, '$1<i>$2</i>')
+      .replace(/\*\*|__|`/g, '')
+    span.onclick = () => play(l.sec)
     const body = para.children[1] as HTMLElement
     body.appendChild(span)
     body.appendChild(document.createTextNode(' '))
@@ -440,7 +475,11 @@ function renderChapters(d: Loaded): void {
   for (const it of items) {
     const li = document.createElement('li')
     li.innerHTML = `<span class="ct">${fmt(it.sec)}</span>${esc(it.label)}`
-    li.onclick = () => void play(it.sec)
+    li.onclick = () => {
+      chapterEls.forEach((c) => c.node.classList.toggle('now', c.node === li))
+      play(it.sec)
+      el('stage').scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
     ul.appendChild(li)
     chapterEls.push({ sec: it.sec, node: li })
   }
@@ -543,10 +582,11 @@ function wireLang(): void {
 
 // ---------- ask ----------
 function wireAsk(d: Loaded): void {
+  // a leaner brief answers faster: the words, capped, plus a short reply budget
   const transcript = d.lines
     .map((l) => `[${fmt(l.sec)}] ${l.text}`)
     .join('\n')
-    .slice(0, 90000)
+    .slice(0, 60000)
   const system = (): string =>
     [
       `You are Sitka, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
@@ -590,6 +630,20 @@ function wireAsk(d: Loaded): void {
     if (Number.isFinite(sec)) void play(sec)
   })
   el('sheetx').onclick = () => el('sheet').classList.remove('open')
+  // the mark in the dock reopens the conversation; a count shows there is one
+  el('openchat').onclick = () => {
+    if (history.length === 0) {
+      ;(el('ask') as HTMLInputElement).focus()
+      return
+    }
+    el('sheet').classList.toggle('open')
+  }
+  const countBadge = (): void => {
+    const n = el('chatn')
+    const k = history.length / 2
+    n.textContent = String(k)
+    n.hidden = k === 0
+  }
   ;(el('dock') as HTMLFormElement).onsubmit = async (e) => {
     e.preventDefault()
     const q = input.value.trim()
@@ -607,8 +661,8 @@ function wireAsk(d: Loaded): void {
         body: JSON.stringify({
           keys: {},
           system: system(),
-          messages: [...history.slice(-8), { role: 'user', content: q }],
-          maxTokens: 1000
+          messages: [...history.slice(-6), { role: 'user', content: q }],
+          maxTokens: 700
         })
       })
       const j = await r.json()
@@ -618,6 +672,7 @@ function wireAsk(d: Loaded): void {
       } else {
         bubble('bub-a md', md(j.text || ''))
         history.push({ role: 'user', content: q }, { role: 'assistant', content: j.text || '' })
+        countBadge()
       }
     } catch {
       typing.remove()
@@ -632,6 +687,33 @@ function wireAsk(d: Loaded): void {
 function wireHeader(): void {
   const hdr = el('hdr')
   const mini = el('mini')
+  // light or dark: remembered on this device
+  const root = document.documentElement
+  const sun =
+    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+  const moon = '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z"/>'
+  const applyTheme = (t: string): void => {
+    if (t === 'light') root.setAttribute('data-theme', 'light')
+    else root.removeAttribute('data-theme')
+    el('themei').innerHTML = t === 'light' ? moon : sun
+    el('theme').title = t === 'light' ? 'Switch to dark' : 'Switch to light'
+  }
+  let theme = 'dark'
+  try {
+    theme = localStorage.getItem('sitka-recap-theme') || 'dark'
+  } catch {
+    /* ignore */
+  }
+  applyTheme(theme)
+  el('theme').onclick = () => {
+    theme = theme === 'light' ? 'dark' : 'light'
+    try {
+      localStorage.setItem('sitka-recap-theme', theme)
+    } catch {
+      /* ignore */
+    }
+    applyTheme(theme)
+  }
   const io = new IntersectionObserver(
     (entries) => {
       const stageVisible = entries[0]?.isIntersecting ?? true
@@ -699,8 +781,10 @@ async function boot(): Promise<void> {
     el('playtext').textContent = 'No recording to play'
     el('playsub').textContent = 'The recording stays with the person who captured it.'
     big.onclick = null
-  } else if (d.durationMs) {
-    el('playsub').textContent = `${fmtLen(d.durationMs)} · loads when you tap`
+  } else {
+    if (d.durationMs) el('playsub').textContent = fmtLen(d.durationMs)
+    // fetch it now, so the first frame is on the stage before anyone taps
+    void loadMedia()
   }
 
   el('loading').classList.add('hidden')
