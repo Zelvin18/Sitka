@@ -1151,6 +1151,11 @@ function registerIpc(): void {
   // and no cloud link; the file is read whole from disk, which is instant.
   ipcMain.handle('session:videoParts', () => [])
   ipcMain.handle('session:videoUrl', () => null)
+  // desktop recordings are local files; phones reach only what the website stores
+  ipcMain.handle('session:convertForPhones', () => ({
+    ok: false,
+    error: 'Phone-ready copies are made from the website, where the recording is stored.'
+  }))
   ipcMain.handle('session:banner', (_e, id: string, banner: string | null) => {
     const meta = store.getMeta(id)
     if (!meta) return null

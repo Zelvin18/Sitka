@@ -63,6 +63,20 @@ export default function SessionView({
   // true once the player has a frame (or, for sound alone, data) on screen;
   // until then the orbiting mark stays over the player
   const [videoLive, setVideoLive] = useState(false)
+  // preparing an older WebM recording as MP4 for phones: progress from the web layer
+  const [phonePrep, setPhonePrep] = useState<{ pct: number; error?: string } | null>(null)
+  useEffect(() => {
+    const onProgress = (e: Event): void => {
+      const d = (e as CustomEvent<{ id: string; pct: number; done: boolean; error?: string }>).detail
+      if (!d || d.id !== sessionId) return
+      if (d.done) {
+        setPhonePrep(d.error ? { pct: 0, error: d.error } : null)
+        if (!d.error) setData((cur) => (cur ? { ...cur, meta: { ...cur.meta, mime: 'video/mp4', whole: true } } : cur))
+      } else setPhonePrep({ pct: d.pct })
+    }
+    window.addEventListener('sitka:convert', onProgress)
+    return () => window.removeEventListener('sitka:convert', onProgress)
+  }, [sessionId])
   const [currentTime, setCurrentTime] = useState(0)
   // The chosen tabs come back after a refresh.
   const [tab, setTab] = useRemembered<'transcript' | 'overview' | 'notes' | 'study' | 'report'>(
@@ -511,11 +525,34 @@ export default function SessionView({
                 Upload now
               </button>
             )}
-            {videoSrc && (
+            {videoSrc && videoSrc !== 'progressive' && (
               <a className="btn btn-ghost btn-sm" href={videoSrc} download={`${meta.title.replace(/[^\w-]+/g, '-')}.webm`}>
                 Save a copy
               </a>
             )}
+            {(window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true &&
+              !meta.readOnly &&
+              !meta.audioOnly &&
+              meta.mime !== 'video/mp4' &&
+              (phonePrep && !phonePrep.error ? (
+                <span className="phone-prep">
+                  <Mark size={13} live /> Preparing for phones · {phonePrep.pct}% · keep this tab open
+                </span>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title="Recorded before phones were supported: this makes a copy every phone can play. It takes as long as the recording and runs in this tab."
+                  onClick={() => {
+                    setPhonePrep({ pct: 0 })
+                    void window.sitka.convertForPhones(meta.id).then((r) => {
+                      if (!r.ok) setPhonePrep({ pct: 0, error: r.error || 'Could not prepare it.' })
+                    })
+                  }}
+                >
+                  Prepare for phones
+                </button>
+              ))}
+            {phonePrep?.error && <span className="phone-prep bad">{phonePrep.error}</span>}
           </div>
         )}
         {meta.status === 'recording' && (

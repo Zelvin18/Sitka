@@ -289,6 +289,89 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  // ---------- a phone-playable copy of an older recording ----------
+  // Recordings made before the MP4 change are WebM, which iPhones refuse
+  // outright. This plays such a recording once, in this tab, and re-records
+  // it as MP4 through the browser's own encoder, then stores that as the
+  // whole file every player tries first. It takes as long as the recording
+  // and runs in the background of this tab; progress is announced as it goes.
+  const converting = new Set<string>()
+  async function convertForPhones(id: string): Promise<{ ok: boolean; error?: string }> {
+    if (converting.has(id)) return { ok: false, error: 'Already being prepared.' }
+    const d = cache.get(id) ?? (await loadSession(id))
+    if (!d) return { ok: false, error: 'Session not found.' }
+    if (d.meta.mime === 'video/mp4') return { ok: true }
+    const mime = ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"', 'video/mp4'].find((m) =>
+      MediaRecorder.isTypeSupported(m)
+    )
+    if (!mime) return { ok: false, error: 'This browser cannot write MP4. Use Chrome or Edge on a laptop.' }
+    converting.add(id)
+    const announce = (pct: number, done = false, error?: string): void =>
+      window.dispatchEvent(new CustomEvent('sitka:convert', { detail: { id, pct, done, error } }))
+    try {
+      const bytes = await api.readVideo(id, 'video')
+      if (!bytes || bytes.byteLength < 5000) return { ok: false, error: 'No recording to prepare.' }
+      const src = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'video/webm' }))
+      const v = document.createElement('video')
+      v.src = src
+      v.muted = false
+      v.volume = 0
+      v.playsInline = true
+      v.style.cssText = 'position:fixed;width:2px;height:2px;opacity:0;pointer-events:none'
+      document.body.appendChild(v)
+      await new Promise<void>((resolve, reject) => {
+        v.onloadedmetadata = () => resolve()
+        v.onerror = () => reject(new Error('This recording could not be opened.'))
+      })
+      // picture from the element, sound through a silent audio graph
+      const ctx = new AudioContext()
+      const source = ctx.createMediaElementSource(v)
+      const dest = ctx.createMediaStreamDestination()
+      source.connect(dest)
+      const cap = (v as HTMLVideoElement & { captureStream: () => MediaStream }).captureStream()
+      const stream = new MediaStream([...cap.getVideoTracks(), ...dest.stream.getAudioTracks()])
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 900_000, audioBitsPerSecond: 96_000 })
+      const out: Blob[] = []
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) out.push(e.data)
+      }
+      const finished = new Promise<void>((resolve) => {
+        rec.onstop = () => resolve()
+      })
+      const total = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (d.meta.durationMs || 0) / 1000
+      const tick = window.setInterval(() => announce(total ? Math.min(99, Math.round((v.currentTime / total) * 100)) : 0), 1000)
+      rec.start(3000)
+      await v.play()
+      await new Promise<void>((resolve) => {
+        v.onended = () => resolve()
+      })
+      rec.stop()
+      await finished
+      clearInterval(tick)
+      v.remove()
+      URL.revokeObjectURL(src)
+      await ctx.close().catch(() => undefined)
+      const whole = new Blob(out, { type: 'video/mp4' })
+      if (whole.size < 5000) return { ok: false, error: 'The prepared file came out empty.' }
+      const { error } = await sb.storage
+        .from('recordings')
+        .upload(videoPath(id), whole, { upsert: true, contentType: 'video/mp4' })
+      if (error) return { ok: false, error: 'Could not store the prepared file: ' + error.message }
+      d.meta.whole = true
+      d.meta.mime = 'video/mp4'
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+      announce(100, true)
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      announce(0, true, msg)
+      return { ok: false, error: msg }
+    } finally {
+      converting.delete(id)
+    }
+  }
+
   /** A key frame as stored in sessions.slides; `read` = captioned by a model that saw it. */
   interface StoredSlide {
     time: number
@@ -2163,6 +2246,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const { data: signed } = await sb.storage.from('recordings').createSignedUrl(videoPath(id), 3600)
       return signed?.signedUrl ?? null
     },
+
+    convertForPhones: (id: string) => convertForPhones(id),
 
     // The parts of a recording as links, in order, so the player can stream
     // them one after another instead of waiting for the whole file.

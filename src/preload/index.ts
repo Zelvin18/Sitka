@@ -108,6 +108,9 @@ const api = {
   listVideoParts: (id: string): Promise<string[]> => ipcRenderer.invoke('session:videoParts', id),
   /** a link to the recording as one whole file, playable natively; null when there is none yet */
   videoUrl: (id: string): Promise<string | null> => ipcRenderer.invoke('session:videoUrl', id),
+  /** re-record an older WebM recording as MP4 so phones can play it; progress arrives on window 'sitka:convert' */
+  convertForPhones: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('session:convertForPhones', id),
   setRecordingState: (state: { id: string; startedAt: number } | null): Promise<void> =>
     ipcRenderer.invoke('session:recordingState', state),
   markNow: (): Promise<void> => ipcRenderer.invoke('session:markNow'),
