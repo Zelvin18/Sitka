@@ -15,7 +15,8 @@ const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
-const m = /\/r2\/([^/?#]+)/.exec(location.pathname)
+// every recap link opens here: /r/<id> as shared everywhere, and /r2/<id>
+const m = /\/r2?\/([^/?#]+)/.exec(location.pathname)
 const pageId = m ? m[1] : ''
 
 // ---------- shapes ----------

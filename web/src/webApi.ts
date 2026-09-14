@@ -627,8 +627,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const parts = (await allLocalParts()).filter((p) => !onlySession || p.sessionId === onlySession)
       const active = recordingState?.id
       for (const p of parts) {
-        // the live recording's own chain handles its parts; only retry finished ones
-        if (p.sessionId === active) continue
+        // the live recording's own chain handles its parts; only retry finished ones,
+        // and never touch a session another tab is recording right now
+        if (p.sessionId === active || liveInAnotherTab(p.sessionId)) continue
         const ok = navigator.onLine ? await uploadPart(p).catch(() => false) : false
         if (!ok) left++
       }
@@ -657,24 +658,49 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * A session left in "recording" by a closed tab or a crash: close it out
    * from what the device kept, then upload and analyse it like any other.
    */
+  /** True while another tab of this browser is recording this session. */
+  function liveInAnotherTab(sessionId: string): boolean {
+    try {
+      const b = JSON.parse(localStorage.getItem('sitka.live') || 'null') as {
+        sessionId?: string
+        beat?: number
+      } | null
+      return Boolean(b && b.sessionId === sessionId && Date.now() - (b.beat || 0) < 15000)
+    } catch {
+      return false
+    }
+  }
+
   async function recoverInterrupted(): Promise<void> {
     try {
       const rows = await allSessions()
       for (const r of rows) {
         if (r.meta.status !== 'recording' || r.id === recordingState?.id) continue
+        // A session that is live in another tab is not interrupted. Recovering
+        // it from here once wrote its last minutes over its first ones and
+        // called it finished while it was still going.
+        if (liveInAnotherTab(r.id)) continue
         const chunks = await localChunks(r.id)
+        const lastAt = chunks.length ? chunks[chunks.length - 1].at : 0
+        if (lastAt && Date.now() - lastAt < 90000) continue // still being written to
         const parts = await localParts(r.id)
-        // chunks that never made it into a part become the final part
+        // chunks that never made it into a part become the final part —
+        // numbered after everything the cloud already holds, never over it
         const covered = new Set<number>()
         for (const p of parts) for (let s = p.fromSeq; s <= p.toSeq; s++) covered.add(s)
         const loose = chunks.filter((c) => !covered.has(c.seq))
         if (loose.length > 0) {
-          const partNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) + 1 : 0
+          let maxNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) : -1
+          const { data: listing } = await sb.storage.from('recordings').list(`${user.id}/${r.id}`, { limit: 1000 })
+          for (const f of listing ?? []) {
+            const m = /^part-(\d+)\.webm$/.exec(f.name)
+            if (m) maxNo = Math.max(maxNo, Number(m[1]))
+          }
+          const partNo = maxNo + 1
           await idb('parts', 'readwrite', (s) => {
             s.put({ sessionId: r.id, partNo, fromSeq: loose[0].seq, toSeq: loose[loose.length - 1].seq } as LocalPart)
           })
         }
-        const lastAt = chunks.length ? chunks[chunks.length - 1].at : 0
         const d = await loadSession(r.id)
         if (!d) continue
         d.meta.status = 'complete'

@@ -16,7 +16,8 @@ const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
-const m = /\/r\/([^/?#]+)/.exec(location.pathname)
+// the earlier recap page, kept at /r1/<id> for reference; /r/<id> now opens the new one
+const m = /\/r1?\/([^/?#]+)/.exec(location.pathname)
 const pageId = m ? m[1] : ''
 
 interface Replay {

@@ -6,8 +6,9 @@
     { "source": "/host", "destination": "/host.html" },
     { "source": "/host/:path*", "destination": "/host.html" },
     { "source": "/e/:id", "destination": "/event.html" },
-    { "source": "/r/:id", "destination": "/replay.html" },
+    { "source": "/r/:id", "destination": "/replay2.html" },
     { "source": "/r2/:id", "destination": "/replay2.html" },
+    { "source": "/r1/:id", "destination": "/replay.html" },
     { "source": "/s/:id", "destination": "/stage.html" },
     { "source": "/admin", "destination": "/admin.html" }
   ]
