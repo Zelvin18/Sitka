@@ -74,6 +74,13 @@ import { shrinkImageFile } from '../lib/attach'
 import { fixWebmDuration } from '@shared/webmDuration'
 // eslint-disable-next-line import/first
 import { clearLiveBeat, isThisTab, readLive, useLive, writeLiveBeat } from '../lib/live'
+// eslint-disable-next-line import/first
+import {
+  IconCap as KindCap,
+  IconBriefcase as KindBrief,
+  IconSlides as KindSlides,
+  IconNotes as PillNotes
+} from '../lib/icons'
 const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -1734,12 +1741,12 @@ export default function LiveSession({
           )}
           {/* The stage: a dark band with the one question, and the answer chips inside it. */}
           <div className="setup2-hero">
-            {/* A real photograph behind the words: web/public/setup-hero.jpg. Blurred and
-                toned to the app's greys, with a light veil so the words stay crisp. Until
-                a photo is there, the calm gradient beneath shows instead. */}
+            {/* The photograph (web/public/setup-hero.jpeg) fills the band; a dark veil on
+                the left carries the words in white, the way the mock-up has it. If the
+                file is missing the veil alone stands, still readable. */}
             <img
               className="setup2-photo"
-              src={IS_WEB ? '/setup-hero.jpg' : 'https://sitka-blue.vercel.app/setup-hero.jpg'}
+              src={IS_WEB ? '/setup-hero.jpeg' : 'https://sitka-blue.vercel.app/setup-hero.jpeg'}
               alt=""
               aria-hidden="true"
               onError={(e) => {
@@ -1747,48 +1754,97 @@ export default function LiveSession({
               }}
             />
             <div className="setup2-veil" aria-hidden="true" />
-            <div className="setup2-kicker">
-              <Mark size={14} live />
-              {eventLocked
-                ? 'Launch event'
-                : orgSpaceName
-                  ? `Filed in ${orgSpaceName}`
-                  : space
-                    ? SPACE_COPY[space].kicker
-                    : hosting
-                      ? 'Go live'
-                      : 'New session'}
-            </div>
-            <h1 className="setup2-title">
-              {eventLocked
-                ? upcoming?.event.title ?? 'Your event'
-                : hosting
-                  ? 'What will the room see?'
-                  : space
-                    ? SPACE_COPY[space].title
-                    : 'What are we capturing?'}
-            </h1>
-            <p className="setup2-sub">
-              {eventLocked
-                ? 'Tap what your audience will follow. The QR you shared goes live at once.'
-                : hosting
-                  ? 'Tap what to capture. The join QR appears the moment it starts.'
-                  : 'Tap what Sitka should watch. It starts the moment you choose.'}
-            </p>
-            {!eventLocked && (
-              <div className="setup2-kinds">
-                {KIND_OPTIONS.map((k) => (
-                  <button
-                    key={k.key}
-                    type="button"
-                    className={`setup2-kind${kind === k.key ? ' on' : ''}`}
-                    onClick={() => setKind(k.key)}
-                  >
-                    {k.label}
-                  </button>
-                ))}
+            <div className="setup2-words">
+              <div className="setup2-kicker">
+                {eventLocked
+                  ? 'Launch event'
+                  : orgSpaceName
+                    ? `Filed in ${orgSpaceName}`
+                    : space
+                      ? SPACE_COPY[space].kicker
+                      : hosting
+                        ? 'Go live'
+                        : 'New session'}
               </div>
-            )}
+              <h1 className="setup2-title">
+                {eventLocked ? (
+                  upcoming?.event.title ?? 'Your event'
+                ) : hosting ? (
+                  <>
+                    What will the room see<span className="setup2-accent">?</span>
+                  </>
+                ) : space ? (
+                  SPACE_COPY[space].title
+                ) : (
+                  <>
+                    What are we capturing<span className="setup2-accent">?</span>
+                  </>
+                )}
+              </h1>
+              <p className="setup2-sub">
+                {eventLocked
+                  ? 'Tap what your audience will follow. The QR you shared goes live at once.'
+                  : hosting
+                    ? 'Tap what to capture. The join QR appears the moment it starts.'
+                    : 'Tap what Sitka should watch. It starts the moment you choose.'}
+              </p>
+              {!eventLocked && (
+                <div className="setup2-kinds">
+                  {KIND_OPTIONS.map((k) => (
+                    <button
+                      key={k.key}
+                      type="button"
+                      className={`setup2-kind${kind === k.key ? ' on' : ''}`}
+                      onClick={() => setKind(k.key)}
+                    >
+                      {k.key === 'lecture' ? (
+                        <KindCap size={13} strokeWidth={1.9} />
+                      ) : k.key === 'meeting' ? (
+                        <KindBrief size={13} strokeWidth={1.9} />
+                      ) : k.key === 'presentation' ? (
+                        <KindSlides size={13} strokeWidth={1.9} />
+                      ) : (
+                        <IconSparkle size={13} strokeWidth={1.9} />
+                      )}
+                      {k.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* what Sitka does with it, as three quiet glass cards on the right */}
+            <div className="setup2-pills" aria-hidden="true">
+              <div className="setup2-pill">
+                <span className="setup2-pill-icon">
+                  <IconCamera size={16} strokeWidth={1.8} />
+                </span>
+                <span>
+                  Record
+                  <br />
+                  &amp; capture
+                </span>
+              </div>
+              <div className="setup2-pill">
+                <span className="setup2-pill-icon">
+                  <PillNotes size={16} strokeWidth={1.8} />
+                </span>
+                <span>
+                  AI
+                  <br />
+                  smart notes
+                </span>
+              </div>
+              <div className="setup2-pill">
+                <span className="setup2-pill-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h9M8.5 3v2M6 9c1.5 4 4 6.5 7 8M11 9c-1.5 4-4 6.5-7 8" /><path d="M13 20l4-9 4 9M14.5 17h5" /></svg>
+                </span>
+                <span>
+                  Live
+                  <br />
+                  translation
+                </span>
+              </div>
+            </div>
           </div>
 
           {error && (
