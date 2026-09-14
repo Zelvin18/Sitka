@@ -104,6 +104,8 @@ const api = {
     ipcRenderer.invoke('session:appendChunk', id, chunk),
   readVideo: (id: string, file: 'video' | 'reel' = 'video'): Promise<Uint8Array | null> =>
     ipcRenderer.invoke('session:readVideo', id, file),
+  /** links to the recording's parts, in order, for streaming playback; [] when it must be read whole */
+  listVideoParts: (id: string): Promise<string[]> => ipcRenderer.invoke('session:videoParts', id),
   setRecordingState: (state: { id: string; startedAt: number } | null): Promise<void> =>
     ipcRenderer.invoke('session:recordingState', state),
   markNow: (): Promise<void> => ipcRenderer.invoke('session:markNow'),

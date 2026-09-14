@@ -2095,6 +2095,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return { pending: left < 0 ? (await localParts(sessionId)).length : left }
     },
 
+    // The parts of a recording as links, in order, so the player can stream
+    // them one after another instead of waiting for the whole file.
+    listVideoParts: async (id: string) => {
+      const { data: listing } = await sb.storage
+        .from('recordings')
+        .list(`${user.id}/${id}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+      const names = (listing ?? [])
+        .map((f) => f.name)
+        .filter((n) => /^part-\d+\.webm$/.test(n))
+        .sort()
+      if (names.length === 0) return []
+      // parts still on this device (not uploaded yet) mean the cloud is incomplete: stitch instead
+      if ((await localParts(id)).length > 0) return []
+      const { data: signed } = await sb.storage
+        .from('recordings')
+        .createSignedUrls(names.map((n) => `${user.id}/${id}/${n}`), 3600)
+      const urls = (signed ?? []).map((s) => s.signedUrl).filter((u): u is string => Boolean(u))
+      return urls.length === names.length ? urls : []
+    },
+
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null
       // Parts live in the cloud, or still on this device, or both: stitch them in order.

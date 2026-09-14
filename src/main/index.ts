@@ -421,6 +421,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'session:readVideo',
     async (_e, id: string, file: 'video' | 'reel' = 'video') => {
+      // (the desktop reads its local file whole: see 'session:videoParts' below)
       try {
         const path = file === 'reel' ? store.reelPath(id) : store.videoPath(id)
         return await fsp.readFile(path)
@@ -1146,6 +1147,8 @@ function registerIpc(): void {
     return meta
   })
 
+  // The desktop keeps one local file per recording: nothing to stream in parts.
+  ipcMain.handle('session:videoParts', () => [])
   ipcMain.handle('session:banner', (_e, id: string, banner: string | null) => {
     const meta = store.getMeta(id)
     if (!meta) return null

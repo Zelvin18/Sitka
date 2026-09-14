@@ -54,6 +54,7 @@ export function installBrowserMockIfNeeded(): void {
     retryUploads: async () => ({ pending: 0 }),
     transcribeChunk: async () => ({ error: 'missing-key' }),
     readVideo: async () => null,
+    listVideoParts: async () => [],
     setRecordingState: async () => undefined,
     markNow: async () => undefined,
     onSessionMarked: () => () => undefined,

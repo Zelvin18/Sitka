@@ -12,6 +12,7 @@ import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../l
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
 import { IconPlay } from '../lib/icons'
+import { playProgressively } from '@shared/progressive'
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -187,6 +188,16 @@ export default function SessionView({
         // is in hand, so seeking can never fail.
         await window.sitka.prepareSession(sessionId)
         if (cancelled) return
+        // On the website the recording is streamed part by part: it plays
+        // within seconds while the rest arrives. The whole file is read only
+        // when streaming is not possible.
+        const parts = await window.sitka.listVideoParts(sessionId)
+        if (cancelled) return
+        if (parts.length > 0 && typeof MediaSource !== 'undefined') {
+          streamPartsRef.current = parts
+          setVideoSrc('progressive')
+          return
+        }
         const bytes = await window.sitka.readVideo(sessionId)
         if (cancelled) return
         if (!bytes || bytes.byteLength === 0) {
@@ -211,6 +222,44 @@ export default function SessionView({
     setVideoWanted((window as unknown as { sitkaWeb?: boolean }).sitkaWeb !== true)
     pendingSeekRef.current = null
   }, [sessionId])
+
+  // Streaming: once the player is mounted, feed it the parts in order. The
+  // first plays as soon as it lands; the rest follow while it plays.
+  const streamPartsRef = useRef<string[]>([])
+  useEffect(() => {
+    if (videoSrc !== 'progressive') return undefined
+    const v = videoRef.current
+    const parts = streamPartsRef.current
+    if (!v || parts.length === 0) return undefined
+    let cancelled = false
+    void playProgressively(
+      v,
+      parts.length,
+      async (i) => {
+        const r = await fetch(parts[i], { cache: 'no-store' })
+        if (!r.ok) throw new Error(`part ${i}: ${r.status}`)
+        return r.arrayBuffer()
+      },
+      { durationSec: data?.meta.durationMs ? data.meta.durationMs / 1000 : undefined, lookahead: 3 }
+    ).then((ok) => {
+      if (cancelled) return
+      if (!ok) {
+        // this file cannot be streamed: read it whole instead
+        streamPartsRef.current = []
+        void window.sitka.readVideo(sessionId).then((bytes) => {
+          if (cancelled || !bytes || bytes.byteLength === 0) {
+            setVideoError(true)
+            return
+          }
+          setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' })))
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoSrc, sessionId])
 
   // MediaRecorder webm files report Infinity duration; force Chrome to compute
   // the real duration by jumping far ahead once, then settling back.
@@ -489,7 +538,7 @@ export default function SessionView({
             <>
               <video
                 ref={videoRef}
-                src={videoSrc}
+                src={videoSrc === 'progressive' ? undefined : videoSrc}
                 controls
                 playsInline
                 onLoadedMetadata={onLoadedMetadata}

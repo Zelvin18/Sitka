@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { installFocusGuard } from '../../src/shared/focusGuard'
+import { playProgressively } from '../../src/shared/progressive'
 
 installFocusGuard()
 
@@ -149,6 +150,8 @@ let data: Loaded
 const video = (): HTMLVideoElement => el('video') as HTMLVideoElement
 let mediaReady = false
 let pendingSeek: number | null = null
+/** the stage is on screen: the person is watching, so the words must not pull the page away */
+let stageVisible = true
 let lineEls: { sec: number; node: HTMLElement }[] = []
 let chapterEls: { sec: number; node: HTMLElement }[] = []
 let momentEls: { sec: number; node: HTMLElement }[] = []
@@ -199,6 +202,31 @@ function loadMedia(): Promise<boolean> {
           .filter((n) => /^part-\d+\.webm$/.test(n))
           .sort()
         const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
+        // Streaming first: the first part plays within seconds while the rest
+        // arrive. Only when the browser cannot stream this file is the whole
+        // thing fetched and stitched as before.
+        const fetchPart = async (i: number): Promise<ArrayBuffer> => {
+          const { data: blob, error: e2 } = await sb.storage.from('recordings').download(paths[i])
+          if (e2 || !blob) throw e2 ?? new Error('missing part')
+          return blob.arrayBuffer()
+        }
+        v.hidden = false
+        const streamed = await playProgressively(v, paths.length, fetchPart, {
+          durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
+          lookahead: 3,
+          onProgress: (n, total) => {
+            if (n < total) el('playsub').textContent = `Ready · ${n} of ${total} parts in`
+            else el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+          }
+        })
+        if (streamed) {
+          mediaReady = true
+          el('stage').classList.add('hasvideo')
+          el('playtext').textContent = 'Play'
+          console.info('[recap] streaming', paths.length, 'parts')
+          return true
+        }
+        v.removeAttribute('src')
         let done = 0
         const blobs = await Promise.all(
           paths.map(async (p) => {
@@ -432,7 +460,9 @@ function onTime(): void {
     best?.classList.add('now')
     lastLine = best
     if (best && (el('follow') as HTMLInputElement).checked && !unfoldedByUser()) revealAround(best)
-    if (best && (el('follow') as HTMLInputElement).checked) {
+    // the words follow the voice only when the reader is down among them;
+    // while the stage is on screen the page stays exactly where it is
+    if (best && (el('follow') as HTMLInputElement).checked && !stageVisible) {
       const r = best.getBoundingClientRect()
       if (r.top < 120 || r.bottom > window.innerHeight - 140) best.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
@@ -876,7 +906,7 @@ function wireHeader(): void {
   }
   const io = new IntersectionObserver(
     (entries) => {
-      const stageVisible = entries[0]?.isIntersecting ?? true
+      stageVisible = entries[0]?.isIntersecting ?? true
       hdr.classList.toggle('solid', !stageVisible)
       mini.classList.toggle('on', !stageVisible && mediaReady)
     },
