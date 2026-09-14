@@ -26,8 +26,15 @@ export function sniffWebmMime(head: Uint8Array): string | null {
   return codecs ? `video/webm;codecs="${codecs}"` : 'video/webm'
 }
 
+/** The streaming engine: MediaSource, or Safari's ManagedMediaSource on iPhone (iOS 17.1+). */
+type MSCtor = { new (): MediaSource; isTypeSupported?: (t: string) => boolean }
+function engine(): MSCtor | null {
+  const w = window as unknown as { MediaSource?: MSCtor; ManagedMediaSource?: MSCtor }
+  return w.ManagedMediaSource ?? w.MediaSource ?? null
+}
+
 export function canStream(mime: string): boolean {
-  const MS = (window as unknown as { MediaSource?: { isTypeSupported?: (t: string) => boolean } }).MediaSource
+  const MS = engine()
   return Boolean(MS && MS.isTypeSupported && MS.isTypeSupported(mime))
 }
 
@@ -42,7 +49,8 @@ export async function playProgressively(
   fetchPart: (index: number) => Promise<ArrayBuffer>,
   opts: ProgressiveOptions = {}
 ): Promise<boolean> {
-  if (count === 0 || typeof MediaSource === 'undefined') return false
+  const MS = engine()
+  if (count === 0 || !MS) return false
   const lookahead = Math.max(1, opts.lookahead ?? 2)
 
   // the first part decides whether this file can be streamed at all
@@ -50,7 +58,10 @@ export async function playProgressively(
   const mime = sniffWebmMime(new Uint8Array(first))
   if (!mime || !canStream(mime)) return false
 
-  const ms = new MediaSource()
+  // Safari's managed source insists the element will not hand playback to
+  // another device; harmless everywhere else
+  ;(video as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true
+  const ms = new MS()
   const url = URL.createObjectURL(ms)
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })

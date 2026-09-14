@@ -199,22 +199,19 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 
 .notes.folded{position:relative;max-height:380px;overflow:hidden}
 .notes.folded::after{content:'';position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
+/* nothing may be wider than the screen: no sideways scroll, no zoom needed */
+html,body{overflow-x:hidden;max-width:100vw}
+.wrap,.main,.sec,.notes,.story,.lead{min-width:0;max-width:100%}
+.notes,.lead,.para,.bub-a,.moment .ml,.chapters li,h1.title{overflow-wrap:anywhere;word-break:break-word}
+.md pre,.notes pre{white-space:pre-wrap;word-break:break-word;max-width:100%;overflow:auto}
+.md img,.notes img,.md table{max-width:100%}
 @media(max-width:900px){
-  .wrap{grid-template-columns:1fr;gap:28px;padding:22px 18px 120px}
-  /* moments: one swipe row, not a tall stack */
-  .moments{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;margin:0 -18px;padding-left:18px;padding-right:18px}
+  .wrap{grid-template-columns:1fr;gap:28px;padding:22px 16px 130px}
+  /* moments: one swipe row inside the frame, not a tall stack */
+  .moments{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;max-width:100%}
   .moments::-webkit-scrollbar{display:none}
-  .moment{flex:0 0 76%;scroll-snap-align:start}
-  /* Sitka as a round button; the box appears when the conversation opens */
-  .dock{left:auto;right:16px;bottom:16px;transform:none;width:56px;height:56px;padding:0;justify-content:center;border-radius:50%;transition:width .2s ease,border-radius .2s ease}
-  .dock .open{margin:0;width:56px;height:56px}
-  .dock .open .mark{width:22px;height:22px}
-  .dock input,.dock .kbd,.dock button[type=submit]{display:none}
-  .dock.expanded{left:12px;right:12px;width:auto;height:auto;padding:6px 6px 6px 8px;border-radius:30px;justify-content:flex-start;bottom:12px}
-  .dock.expanded .open{width:36px;height:36px}
-  .dock.expanded .open .mark{width:18px;height:18px}
-  .dock.expanded input,.dock.expanded button[type=submit]{display:flex}
-  .sheet-body{padding-bottom:84px}
+  .moment{flex:0 0 78%;scroll-snap-align:start}
+  .sheet-body{padding-bottom:110px}
   .spine{position:static;max-height:none;overflow:visible}
   .chapters{display:flex;gap:8px;overflow-x:auto;padding:0 0 6px;scrollbar-width:none}
   .chapters::-webkit-scrollbar{display:none}
