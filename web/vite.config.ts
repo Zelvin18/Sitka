@@ -28,7 +28,8 @@ export default defineConfig({
         legal: resolve(__dirname, 'legal.html'),
         replay: resolve(__dirname, 'replay.html'),
         stage: resolve(__dirname, 'stage.html'),
-        admin: resolve(__dirname, 'admin.html')
+        admin: resolve(__dirname, 'admin.html'),
+        replay2: resolve(__dirname, 'replay2.html')
       }
     }
   }
