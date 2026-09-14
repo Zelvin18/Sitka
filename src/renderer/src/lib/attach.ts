@@ -24,6 +24,23 @@ export async function shrinkImageFile(file: File, maxSide: number, quality: numb
 }
 
 /**
+ * A stored key frame as a data URL. On the desktop it already is one; on the
+ * website it is a signed link, fetched and downsized here so it can travel
+ * with a question like any other picture.
+ */
+export async function frameToDataUrl(src: string): Promise<string | null> {
+  if (src.startsWith('data:')) return src
+  try {
+    const r = await fetch(src)
+    if (!r.ok) return null
+    const blob = await r.blob()
+    return await shrinkImageFile(new File([blob], 'frame.jpg', { type: blob.type || 'image/jpeg' }), 1280, 0.8)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Turn a chosen file into something Sitka can read with the question: images
  * become pictures, documents become text through the same reader Materials
  * uses (PDF, text, notes, captions).

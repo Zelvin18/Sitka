@@ -10,7 +10,8 @@ import type { AiStreamEvent, ChatMessage } from '@shared/types'
 import AiText from './AiText'
 import { ATTACH_ACCEPT, MAX_ATTACHMENTS, attachedLine, foldAttachments } from '@shared/attachLogic'
 import type { ChatAttachment } from '@shared/types'
-import { fileToAttachment } from '../lib/attach'
+import { fileToAttachment, frameToDataUrl } from '../lib/attach'
+import { looksBack, mmss, needsScreen, pickFrames } from '@shared/askLogic'
 import { IconPlus as IconAttach } from '../lib/icons'
 
 /** A named usage event for the owners' dashboard; a no-op on the desktop. */
@@ -150,7 +151,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   const send = useCallback(
     (question: string) => {
       let q = question.trim()
-      const atts = attachments
+      const atts = [...attachments]
       if ((!q && atts.length === 0) || streaming) return
       if (!q) q = 'Tell me about what I attached.'
       setError(null)
@@ -159,10 +160,6 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       streamBuffer.current = ''
       lastQuestionRef.current = q
       const history = messagesRef.current
-      setMessages((prev) => [
-        ...prev,
-        { role: 'user', content: q + attachedLine(atts), at: Date.now() }
-      ])
       setInput('')
       setAttachments([])
       setStreaming(true)
@@ -170,12 +167,44 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       setFolded(false)
       if (askOverride) {
         // these transports take text only: documents go in as text
+        setMessages((prev) => [...prev, { role: 'user', content: q + attachedLine(atts), at: Date.now() }])
         askOverride(requestId, foldAttachments(q, atts).question, history)
-      } else if (brain) {
+        return
+      }
+      if (brain) {
+        setMessages((prev) => [...prev, { role: 'user', content: q + attachedLine(atts), at: Date.now() }])
         void window.sitka.askBrain({ requestId, question: foldAttachments(q, atts).question, history })
-      } else {
-        const frame = host ? undefined : getFrame?.() ?? undefined
-        setWithFrame(Boolean(frame))
+        return
+      }
+      // The screen is read only when the words ask for it: "what is on the
+      // slide", "explain this chart". A question about what the speaker said
+      // is answered from the session, with no look at the screen.
+      const frame = host || !needsScreen(q) ? undefined : getFrame?.() ?? undefined
+      setWithFrame(Boolean(frame))
+      void (async () => {
+        // A question that points back — "the table he showed earlier", "at
+        // 12:30" — fetches the frames from that moment and looks at them.
+        if (!host && !frame && looksBack(q)) {
+          try {
+            const slides = await window.sitka.listSlides(sessionId)
+            const picked = pickFrames(slides, q)
+            for (const s of picked) {
+              const dataUrl = await frameToDataUrl(s.image)
+              if (dataUrl) {
+                atts.push({
+                  id: crypto.randomUUID(),
+                  name: `On screen at ${mmss(s.time)}`,
+                  kind: 'image',
+                  from: 'screen',
+                  dataUrl
+                })
+              }
+            }
+          } catch {
+            /* the [On screen] lines in the session still carry what was read */
+          }
+        }
+        setMessages((prev) => [...prev, { role: 'user', content: q + attachedLine(atts), at: Date.now() }])
         void window.sitka.askAi({
           sessionId,
           requestId,
@@ -186,7 +215,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           frame,
           attachments: atts.length > 0 ? atts : undefined
         })
-      }
+      })()
     },
     [sessionId, live, streaming, getFrame, brain, host, askOverride, attachments]
   )

@@ -159,6 +159,8 @@ export interface ChatAttachment {
   id: string
   name: string
   kind: 'image' | 'document'
+  /** 'screen': a frame Sitka fetched back from earlier in the session, not a file the user chose */
+  from?: 'user' | 'screen'
   /** JPEG/PNG data URL (images) */
   dataUrl?: string
   /** extracted text (documents) */

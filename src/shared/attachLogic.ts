@@ -22,10 +22,13 @@ export function foldAttachments(
   const docBlock = docs
     .map((d) => `Attached document "${d.name}":\n${(d.text ?? '').slice(0, MAX_DOC_CHARS)}`)
     .join('\n\n')
+  const screenFrames = all.filter((a) => a.kind === 'image' && a.dataUrl && a.from === 'screen')
   const imageNote =
     images.length === 0
       ? ''
-      : `(The user attached ${images.length === 1 ? 'an image' : `${images.length} images`} to this question. Read what is in ${images.length === 1 ? 'it' : 'them'} carefully and use it in the answer.)`
+      : screenFrames.length === images.length
+        ? `(The attached ${images.length === 1 ? 'image is' : 'images are'} what was on screen earlier in this session, at ${screenFrames.map((a) => a.name.replace(/^On screen at /, '')).join(' and ')}. ${images.length === 1 ? 'It was' : 'They were'} fetched back because the question refers to that moment. Read ${images.length === 1 ? 'it' : 'them'} carefully: quote text, tables, lists and figures exactly as they appear, and say which moment each comes from.)`
+        : `(The user attached ${images.length === 1 ? 'an image' : `${images.length} images`} to this question. Read what is in ${images.length === 1 ? 'it' : 'them'} carefully and use it in the answer.)`
   return {
     question: docBlock ? `${docBlock}\n\n${question}` : question,
     images,
@@ -36,5 +39,12 @@ export function foldAttachments(
 /** The line added under the user's bubble so the conversation shows what was attached. */
 export function attachedLine(attachments: ChatAttachment[]): string {
   if (attachments.length === 0) return ''
-  return `\n\nAttached: ${attachments.map((a) => a.name).join(', ')}`
+  const files = attachments.filter((a) => a.from !== 'screen')
+  const frames = attachments.filter((a) => a.from === 'screen')
+  const parts: string[] = []
+  if (files.length) parts.push(`Attached: ${files.map((a) => a.name).join(', ')}`)
+  if (frames.length) {
+    parts.push(`Looked back at the screen: ${frames.map((a) => a.name.replace(/^On screen at /, '')).join(', ')}`)
+  }
+  return `\n\n${parts.join(' · ')}`
 }
