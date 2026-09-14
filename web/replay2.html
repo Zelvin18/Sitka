@@ -197,8 +197,24 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 .lw{animation:lw .4s ease}
 @keyframes lw{from{opacity:0;transform:translateY(4px)}}
 
+.notes.folded{position:relative;max-height:380px;overflow:hidden}
+.notes.folded::after{content:'';position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none}
 @media(max-width:900px){
-  .wrap{grid-template-columns:1fr;gap:28px;padding:22px 18px 150px}
+  .wrap{grid-template-columns:1fr;gap:28px;padding:22px 18px 120px}
+  /* moments: one swipe row, not a tall stack */
+  .moments{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;margin:0 -18px;padding-left:18px;padding-right:18px}
+  .moments::-webkit-scrollbar{display:none}
+  .moment{flex:0 0 76%;scroll-snap-align:start}
+  /* Sitka as a round button; the box appears when the conversation opens */
+  .dock{left:auto;right:16px;bottom:16px;transform:none;width:56px;height:56px;padding:0;justify-content:center;border-radius:50%;transition:width .2s ease,border-radius .2s ease}
+  .dock .open{margin:0;width:56px;height:56px}
+  .dock .open .mark{width:22px;height:22px}
+  .dock input,.dock .kbd,.dock button[type=submit]{display:none}
+  .dock.expanded{left:12px;right:12px;width:auto;height:auto;padding:6px 6px 6px 8px;border-radius:30px;justify-content:flex-start;bottom:12px}
+  .dock.expanded .open{width:36px;height:36px}
+  .dock.expanded .open .mark{width:18px;height:18px}
+  .dock.expanded input,.dock.expanded button[type=submit]{display:flex}
+  .sheet-body{padding-bottom:84px}
   .spine{position:static;max-height:none;overflow:visible}
   .chapters{display:flex;gap:8px;overflow-x:auto;padding:0 0 6px;scrollbar-width:none}
   .chapters::-webkit-scrollbar{display:none}

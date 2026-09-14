@@ -55,6 +55,8 @@ const CITE_BODY = `((?:[a-fA-F0-9-]{6,}@)?${TS}(?:${DASH}${TS})?)`
 export function normalizeCitations(text: string): string {
   return (
     text
+      // a model that copies the pattern letters ("[[M:31:35]]") still cites the time
+      .replace(new RegExp(`\\[\\[\\s*(?:[A-Za-z]{1,2}:)+\\s*(${TS})\\s*\\]\\]`, 'g'), '[[$1]]')
       .replace(new RegExp(`【\\s*${CITE_BODY}\\s*】`, 'g'), '[[$1]]')
       .replace(new RegExp(`(?<!\\[)\\[\\s*${CITE_BODY}\\s*\\](?!\\])`, 'g'), '[[$1]]')
       // some models write (12:37) — a timestamp in parentheses is still a citation

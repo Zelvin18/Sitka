@@ -8224,6 +8224,18 @@ video.is-hidden {
   cursor: pointer;
 }
 
+/* the mark stays over the player until it has a frame to show */
+.video-waiting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  z-index: 2;
+  pointer-events: none;
+}
+
 /* ---- a finished session on the website: the recording loads on tap ---- */
 .video-gate {
   width: 100%;

@@ -12,8 +12,14 @@ const RE_BR = new RegExp(`\\[{1,2}\\s*${BODY}\\s*\\]{1,2}`, 'g')
 const RE_CHIP = new RegExp(`\\[\\[${BODY}\\]\\]`, 'g')
 
 const RE_PAREN = new RegExp(`\\((${TS}(?:${DASH}${TS})?)\\)`, 'g')
+// a model that copies the pattern letters ("[[M:31:35]]", "[[H:MM:SS 1:02:15]]") still cites the time
+const RE_PLACEHOLDER = new RegExp(`\\[\\[\\s*(?:[A-Za-z]{1,2}:)+\\s*(${TS})\\s*\\]\\]`, 'g')
 export const normCites = (t: string): string =>
-  (t || '').replace(RE_FW, '[[$1]]').replace(RE_BR, '[[$1]]').replace(RE_PAREN, '[[$1]]')
+  (t || '')
+    .replace(RE_PLACEHOLDER, '[[$1]]')
+    .replace(RE_FW, '[[$1]]')
+    .replace(RE_BR, '[[$1]]')
+    .replace(RE_PAREN, '[[$1]]')
 export const escH = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 

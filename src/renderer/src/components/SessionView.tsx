@@ -59,9 +59,10 @@ export default function SessionView({
   // On the website the recording is fetched from the cloud, which can be a
   // long download on a phone: it waits for a tap (or a jump to a moment).
   // On the desktop it is a local file and loads at once.
-  const [videoWanted, setVideoWanted] = useState(
-    (window as unknown as { sitkaWeb?: boolean }).sitkaWeb !== true
-  )
+  const [videoWanted, setVideoWanted] = useState(true)
+  // true once the player has a frame (or, for sound alone, data) on screen;
+  // until then the orbiting mark stays over the player
+  const [videoLive, setVideoLive] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   // The chosen tabs come back after a refresh.
   const [tab, setTab] = useRemembered<'transcript' | 'overview' | 'notes' | 'study' | 'report'>(
@@ -180,6 +181,7 @@ export default function SessionView({
     durationFixedRef.current = false
     setVideoSrc(null)
     setVideoError(false)
+    setVideoLive(false)
     if (!videoWanted) return undefined
     void (async () => {
       try {
@@ -217,9 +219,11 @@ export default function SessionView({
     }
   }, [sessionId, videoWanted])
 
-  // A different session starts folded again on the website.
+  // A different session: the recording loads straight away, and the mark
+  // stays over the player until it has something to show.
   useEffect(() => {
-    setVideoWanted((window as unknown as { sitkaWeb?: boolean }).sitkaWeb !== true)
+    setVideoWanted(true)
+    setVideoLive(false)
     pendingSeekRef.current = null
   }, [sessionId])
 
@@ -542,8 +546,15 @@ export default function SessionView({
                 controls
                 playsInline
                 onLoadedMetadata={onLoadedMetadata}
+                onLoadedData={() => setVideoLive(true)}
+                onPlaying={() => setVideoLive(true)}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
               />
+              {!videoLive && !meta.audioOnly && (
+                <div className="video-waiting">
+                  <Loading compact onDark words={LOADING_WORDS.recording} delay={0} />
+                </div>
+              )}
               {meta.audioOnly && (
                 <div className={`audio-overlay${meta.banner ? ' with-banner' : ''}`}>
                   {meta.banner ? (

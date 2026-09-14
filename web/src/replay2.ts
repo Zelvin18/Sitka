@@ -152,6 +152,13 @@ let mediaReady = false
 let pendingSeek: number | null = null
 /** the stage is on screen: the person is watching, so the words must not pull the page away */
 let stageVisible = true
+
+/** The conversation sheet, and the dock with it: on a phone the dock is a round
+ * button until the sheet opens, then the full box, sitting above it. */
+function setSheet(open: boolean): void {
+  el('sheet').classList.toggle('open', open)
+  el('dock').classList.toggle('expanded', open)
+}
 let lineEls: { sec: number; node: HTMLElement }[] = []
 let chapterEls: { sec: number; node: HTMLElement }[] = []
 let momentEls: { sec: number; node: HTMLElement }[] = []
@@ -426,7 +433,7 @@ function wireMedia(): void {
     else if (e.key === '/') {
       e.preventDefault()
       ;(el('ask') as HTMLInputElement).focus()
-    } else if (e.key === 'Escape') el('sheet').classList.remove('open')
+    } else if (e.key === 'Escape') setSheet(false)
   })
 }
 
@@ -754,9 +761,9 @@ function wireAsk(d: Loaded): void {
       d.summary ? `Summary of the session: ${d.summary}` : '',
       'Ground every answer in the excerpt (and materials) below; if something was not covered there, say so plainly rather than guessing.',
       'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
-      'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the excerpt — plain ASCII double square brackets, one moment, never a range. These become tap-to-play links.',
+      'When you reference a specific moment, cite the time exactly as it appears at the start of that line, inside plain double square brackets — for example [[12:37]] or [[1:02:15]]. Never write letters inside the brackets, never a range. These become tap-to-play links.',
       'Cite a moment when the reader would want to jump to it; a summary reads as prose.',
-      'Keep answers short and direct; a greeting gets one friendly line.',
+      'Shape every answer so it can be taken in at a glance: the answer itself in one or two plain sentences first; then, only if more is needed, short bullets that each open with a bold lead-in of two or three words; a blank line between parts. Never one long paragraph. A greeting gets one friendly line.',
       readLang !== 'English' ? `Always answer in ${readLang}.` : '',
       d.materials ? `\nMaterials:\n${d.materials.slice(0, 4000)}` : '',
       `\nExcerpt of the session (each line starts with its time):\n${excerptFor(q) || '(no words captured)'}`
@@ -788,7 +795,7 @@ function wireAsk(d: Loaded): void {
   }
   // a tap on the box brings the conversation back, when there is one
   input.onfocus = () => {
-    if (history.length > 0) el('sheet').classList.add('open')
+    if (history.length > 0) setSheet(true)
   }
   const bubble = (cls: string, html: string, text?: string): HTMLElement => {
     const b = document.createElement('div')
@@ -811,14 +818,18 @@ function wireAsk(d: Loaded): void {
     const sec = Number(chip.dataset.s)
     if (Number.isFinite(sec)) void play(sec)
   })
-  el('sheetx').onclick = () => el('sheet').classList.remove('open')
+  el('sheetx').onclick = () => setSheet(false)
   // the mark in the dock reopens the conversation; a count shows there is one
   el('openchat').onclick = () => {
+    const open = el('sheet').classList.contains('open')
+    // on a phone the round button opens the box first; with a conversation
+    // behind it, the sheet comes with it
     if (history.length === 0) {
-      ;(el('ask') as HTMLInputElement).focus()
+      setSheet(!open)
+      if (!open) (el('ask') as HTMLInputElement).focus()
       return
     }
-    el('sheet').classList.toggle('open')
+    setSheet(!open)
   }
   const countBadge = (): void => {
     const n = el('chatn')
@@ -839,7 +850,7 @@ function wireAsk(d: Loaded): void {
     asking = true
     input.value = ''
     send.disabled = true
-    el('sheet').classList.add('open')
+    setSheet(true)
     bubble('bub-u', '', q)
     const typing = bubble('typing', '<svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" style="width:14px;height:14px"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Reading the session')
     try {
@@ -941,7 +952,6 @@ async function boot(): Promise<void> {
   const bits: string[] = []
   if (d.dateIso) bits.push(fmtDate(d.dateIso))
   if (d.durationMs) bits.push(fmtLen(d.durationMs))
-  bits.push(`${d.lines.length} lines`)
   el('meta').innerHTML = bits.map((b) => `<span>${esc(b)}</span>`).join('')
   el('mt').textContent = d.title
   if (d.durationMs) el('tlen').textContent = ' / ' + fmt(d.durationMs / 1000)
@@ -954,7 +964,21 @@ async function boot(): Promise<void> {
   }
   if (d.notes.trim()) {
     el('notesec').hidden = false
-    el('notes').innerHTML = md(d.notes)
+    const notes = el('notes')
+    notes.innerHTML = md(d.notes)
+    // long notes fold on a phone: a glance first, the rest on request
+    if (window.innerWidth < 900 && notes.scrollHeight > 420) {
+      notes.classList.add('folded')
+      const more = document.createElement('button')
+      more.type = 'button'
+      more.className = 'unfold'
+      more.textContent = 'Read all the notes'
+      more.onclick = () => {
+        const open = notes.classList.toggle('folded')
+        more.textContent = open ? 'Read all the notes' : 'Fold the notes'
+      }
+      notes.after(more)
+    }
   }
   renderChapters(d)
   renderMoments(d)
