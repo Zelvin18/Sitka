@@ -874,27 +874,35 @@ export async function transcribeChunk(
     throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
   }
   const data = (await res.json()) as WhisperResponse
-  // Whisper emits lone punctuation (and "I'm sorry." / "Thank you.") for
-  // silence — never show those as speech.
-  const isSpeech = (t: string): boolean =>
-    /[\p{L}\p{N}]/u.test(t) && !/^(i'?m sorry|thank you|thanks for watching)\.?$/i.test(t.trim())
-  if (data.segments && data.segments.length > 0) {
-    return data.segments
-      .filter((s) => s.text && s.text.trim().length > 0 && isSpeech(s.text))
-      .map((s) => ({
-        start: offsetSec + s.start,
-        end: offsetSec + s.end,
-        text: s.text.trim()
-      }))
+  // Silence makes Whisper invent words: lone punctuation, "Thank you.",
+  // "Hello, welcome to the channel." and the like. Two guards: the model's own
+  // confidence (no_speech_prob, avg_logprob) and the phrases it produces from
+  // nothing. Neither is ever shown as speech.
+  const INVENTED =
+    /^(i'?m sorry\.?|thank you\.?|thanks?( for watching| you)?\.?|hello,? (and )?welcome( to (the|my|this) (channel|video|stream))?\.?|please subscribe.*|subscribe.*|bye\.?|you\.?|so\.?|okay\.?|um+\.?|music\.?|\[music\]|\(music\)|\[applause\]|\[blank_audio\]|amara\.org.*|www\..*)$/i
+  type Seg = WhisperSegment & {
+    no_speech_prob?: number
+    avg_logprob?: number
+    compression_ratio?: number
   }
-  if (data.text && data.text.trim().length > 0) {
-    return [
-      {
-        start: offsetSec,
-        end: offsetSec + (data.duration ?? 15),
-        text: data.text.trim()
-      }
-    ]
+  const isSpeech = (s: Seg): boolean => {
+    const t = (s.text || '').trim()
+    if (!/[\p{L}\p{N}]/u.test(t) || INVENTED.test(t)) return false
+    if ((s.no_speech_prob ?? 0) > 0.6) return false
+    if ((s.avg_logprob ?? 0) < -1.0) return false
+    if ((s.compression_ratio ?? 0) > 2.4) return false
+    return true
+  }
+  if (data.segments && data.segments.length > 0) {
+    return (data.segments as Seg[]).filter(isSpeech).map((s) => ({
+      start: offsetSec + s.start,
+      end: offsetSec + s.end,
+      text: s.text.trim()
+    }))
+  }
+  const whole = (data.text || '').trim()
+  if (whole && /[\p{L}\p{N}]/u.test(whole) && !INVENTED.test(whole)) {
+    return [{ start: offsetSec, end: offsetSec + (data.duration ?? 15), text: whole }]
   }
   return []
 }

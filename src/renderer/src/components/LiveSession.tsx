@@ -73,6 +73,8 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 const VIDEO_CHUNK_MS = 3000
 const STT_CHUNK_MS = 5000
 const MIN_AUDIO_BYTES = 4000
+/** below this loudest moment a caption chunk is silence: not sent, never invented */
+const SILENCE_RMS = 0.0035
 
 interface Props {
   hasChatKey: boolean
@@ -202,6 +204,33 @@ export default function LiveSession({
   const [pendingMats, setPendingMats] = useState<(SessionMaterial & { text: string })[]>([])
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
   const micStreamRef = useRef<MediaStream | null>(null)
+  // ---- sound that never arrives is named, and never transcribed ----
+  // A level meter listens to the mixed sound. A caption chunk with no sound in
+  // it is not sent (Whisper invents words for silence), and after a few
+  // silent chunks the person is told, with a one-tap way to add the microphone.
+  const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const chunkPeakRef = useRef(0)
+  const silentChunksRef = useRef(0)
+  const levelTimerRef = useRef<number | null>(null)
+  const [noSound, setNoSound] = useState<'' | 'silent' | 'none'>('')
+  const enableMicNow = useCallback(async (): Promise<void> => {
+    const ctx = audioCtxRef.current
+    const dest = destRef.current
+    if (!ctx || !dest || micStreamRef.current) return
+    try {
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      })
+      micStreamRef.current = mic
+      streamsRef.current.push(mic)
+      ctx.createMediaStreamSource(mic).connect(dest)
+      setMicOn(true)
+      setNoSound('')
+      silentChunksRef.current = 0
+    } catch {
+      setError('The microphone could not be opened. Check the browser has permission to use it.')
+    }
+  }, [])
   useEffect(() => {
     if (phase !== 'picking' || captureMode !== 'audio') {
       setMicPreview((s) => {
@@ -226,8 +255,15 @@ export default function LiveSession({
   }, [phase, captureMode])
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
-  const [micOn, setMicOn] = useState(draft?.micOn ?? true)
+  // Sound: a screen session listens to the screen's own sound by default —
+  // the call, the video, the slides' audio — and the microphone only when the
+  // person switches it on. Camera and audio sessions have nothing but the
+  // microphone, so there it is always on.
+  const [micOn, setMicOn] = useState(draft?.micOn ?? captureMode !== 'screen')
   const [systemAudioOn, setSystemAudioOn] = useState(draft?.systemAudioOn ?? true)
+  useEffect(() => {
+    if (captureMode !== 'screen') setMicOn(true)
+  }, [captureMode])
   const [error, setError] = useState<string | null>(null)
   const [session, setSession] = useState<SessionMeta | null>(null)
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
@@ -373,15 +409,15 @@ export default function LiveSession({
   const pickWebScreen = useCallback(async (): Promise<void> => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        // The picker opens on the whole screen. A single window of a video
-        // call often comes through with its presented picture black (the
-        // browser composites that video outside what a window capture can
-        // see); the whole screen or the call's tab always carries it.
+        // The picker opens on the browser's tabs, the way sharing in a call
+        // does: the tab of a call carries its picture AND its sound. A single
+        // window of a call often comes through with its presented picture black
+        // and no sound at all; the whole screen also works.
         video: {
           width: { max: 1280 },
           height: { max: 720 },
           frameRate: { max: 12 },
-          displaySurface: 'monitor'
+          displaySurface: 'browser'
         } as MediaTrackConstraints,
         audio: systemAudioOn,
         ...({
@@ -1030,6 +1066,17 @@ export default function LiveSession({
     const flush = (): void => {
       if (flushed || parts.length === 0) return
       flushed = true
+      // No sound in this chunk: nothing to transcribe, and Whisper would only
+      // invent something. Three silent chunks in a row and the person is told.
+      const peak = chunkPeakRef.current
+      chunkPeakRef.current = 0
+      if (peak < SILENCE_RMS) {
+        silentChunksRef.current++
+        if (silentChunksRef.current >= 3) setNoSound((cur) => (cur === 'none' ? cur : 'silent'))
+        return
+      }
+      silentChunksRef.current = 0
+      setNoSound('')
       void transcribeBlob(
         new Blob(parts, { type: 'audio/webm' }),
         (chunkStart - sessionStartRef.current) / 1000
@@ -1190,12 +1237,32 @@ export default function LiveSession({
       const audioCtx = new AudioContext()
       audioCtxRef.current = audioCtx
       const dest = audioCtx.createMediaStreamDestination()
+      destRef.current = dest
       let audioInputs = 0
       for (const s of [desktopStream, micStream]) {
         if (s && s.getAudioTracks().length > 0) {
           audioCtx.createMediaStreamSource(new MediaStream(s.getAudioTracks())).connect(dest)
           audioInputs++
         }
+      }
+      // The level meter: the loudest moment of each caption chunk is kept, so
+      // a chunk with nothing in it is never sent to be transcribed.
+      chunkPeakRef.current = 0
+      silentChunksRef.current = 0
+      setNoSound(audioInputs === 0 ? 'none' : '')
+      if (audioInputs > 0) {
+        const analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 2048
+        audioCtx.createMediaStreamSource(dest.stream).connect(analyser)
+        const buf = new Float32Array(analyser.fftSize)
+        if (levelTimerRef.current) clearInterval(levelTimerRef.current)
+        levelTimerRef.current = window.setInterval(() => {
+          analyser.getFloatTimeDomainData(buf)
+          let sum = 0
+          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+          const rms = Math.sqrt(sum / buf.length)
+          if (rms > chunkPeakRef.current) chunkPeakRef.current = rms
+        }, 150)
       }
 
       const recordTracks: MediaStreamTrack[] = [...(desktopStream?.getVideoTracks() ?? [])]
@@ -1313,6 +1380,10 @@ export default function LiveSession({
     streamsRef.current = []
     await audioCtxRef.current?.close().catch(() => undefined)
     audioCtxRef.current = null
+    destRef.current = null
+    if (levelTimerRef.current) clearInterval(levelTimerRef.current)
+    levelTimerRef.current = null
+    setNoSound('')
 
     const durationMs = Date.now() - sessionStartRef.current
     await window.sitka.finalizeSession(id, durationMs)
@@ -1766,9 +1837,9 @@ export default function LiveSession({
                         </div>
                         <div className="web-pick-title">Tap to choose your screen</div>
                         <div className="web-pick-sub">
-                          Your entire screen, one window, or a browser tab — like sharing in a call.
-                          For a video call, choose the whole screen or the call's tab: a single window
-                          of a call can come through blank.
+                          Like sharing in a call. For a video call, pick the tab where the call is
+                          running: its picture and its sound come with it. A single window of a call
+                          can come through blank and silent.
                         </div>
                       </div>
                     )}
@@ -1777,7 +1848,8 @@ export default function LiveSession({
                     <div className="web-pick-warn">
                       <span>
                         The shared picture is blank: the browser is not passing on the presented video
-                        from this window. Choose the whole screen or the call's tab instead.
+                        from this window. Choose the tab where the call is running instead, or the
+                        whole screen.
                       </span>
                       <button type="button" className="btn btn-sm" onClick={() => void pickWebScreen()}>
                         Choose again
@@ -1990,8 +2062,8 @@ export default function LiveSession({
               {blankPicture && (
                 <div className="blank-note">
                   <b>The shared picture is blank.</b> The browser is not passing on the presented
-                  video from this window. In the browser's sharing bar, switch to the whole screen or
-                  the call's tab. The sound and the words carry on meanwhile.
+                  video from this window. In the browser's sharing bar, switch to the tab where the
+                  call is running, or to the whole screen.
                 </div>
               )}
             </>
@@ -2011,6 +2083,20 @@ export default function LiveSession({
         {sttError && (
           <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
             <span>Transcription issue: {sttError}</span>
+          </div>
+        )}
+        {noSound && (
+          <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
+            <span style={{ flex: 1 }}>
+              {noSound === 'none'
+                ? 'No sound is being captured. A single window carries no sound: in the browser\'s sharing bar, switch to the tab where the call is running or to the whole screen, or use your microphone.'
+                : 'No sound has reached Sitka for a while. If the call is in another window, switch the share to its tab or the whole screen, or use your microphone. Nothing is transcribed until sound arrives.'}
+            </span>
+            {!micStreamRef.current && (
+              <button className="btn btn-sm" style={{ flexShrink: 0 }} onClick={() => void enableMicNow()}>
+                Use my microphone
+              </button>
+            )}
           </div>
         )}
         <div

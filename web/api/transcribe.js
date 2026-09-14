@@ -42,19 +42,31 @@ export default async function handler(req, res) {
       res.status(502).json({ error: j.error?.message || 'Transcription error' })
       return
     }
-    // Whisper emits lone punctuation (and sometimes "I'm sorry." / "Thank you.")
-    // for silent audio — never show those as speech.
-    const isSpeech = (t) =>
-      /[\p{L}\p{N}]/u.test(t) && !/^(i'?m sorry|thank you|thanks for watching)\.?$/i.test(t.trim())
+    // Silence makes Whisper invent words: lone punctuation, "Thank you.",
+    // "Hello, welcome to the channel." and the like. Two guards: the model's
+    // own confidence (no_speech_prob, avg_logprob) and a list of the phrases
+    // it produces from nothing. Neither is ever shown as speech.
+    const INVENTED =
+      /^(i'?m sorry\.?|thank you\.?|thanks?( for watching| you)?\.?|hello,? (and )?welcome( to (the|my|this) (channel|video|stream))?\.?|please subscribe.*|subscribe.*|bye\.?|you\.?|so\.?|okay\.?|um+\.?|music\.?|\[music\]|\(music\)|\[applause\]|\[blank_audio\]|amara\.org.*|www\..*)$/i
+    const isSpeech = (s) => {
+      const t = String(s.text || '').trim()
+      if (!/[\p{L}\p{N}]/u.test(t)) return false
+      if (INVENTED.test(t)) return false
+      if (Number(s.no_speech_prob) > 0.6) return false
+      if (Number(s.avg_logprob) < -1.0) return false
+      if (Number(s.compression_ratio) > 2.4) return false
+      return true
+    }
     const segments = (j.segments || [])
+      .filter(isSpeech)
       .map((s) => ({
         start: offsetSec + (Number(s.start) || 0),
         end: offsetSec + (Number(s.end) || 0),
         text: String(s.text || '').trim()
       }))
-      .filter((s) => s.text && isSpeech(s.text))
-    if (segments.length === 0 && j.text && String(j.text).trim()) {
-      segments.push({ start: offsetSec, end: offsetSec + 5, text: String(j.text).trim() })
+    if (segments.length === 0 && j.text && String(j.text).trim() && !(j.segments || []).length) {
+      const t = String(j.text).trim()
+      if (/[\p{L}\p{N}]/u.test(t) && !INVENTED.test(t)) segments.push({ start: offsetSec, end: offsetSec + 5, text: t })
     }
     res.status(200).json({ segments })
   } catch (err) {
