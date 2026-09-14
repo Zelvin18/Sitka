@@ -7578,6 +7578,47 @@ body.dragging-row .splitter-h {
   color: var(--text-2);
 }
 
+/* ---- pop out: Sitka in a small always-on-top window over the lecture ---- */
+.popout-btn {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.popout-btn:hover {
+  color: var(--text);
+  background: var(--bg-soft);
+}
+.popped-body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+.popped-body .session-right.popped {
+  position: relative;
+  width: 100% !important;
+  height: 100vh;
+  border-left: 0;
+  transform: none !important;
+}
+.popped-body .session-right.popped .popout-btn {
+  top: 8px;
+  right: 10px;
+}
+
 /* ---- theatre: the picture fills the screen, Sitka floats beside it ---- */
 .video-wrap.theatre {
   position: fixed !important;

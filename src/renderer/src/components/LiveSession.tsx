@@ -1,4 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+/**
+ * Hosts the chat column either in place or inside a pop-out window (the
+ * browser's document picture-in-picture), so Sitka can float above a lecture
+ * that runs in another window while the whole screen is being captured.
+ */
+function PopHost({ win, children }: { win: Window | null; children: React.ReactNode }): React.JSX.Element {
+  return win ? createPortal(children, win.document.body) : <>{children}</>
+}
 import type {
   Space,
   CaptureSource,
@@ -769,8 +779,12 @@ export default function LiveSession({
   }, [])
 
   // ---- proactive nudges ----
+  // The conversation so far, kept here so the chat panel can move (into the
+  // pop-out window and back) and reopen exactly where it was.
+  const chatLogRef = useRef<Parameters<typeof window.sitka.saveChat>[1]>([])
   const onChatPersist = useCallback((messages: Parameters<typeof window.sitka.saveChat>[1]): void => {
     const id = sessionIdRef.current
+    chatLogRef.current = messages
     if (id) void window.sitka.saveChat(id, messages)
     userQuestionsRef.current = messages
       .filter((m) => m.role === 'user')
@@ -1839,10 +1853,12 @@ export default function LiveSession({
                         </div>
                         <div className="web-pick-title">Tap to choose your screen</div>
                         <div className="web-pick-sub">
-                          Like sharing in a call. For a video call in this browser, pick the tab where
-                          the call is running: its picture and its sound come with it. If the call is
-                          in a different Chrome window or profile, pick the entire screen. A single
-                          window of a call can come through blank and silent.
+                          Like sharing in a call. Best: open the call in this same Chrome and pick its
+                          tab — its picture and its sound come with it, and you can use Sitka freely
+                          in another tab while the capture stays on the call. If the call must stay in
+                          a different Chrome window or profile, pick the entire screen and use Pop out
+                          to keep Sitka floating above it. A single window of a call comes through
+                          blank and silent.
                         </div>
                       </div>
                     )}
@@ -2049,6 +2065,63 @@ export default function LiveSession({
     const r = t % 60
     return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
   }
+
+  // ---- pop out: Sitka floats above a lecture in another window ----
+  // With the whole screen captured, coming back to Sitka would put Sitka in
+  // the recording. The chat can instead live in a small always-on-top window
+  // that sits over the lecture; the capture keeps the lecture, and the
+  // conversation stays intact when it comes back.
+  const [popped, setPopped] = useState<Window | null>(null)
+  const canPop =
+    typeof (window as unknown as { documentPictureInPicture?: unknown }).documentPictureInPicture !==
+      'undefined' && window.innerWidth >= 860
+  const popOut = useCallback(async (): Promise<void> => {
+    const dpip = (
+      window as unknown as {
+        documentPictureInPicture?: {
+          requestWindow: (o: { width: number; height: number }) => Promise<Window>
+        }
+      }
+    ).documentPictureInPicture
+    if (!dpip) return
+    try {
+      const pip = await dpip.requestWindow({ width: 390, height: 640 })
+      // the app's styles travel with it
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          if (sheet.href) {
+            const l = pip.document.createElement('link')
+            l.rel = 'stylesheet'
+            l.href = sheet.href
+            pip.document.head.appendChild(l)
+          } else {
+            const s = pip.document.createElement('style')
+            s.textContent = Array.from(sheet.cssRules)
+              .map((r) => r.cssText)
+              .join('\n')
+            pip.document.head.appendChild(s)
+          }
+        } catch {
+          /* a sheet from elsewhere: skipped */
+        }
+      }
+      const theme = document.documentElement.getAttribute('data-theme')
+      if (theme) pip.document.documentElement.setAttribute('data-theme', theme)
+      const size = document.documentElement.getAttribute('data-textsize')
+      if (size) pip.document.documentElement.setAttribute('data-textsize', size)
+      pip.document.body.className = 'popped-body'
+      pip.document.title = 'Sitka'
+      pip.addEventListener('pagehide', () => setPopped(null))
+      setPopped(pip)
+    } catch {
+      setError('The pop-out window could not be opened in this browser.')
+    }
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (popped && !popped.closed) popped.close()
+    }
+  }, [popped])
 
   // ============ recording UI ============
   return (
@@ -2650,8 +2723,9 @@ export default function LiveSession({
       />
       {markToast && <div className="toast fade-in">{markToast}</div>}
       {dialogs}
+      <PopHost win={popped}>
       <div
-        className={`session-right${theatre ? (theatreChat ? ' theatre-open' : ' theatre-hidden') : ''}`}
+        className={`session-right${theatre ? (theatreChat ? ' theatre-open' : ' theatre-hidden') : ''}${popped ? ' popped' : ''}`}
         style={{ width: clamp(chatW, 300, 900) }}
       >
         {theatre && theatreChat && (
@@ -2662,6 +2736,27 @@ export default function LiveSession({
             title="Fold Sitka away — the conversation stays"
           >
             Close
+          </button>
+        )}
+        {canPop && session && !theatre && (
+          <button
+            type="button"
+            className="popout-btn"
+            onClick={() => (popped ? popped.close() : void popOut())}
+            title={
+              popped
+                ? 'Bring Sitka back into the page'
+                : 'Float Sitka in a small window above the lecture, so the recording keeps the lecture'
+            }
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              {popped ? (
+                <path d="M4 14v6h6M20 10V4h-6M20 4l-7 7M4 20l7-7" />
+              ) : (
+                <path d="M14 4h6v6M20 4l-8 8M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" />
+              )}
+            </svg>
+            {popped ? 'Back to the page' : 'Pop out'}
           </button>
         )}
         {hosting && session && (
@@ -2724,7 +2819,7 @@ export default function LiveSession({
             }
             sessionId={session.id}
             live
-            initialChat={[]}
+            initialChat={chatLogRef.current}
             hasChatKey={hasChatKey}
             hasTranscript={segments.length > 0}
             onSeek={(seconds, sid) => {
@@ -2759,6 +2854,7 @@ export default function LiveSession({
           />
         )}
       </div>
+      </PopHost>
     </div>
   )
 }
