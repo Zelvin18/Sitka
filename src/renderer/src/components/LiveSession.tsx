@@ -1479,6 +1479,145 @@ export default function LiveSession({
     </>
   )
 
+  // Every hook below runs on every render. Nothing hook-shaped may sit after
+  // the early returns further down: the count would change between the setup
+  // page and the recording page, and React would refuse to continue.
+
+  // ---- theatre: the picture fills the screen, Sitka floats beside it ----
+  // The same chat panel is used, restyled as a glass card, so the conversation
+  // is never lost when the view changes. Escape, or the browser leaving full
+  // screen, brings the page back.
+  const [theatre, setTheatre] = useState(false)
+  const [theatreChat, setTheatreChat] = useState(false)
+  useEffect(() => {
+    if (!theatre) return undefined
+    const root = document.documentElement
+    if (root.requestFullscreen && !document.fullscreenElement) {
+      root.requestFullscreen().catch(() => undefined)
+    }
+    const onChange = (): void => {
+      if (!document.fullscreenElement) setTheatre(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setTheatre(false)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('keydown', onKey)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
+    }
+  }, [theatre])
+
+  // ---- watch back while it records ----
+  // Pause, or drag the bar back, and the recording so far plays, built from
+  // what is already saved. The live capture and the captions carry on
+  // underneath the whole time; "Go live" (or reaching the end) returns.
+  const [dvr, setDvr] = useState<{ url: string; length: number } | null>(null)
+  const [dvrBusy, setDvrBusy] = useState(false)
+  const [dvrTime, setDvrTime] = useState(0)
+  const [dvrPaused, setDvrPaused] = useState(false)
+  const dvrRef = useRef<HTMLVideoElement>(null)
+  const pendingDvrSeekRef = useRef<number | null>(null)
+  const goLiveAgain = useCallback((): void => {
+    setDvr((old) => {
+      if (old) URL.revokeObjectURL(old.url)
+      return null
+    })
+    setDvrPaused(false)
+  }, [])
+  const openDvr = useCallback(
+    async (at?: number): Promise<void> => {
+      const id = sessionIdRef.current
+      if (!id || dvrBusy) return
+      setDvrBusy(true)
+      try {
+        const bytes = await window.sitka.readVideo(id, 'video')
+        if (!bytes || bytes.byteLength < 5000) return
+        const length = Date.now() - sessionStartRef.current
+        const blob = await fixWebmDuration(
+          new Blob([bytes.slice().buffer], { type: 'video/webm' }),
+          length
+        ).catch(() => new Blob([bytes.slice().buffer], { type: 'video/webm' }))
+        // pausing lands a little before the present; a drag lands where it was let go
+        pendingDvrSeekRef.current = at ?? Math.max(0, length / 1000 - 15)
+        setDvr((old) => {
+          if (old) URL.revokeObjectURL(old.url)
+          return { url: URL.createObjectURL(blob), length }
+        })
+        setDvrPaused(at === undefined)
+      } finally {
+        setDvrBusy(false)
+      }
+    },
+    [dvrBusy]
+  )
+  const mmss = (s: number): string => {
+    const t = Math.max(0, Math.floor(s))
+    const h = Math.floor(t / 3600)
+    const m = Math.floor((t % 3600) / 60)
+    const r = t % 60
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
+  }
+
+  // ---- pop out: Sitka floats above a lecture in another window ----
+  // With the whole screen captured, coming back to Sitka would put Sitka in
+  // the recording. The chat can instead live in a small always-on-top window
+  // that sits over the lecture; the capture keeps the lecture, and the
+  // conversation stays intact when it comes back.
+  const [popped, setPopped] = useState<Window | null>(null)
+  const canPop =
+    typeof (window as unknown as { documentPictureInPicture?: unknown }).documentPictureInPicture !==
+      'undefined' && window.innerWidth >= 860
+  const popOut = useCallback(async (): Promise<void> => {
+    const dpip = (
+      window as unknown as {
+        documentPictureInPicture?: {
+          requestWindow: (o: { width: number; height: number }) => Promise<Window>
+        }
+      }
+    ).documentPictureInPicture
+    if (!dpip) return
+    try {
+      const pip = await dpip.requestWindow({ width: 390, height: 640 })
+      // the app's styles travel with it
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          if (sheet.href) {
+            const l = pip.document.createElement('link')
+            l.rel = 'stylesheet'
+            l.href = sheet.href
+            pip.document.head.appendChild(l)
+          } else {
+            const s = pip.document.createElement('style')
+            s.textContent = Array.from(sheet.cssRules)
+              .map((r) => r.cssText)
+              .join('\n')
+            pip.document.head.appendChild(s)
+          }
+        } catch {
+          /* a sheet from elsewhere: skipped */
+        }
+      }
+      const theme = document.documentElement.getAttribute('data-theme')
+      if (theme) pip.document.documentElement.setAttribute('data-theme', theme)
+      const size = document.documentElement.getAttribute('data-textsize')
+      if (size) pip.document.documentElement.setAttribute('data-textsize', size)
+      pip.document.body.className = 'popped-body'
+      pip.document.title = 'Sitka'
+      pip.addEventListener('pagehide', () => setPopped(null))
+      setPopped(pip)
+    } catch {
+      setError('The pop-out window could not be opened in this browser.')
+    }
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (popped && !popped.closed) popped.close()
+    }
+  }, [popped])
+
   // ============ intent UI ============
   if (phase === 'intent') {
     return (
@@ -1987,141 +2126,6 @@ export default function LiveSession({
       </div>
     )
   }
-
-  // ---- theatre: the picture fills the screen, Sitka floats beside it ----
-  // The same chat panel is used, restyled as a glass card, so the conversation
-  // is never lost when the view changes. Escape, or the browser leaving full
-  // screen, brings the page back.
-  const [theatre, setTheatre] = useState(false)
-  const [theatreChat, setTheatreChat] = useState(false)
-  useEffect(() => {
-    if (!theatre) return undefined
-    const root = document.documentElement
-    if (root.requestFullscreen && !document.fullscreenElement) {
-      root.requestFullscreen().catch(() => undefined)
-    }
-    const onChange = (): void => {
-      if (!document.fullscreenElement) setTheatre(false)
-    }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setTheatre(false)
-    }
-    document.addEventListener('fullscreenchange', onChange)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange)
-      document.removeEventListener('keydown', onKey)
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
-    }
-  }, [theatre])
-
-  // ---- watch back while it records ----
-  // Pause, or drag the bar back, and the recording so far plays, built from
-  // what is already saved. The live capture and the captions carry on
-  // underneath the whole time; "Go live" (or reaching the end) returns.
-  const [dvr, setDvr] = useState<{ url: string; length: number } | null>(null)
-  const [dvrBusy, setDvrBusy] = useState(false)
-  const [dvrTime, setDvrTime] = useState(0)
-  const [dvrPaused, setDvrPaused] = useState(false)
-  const dvrRef = useRef<HTMLVideoElement>(null)
-  const pendingDvrSeekRef = useRef<number | null>(null)
-  const goLiveAgain = useCallback((): void => {
-    setDvr((old) => {
-      if (old) URL.revokeObjectURL(old.url)
-      return null
-    })
-    setDvrPaused(false)
-  }, [])
-  const openDvr = useCallback(
-    async (at?: number): Promise<void> => {
-      const id = sessionIdRef.current
-      if (!id || dvrBusy) return
-      setDvrBusy(true)
-      try {
-        const bytes = await window.sitka.readVideo(id, 'video')
-        if (!bytes || bytes.byteLength < 5000) return
-        const length = Date.now() - sessionStartRef.current
-        const blob = await fixWebmDuration(
-          new Blob([bytes.slice().buffer], { type: 'video/webm' }),
-          length
-        ).catch(() => new Blob([bytes.slice().buffer], { type: 'video/webm' }))
-        // pausing lands a little before the present; a drag lands where it was let go
-        pendingDvrSeekRef.current = at ?? Math.max(0, length / 1000 - 15)
-        setDvr((old) => {
-          if (old) URL.revokeObjectURL(old.url)
-          return { url: URL.createObjectURL(blob), length }
-        })
-        setDvrPaused(at === undefined)
-      } finally {
-        setDvrBusy(false)
-      }
-    },
-    [dvrBusy]
-  )
-  const mmss = (s: number): string => {
-    const t = Math.max(0, Math.floor(s))
-    const h = Math.floor(t / 3600)
-    const m = Math.floor((t % 3600) / 60)
-    const r = t % 60
-    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
-  }
-
-  // ---- pop out: Sitka floats above a lecture in another window ----
-  // With the whole screen captured, coming back to Sitka would put Sitka in
-  // the recording. The chat can instead live in a small always-on-top window
-  // that sits over the lecture; the capture keeps the lecture, and the
-  // conversation stays intact when it comes back.
-  const [popped, setPopped] = useState<Window | null>(null)
-  const canPop =
-    typeof (window as unknown as { documentPictureInPicture?: unknown }).documentPictureInPicture !==
-      'undefined' && window.innerWidth >= 860
-  const popOut = useCallback(async (): Promise<void> => {
-    const dpip = (
-      window as unknown as {
-        documentPictureInPicture?: {
-          requestWindow: (o: { width: number; height: number }) => Promise<Window>
-        }
-      }
-    ).documentPictureInPicture
-    if (!dpip) return
-    try {
-      const pip = await dpip.requestWindow({ width: 390, height: 640 })
-      // the app's styles travel with it
-      for (const sheet of Array.from(document.styleSheets)) {
-        try {
-          if (sheet.href) {
-            const l = pip.document.createElement('link')
-            l.rel = 'stylesheet'
-            l.href = sheet.href
-            pip.document.head.appendChild(l)
-          } else {
-            const s = pip.document.createElement('style')
-            s.textContent = Array.from(sheet.cssRules)
-              .map((r) => r.cssText)
-              .join('\n')
-            pip.document.head.appendChild(s)
-          }
-        } catch {
-          /* a sheet from elsewhere: skipped */
-        }
-      }
-      const theme = document.documentElement.getAttribute('data-theme')
-      if (theme) pip.document.documentElement.setAttribute('data-theme', theme)
-      const size = document.documentElement.getAttribute('data-textsize')
-      if (size) pip.document.documentElement.setAttribute('data-textsize', size)
-      pip.document.body.className = 'popped-body'
-      pip.document.title = 'Sitka'
-      pip.addEventListener('pagehide', () => setPopped(null))
-      setPopped(pip)
-    } catch {
-      setError('The pop-out window could not be opened in this browser.')
-    }
-  }, [])
-  useEffect(() => {
-    return () => {
-      if (popped && !popped.closed) popped.close()
-    }
-  }, [popped])
 
   // ============ recording UI ============
   return (
