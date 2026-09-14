@@ -113,6 +113,17 @@ async function loadRecap(): Promise<Loaded | null> {
     session_at: string | null
   } | null
   if (!rc || !rc.enabled) return null
+  // A recap shared before the flag existed says nothing about its recording:
+  // look in the owner's folder once, and play it if the parts are there.
+  let hasParts = Boolean(rc.has_recording && rc.owner)
+  if (!hasParts && rc.owner) {
+    try {
+      const { data: files } = await sb.storage.from('recordings').list(`${rc.owner}/${pageId}`, { limit: 5 })
+      hasParts = (files ?? []).some((f) => /^part-\d+\.webm$/.test(f.name))
+    } catch {
+      hasParts = false
+    }
+  }
   return {
     title: rc.title || 'Session recap',
     dateIso: rc.session_at,
@@ -125,7 +136,7 @@ async function loadRecap(): Promise<Loaded | null> {
       .filter((l) => l.text),
     owner: rc.owner ?? null,
     sessionId: pageId,
-    video: rc.has_recording && rc.owner ? 'parts' : null,
+    video: hasParts ? 'parts' : null,
     kindWord: 'session',
     materials: '',
     live: false
@@ -151,6 +162,19 @@ let translateRun = 0
 // black box. Play then happens inside the tap itself, which browsers allow;
 // a play started after a long download is the one they refuse.
 let mediaPromise: Promise<boolean> | null = null
+/** the forms of the recording still worth trying, first one loaded */
+let candidates: Blob[] = []
+let candidateAt = 0
+function tryNextCandidate(): boolean {
+  const v = video()
+  candidateAt++
+  if (candidateAt >= candidates.length) return false
+  console.warn('[recap] retrying with form', candidateAt, candidates[candidateAt].size)
+  if (v.src.startsWith('blob:')) URL.revokeObjectURL(v.src)
+  v.src = URL.createObjectURL(candidates[candidateAt])
+  v.load()
+  return true
+}
 function loadMedia(): Promise<boolean> {
   if (mediaReady) return Promise.resolve(true)
   if (mediaPromise) return mediaPromise
@@ -182,10 +206,14 @@ function loadMedia(): Promise<boolean> {
             return blob
           })
         )
-        const whole = await fixWebmDuration(new Blob(blobs, { type: 'video/webm' }), data.durationMs).catch(
-          () => new Blob(blobs, { type: 'video/webm' })
-        )
-        v.src = URL.createObjectURL(whole)
+        // Three ways to open the same bytes, tried in turn if the browser
+        // refuses one: the file with its length written in, the plain
+        // joined parts, and the first part alone. Whichever opens, plays.
+        const raw = new Blob(blobs, { type: 'video/webm' })
+        const patched = await fixWebmDuration(raw, data.durationMs).catch(() => raw)
+        candidates = [patched, raw, blobs[0]]
+        if (patched === raw) candidates = [raw, blobs[0]]
+        v.src = URL.createObjectURL(candidates[0])
       }
       v.hidden = false
       mediaReady = true
@@ -260,6 +288,8 @@ function wireMedia(): void {
   // words on the pill, so a failure is never a silent black box.
   v.addEventListener('error', () => {
     const code = v.error?.code
+    // a form the browser cannot open: try the next one before saying so
+    if ((code === 4 || code === 3) && tryNextCandidate()) return
     const why =
       code === 4
         ? 'This browser cannot decode this recording.'
@@ -649,6 +679,10 @@ function wireAsk(d: Loaded): void {
   const send = el('asksend') as HTMLButtonElement
   input.oninput = () => {
     send.disabled = !input.value.trim()
+  }
+  // a tap on the box brings the conversation back, when there is one
+  input.onfocus = () => {
+    if (history.length > 0) el('sheet').classList.add('open')
   }
   const bubble = (cls: string, html: string, text?: string): HTMLElement => {
     const b = document.createElement('div')

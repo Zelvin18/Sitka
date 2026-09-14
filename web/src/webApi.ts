@@ -1744,7 +1744,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return rows
     },
 
-    getSession: async (id: string) => loadSession(id),
+    getSession: async (id: string) => {
+      const d = await loadSession(id)
+      // A shared recap follows its session: opening the session refreshes
+      // the recap's title, summary and moments, so an old share never keeps
+      // a stale name.
+      if (d?.meta.recapUrl) {
+        void sb
+          .from('recaps')
+          .update({
+            title: d.meta.title,
+            summary: d.meta.summary ?? '',
+            highlights: d.meta.highlights ?? [],
+            has_recording: !d.meta.readOnly && !d.meta.sample,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id)
+          .then(() => undefined, () => undefined)
+      }
+      return d
+    },
 
     deleteSession: async (id: string) => {
       // A hosted event's recap dies with its session: the page closes and the
