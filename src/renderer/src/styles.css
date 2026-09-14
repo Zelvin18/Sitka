@@ -7578,6 +7578,120 @@ body.dragging-row .splitter-h {
   color: var(--text-2);
 }
 
+/* ---- a calm note: something to know, not an alarm ---- */
+.soft-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.soft-note-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.soft-note-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.soft-note-text b {
+  font-weight: 650;
+  color: var(--text);
+}
+.soft-note-text span {
+  color: var(--text-2);
+}
+
+/* ---- one live session at a time ---- */
+.live-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.live-block-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: none;
+  box-shadow: 0 0 0 0 rgba(200, 68, 58, 0.45);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-pulse {
+  to {
+    box-shadow: 0 0 0 9px rgba(200, 68, 58, 0);
+  }
+}
+.live-block-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.live-block-text b {
+  font-weight: 650;
+}
+.live-block-text span {
+  color: var(--text-2);
+}
+.intent-grid.blocked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+/* the app-wide pill */
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 11px 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.live-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+.live-pill small {
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: 0;
+}
+.live-pill:hover {
+  background: var(--bg-soft);
+}
+
 /* ---- pop out: Sitka in a small always-on-top window over the lecture ---- */
 .popout-btn {
   position: absolute;

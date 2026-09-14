@@ -72,6 +72,8 @@ const CAN_SHARE_SCREEN = typeof navigator.mediaDevices?.getDisplayMedia === 'fun
 import { shrinkImageFile } from '../lib/attach'
 // eslint-disable-next-line import/first
 import { fixWebmDuration } from '@shared/webmDuration'
+// eslint-disable-next-line import/first
+import { clearLiveBeat, isThisTab, readLive, useLive, writeLiveBeat } from '../lib/live'
 const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   video: {
     facingMode: { ideal: 'environment' },
@@ -1039,6 +1041,19 @@ export default function LiveSession({
     }
   }, [phase])
 
+  // One live session per account, across tabs: while recording, this tab
+  // writes a heartbeat the whole app reads (see lib/live.ts).
+  useEffect(() => {
+    if (phase !== 'recording' || !session) return undefined
+    const tick = (): void => writeLiveBeat(session.id, session.title, sessionStartRef.current)
+    tick()
+    const t = window.setInterval(tick, 4000)
+    return () => {
+      clearInterval(t)
+      clearLiveBeat(session.id)
+    }
+  }, [phase, session])
+
   const enqueueAppend = useCallback((blob: Blob): void => {
     const id = sessionIdRef.current
     if (!id) return
@@ -1120,6 +1135,12 @@ export default function LiveSession({
   // ---- start recording ----
   const start = useCallback(async (): Promise<void> => {
     if (captureMode === 'screen' && !selectedSource) return
+    // one session at a time, across every tab of the account
+    const other = readLive()
+    if (other && !isThisTab(other)) {
+      setError(`You are already live in another tab ("${other.title}"). End it there before starting a new one.`)
+      return
+    }
     setPhase('starting')
     setError(null)
     let created: SessionMeta | null = null
@@ -1483,6 +1504,10 @@ export default function LiveSession({
   // the early returns further down: the count would change between the setup
   // page and the recording page, and React would refuse to continue.
 
+  // A session already live in another tab blocks a second one from starting.
+  const liveBeat = useLive()
+  const liveElsewhere = liveBeat && !isThisTab(liveBeat) && phase !== 'recording' ? liveBeat : null
+
   // ---- theatre: the picture fills the screen, Sitka floats beside it ----
   // The same chat panel is used, restyled as a glass card, so the conversation
   // is never lost when the view changes. Escape, or the browser leaving full
@@ -1629,7 +1654,20 @@ export default function LiveSession({
           <h1 className="page-title">New live session</h1>
           <p className="page-subtitle">What are you doing today?</p>
 
-          <div className="intent-grid">
+          {liveElsewhere && (
+            <div className="live-block">
+              <span className="live-block-dot" />
+              <div className="live-block-text">
+                <b>You are already live in another tab.</b>
+                <span>
+                  "{liveElsewhere.title}" is recording there. Sitka keeps to one session at a time,
+                  so end it in that tab before starting a new one.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className={`intent-grid${liveElsewhere ? ' blocked' : ''}`}>
             <button
               className="intent-card"
               onClick={() => {
@@ -2380,12 +2418,18 @@ export default function LiveSession({
           </div>
         )}
         {noSound && (
-          <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
-            <span style={{ flex: 1 }}>
-              {noSound === 'none'
-                ? 'No sound is being captured. A single window carries no sound: in the browser\'s sharing bar, switch to the tab where the call is running or to the whole screen, or use your microphone.'
-                : 'No sound has reached Sitka for a while. If the call is in another window, switch the share to its tab or the whole screen, or use your microphone. Nothing is transcribed until sound arrives.'}
+          <div className="soft-note" style={{ margin: '12px 20px 0' }}>
+            <span className="soft-note-icon">
+              <IconMic size={16} strokeWidth={1.8} />
             </span>
+            <div className="soft-note-text">
+              <b>Nothing to hear yet</b>
+              <span>
+                {noSound === 'none'
+                  ? 'This share carries no sound. Share the call\'s tab or the whole screen, or listen through your microphone.'
+                  : 'No sound has reached Sitka for a moment. If the call is in another window, share its tab or the whole screen, or listen through your microphone.'}
+              </span>
+            </div>
             {!micStreamRef.current && (
               <button className="btn btn-sm" style={{ flexShrink: 0 }} onClick={() => void enableMicNow()}>
                 Use my microphone

@@ -2999,6 +2999,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         duration_ms: d.meta.durationMs,
         session_at: new Date(d.meta.createdAt).toISOString(),
         enabled: true,
+        // recorded on the website: the parts are in the cloud and the recap can play them
+        has_recording: !d.meta.readOnly && !d.meta.sample,
         updated_at: new Date().toISOString()
       })
       if (error) {

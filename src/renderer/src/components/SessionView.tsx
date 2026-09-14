@@ -458,6 +458,18 @@ export default function SessionView({
             )}
           </div>
         )}
+        {meta.status === 'recording' && (
+          <div className="live-block" style={{ margin: '12px 24px 0' }}>
+            <span className="live-block-dot" />
+            <div className="live-block-text">
+              <b>This session is recording right now.</b>
+              <span>
+                It is live in another tab or window. Follow it there; the recording and the words
+                arrive here once it ends.
+              </span>
+            </div>
+          </div>
+        )}
         <div
           className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}${videoHidden ? ' collapsed' : ''}`}
           ref={videoWrapRef}

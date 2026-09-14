@@ -11,6 +11,7 @@ import { IconMenu } from './lib/icons'
 import SpaceMenu from './components/SpaceMenu'
 import JoinView from './components/JoinView'
 import { applyAppearance } from './lib/prefs'
+import { isThisTab, useLive } from './lib/live'
 
 const PHONE_QUERY = '(max-width: 859px)'
 const drawerWidth = (): number => Math.min(330, Math.round(window.innerWidth * 0.88))
@@ -228,6 +229,12 @@ export default function App(): React.JSX.Element {
   // already chosen, filed under whichever ecosystem the user is standing in.
   // It stops at the setup page — recording begins only when they press Start,
   // so nothing is captured before they have chosen what they want.
+  // The live session, in this tab or another: shown everywhere, and it stops
+  // a second one from starting.
+  const liveBeat = useLive()
+  const liveHere = Boolean(recordingSessionId) || (liveBeat !== null && isThisTab(liveBeat))
+  const liveElsewhere = liveBeat !== null && !isThisTab(liveBeat) && !recordingSessionId
+
   const quickRecord = useCallback((): void => {
     if (recordingSessionId) {
       setView({ name: 'live' })
@@ -410,6 +417,24 @@ export default function App(): React.JSX.Element {
         )}
         {/* "Sitka for" at the top right: personal, Education or Business. */}
         <div className="top-right">
+        {(liveHere || liveElsewhere) && view.name !== 'live' && (
+          <button
+            type="button"
+            className="live-pill"
+            title={
+              liveElsewhere
+                ? `"${liveBeat?.title ?? 'A session'}" is recording in another tab. End it there before starting another.`
+                : 'Back to the live session'
+            }
+            onClick={() => {
+              if (liveHere) setView({ name: 'live' })
+            }}
+          >
+            <i />
+            LIVE
+            <small>{liveElsewhere ? 'in another tab' : liveBeat?.title ?? 'recording'}</small>
+          </button>
+        )}
         <SpaceMenu
           space={space}
           onPick={(s) => {

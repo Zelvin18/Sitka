@@ -151,7 +151,10 @@ function toGroq(messages, keepImages) {
   })
 }
 
-// Best-effort per-IP limiter for platform-funded (keyless) requests.
+// Best-effort per-IP limiter for platform-funded (keyless) requests. One
+// person in a live session makes many calls on their own — every screen
+// change is read, notes refresh, questions come and go — so the ceiling is a
+// generous hour-long budget plus a short burst guard, not a hard cap on use.
 const ipLog = new Map()
 function overLimit(ip) {
   const now = Date.now()
@@ -159,7 +162,8 @@ function overLimit(ip) {
   hits.push(now)
   ipLog.set(ip, hits)
   if (ipLog.size > 5000) ipLog.clear()
-  return hits.length > 60
+  const lastMinute = hits.filter((t) => now - t < 60000).length
+  return hits.length > 600 || lastMinute > 45
 }
 
 const MODEL_ERROR_RE = /model|decommission|terms|not found|does not exist|not support|deprecated|unavailable/i

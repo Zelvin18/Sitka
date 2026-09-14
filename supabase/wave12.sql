@@ -7,6 +7,10 @@
 -- audio exactly as it was recorded, straight from the owner's own storage.
 -- Nothing is copied. Stop sharing, or delete the session, and it closes.
 
+-- A recap says whether its recording is in the cloud (made on the website)
+-- or stayed on the owner's computer (made in the desktop app).
+alter table public.recaps add column if not exists has_recording boolean not null default false;
+
 drop policy if exists "recordings replay read" on storage.objects;
 create policy "recordings replay read" on storage.objects
   for select to anon, authenticated
