@@ -149,12 +149,22 @@ const KIND_OPTIONS: { key: SessionKind; label: string; hint: string }[] = [
   { key: 'other', label: 'Something else', hint: '' }
 ]
 
+// MP4 (H.264/AAC) first wherever the browser can record it: it is the one
+// format every phone plays natively and streams progressively. WebM stays
+// for browsers that cannot record MP4.
 function pickMimeType(): string {
   const candidates = [
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs="avc1.64001F,mp4a.40.2"',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm'
   ]
+  return candidates.find((c) => MediaRecorder.isTypeSupported(c)) ?? ''
+}
+function pickAudioMimeType(): string {
+  const candidates = ['audio/mp4;codecs="mp4a.40.2"', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
   return candidates.find((c) => MediaRecorder.isTypeSupported(c)) ?? ''
 }
 
@@ -208,7 +218,6 @@ export default function LiveSession({
       writeSession(SETUP_KEY, null)
     }
   }, [])
-  const [micPreview, setMicPreview] = useState<MediaStream | null>(null)
   const [audioOnlyRec, setAudioOnlyRec] = useState(false)
   /** optional picture for an audio session, shown where the video would be */
   const [banner, setBanner] = useState<string | null>(null)
@@ -245,28 +254,6 @@ export default function LiveSession({
       setError('The microphone could not be opened. Check the browser has permission to use it.')
     }
   }, [])
-  useEffect(() => {
-    if (phase !== 'picking' || captureMode !== 'audio') {
-      setMicPreview((s) => {
-        s?.getTracks().forEach((t) => t.stop())
-        return null
-      })
-      return undefined
-    }
-    let cancelled = false
-    void navigator.mediaDevices
-      .getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
-      })
-      .then((s) => {
-        if (cancelled) s.getTracks().forEach((t) => t.stop())
-        else setMicPreview(s)
-      })
-      .catch(() => setMicPreview(null))
-    return () => {
-      cancelled = true
-    }
-  }, [phase, captureMode])
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
   // Sound: a screen session listens to the screen's own sound by default —
@@ -410,6 +397,8 @@ export default function LiveSession({
   const sessionStartRef = useRef(0)
   const appendQueueRef = useRef<Promise<void>>(Promise.resolve())
   const sessionIdRef = useRef<string | null>(null)
+  /** start(), reachable from the pickers that run before it is defined: a pick starts the session */
+  const startRef = useRef<(overrideSource?: string) => Promise<void>>(async () => undefined)
   const stoppingRef = useRef(false)
   const lastNotesCountRef = useRef(0)
   const notesBusyRef = useRef(false)
@@ -444,6 +433,8 @@ export default function LiveSession({
       webStreamRef.current?.getTracks().forEach((t) => t.stop())
       webStreamRef.current = stream
       setWebStream(stream)
+      // the pick is the start: nothing else to press, nothing to come back for
+      queueMicrotask(() => void startRef.current())
       const track = stream.getVideoTracks()[0]
       if (track) {
         track.onended = () => {
@@ -464,6 +455,8 @@ export default function LiveSession({
       webStreamRef.current?.getTracks().forEach((t) => t.stop())
       webStreamRef.current = stream
       setWebStream(stream)
+      // the pick is the start: nothing else to press, nothing to come back for
+      queueMicrotask(() => void startRef.current())
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         if (webStreamRef.current === stream) {
           webStreamRef.current = null
@@ -527,15 +520,6 @@ export default function LiveSession({
     }, 2000)
     return () => clearInterval(t)
   }, [captureMode, phase, webStream])
-
-  const webLabel = (s: MediaStream): string => {
-    const settings = s.getVideoTracks()[0]?.getSettings() as { displaySurface?: string }
-    const kind = settings?.displaySurface
-    if (kind === 'monitor') return 'Your screen'
-    if (kind === 'window') return 'A window'
-    if (kind === 'browser') return 'A browser tab'
-    return s.getVideoTracks()[0]?.label || 'Selected source'
-  }
 
   // ---- source list ----
   const refreshSources = useCallback(async (): Promise<void> => {
@@ -1133,8 +1117,9 @@ export default function LiveSession({
   }, [transcribeBlob])
 
   // ---- start recording ----
-  const start = useCallback(async (): Promise<void> => {
-    if (captureMode === 'screen' && !selectedSource) return
+  const start = useCallback(async (overrideSource?: string): Promise<void> => {
+    // a screen just picked is ready before the state that records it settles
+    if (captureMode === 'screen' && !selectedSource && !overrideSource && !webStreamRef.current) return
     // one session at a time, across every tab of the account
     const other = readLive()
     if (other && !isThisTab(other)) {
@@ -1226,7 +1211,7 @@ export default function LiveSession({
             video: {
               mandatory: {
                 chromeMediaSource: 'desktop',
-                chromeMediaSourceId: selectedSource,
+                chromeMediaSourceId: overrideSource ?? selectedSource,
                 maxFrameRate: 15
               }
             }
@@ -1238,7 +1223,7 @@ export default function LiveSession({
             video: {
               mandatory: {
                 chromeMediaSource: 'desktop',
-                chromeMediaSourceId: selectedSource,
+                chromeMediaSourceId: overrideSource ?? selectedSource,
                 maxFrameRate: 15
               }
             }
@@ -1318,7 +1303,7 @@ export default function LiveSession({
       // On the website recordings live in cloud storage: record at a compact
       // bitrate (screens and slides compress very well) so space lasts.
       const recorder = new MediaRecorder(recordStream, {
-        mimeType: captureMode === 'audio' ? 'audio/webm;codecs=opus' : pickMimeType(),
+        mimeType: captureMode === 'audio' ? pickAudioMimeType() : pickMimeType(),
         ...(captureMode === 'audio'
           ? { audioBitsPerSecond: 64_000 }
           : IS_WEB
@@ -1374,6 +1359,7 @@ export default function LiveSession({
       setPhase('picking')
     }
   }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])
+  startRef.current = start
 
   // Quick record: the floating button lands here already in audio mode and
   // starts on arrival — one tap, no setup.
@@ -1746,8 +1732,10 @@ export default function LiveSession({
               ‹ Event dashboard
             </button>
           )}
-          <div className="setup-hero">
-            <div className="eco-kicker">
+          {/* The stage: a dark band with the one question, and the answer chips inside it. */}
+          <div className="setup2-hero">
+            <div className="setup2-kicker">
+              <Mark size={14} live />
               {eventLocked
                 ? 'Launch event'
                 : orgSpaceName
@@ -1755,25 +1743,39 @@ export default function LiveSession({
                   : space
                     ? SPACE_COPY[space].kicker
                     : hosting
-                      ? 'Host a live event'
+                      ? 'Go live'
                       : 'New session'}
             </div>
-            <h1 className="page-title">
+            <h1 className="setup2-title">
               {eventLocked
                 ? upcoming?.event.title ?? 'Your event'
                 : hosting
-                  ? 'Set up your event'
+                  ? 'What will the room see?'
                   : space
                     ? SPACE_COPY[space].title
                     : 'What are we capturing?'}
             </h1>
-            <p className="page-subtitle" style={{ marginBottom: 0 }}>
+            <p className="setup2-sub">
               {eventLocked
-                ? 'Choose what your audience will follow. The QR you shared goes live the moment you start.'
+                ? 'Tap what your audience will follow. The QR you shared goes live at once.'
                 : hosting
-                  ? 'Pick what to capture and share. The join QR appears as soon as you start.'
-                  : 'Pick what Sitka should watch and press Start. Everything else is optional.'}
+                  ? 'Tap what to capture. The join QR appears the moment it starts.'
+                  : 'Tap what Sitka should watch. It starts the moment you choose.'}
             </p>
+            {!eventLocked && (
+              <div className="setup2-kinds">
+                {KIND_OPTIONS.map((k) => (
+                  <button
+                    key={k.key}
+                    type="button"
+                    className={`setup2-kind${kind === k.key ? ' on' : ''}`}
+                    onClick={() => setKind(k.key)}
+                  >
+                    {k.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -1872,204 +1874,12 @@ export default function LiveSession({
               </section>
             )}
 
-            {!eventLocked && (
-              <section className="setup-block">
-                <div className="setup-step-body">
-                  <div className="setup-step-title">Session type</div>
-                  <div className="kind-row">
-                    {KIND_OPTIONS.map((k) => (
-                      <button
-                        key={k.key}
-                        className={`kind-chip${kind === k.key ? ' sel' : ''}`}
-                        onClick={() => setKind(k.key)}
-                      >
-                        {k.label}
-                        {k.hint && <span className="kind-hint">{k.hint}</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            )}
-
             <section className="setup-block">
               <div className="setup-step-body">
-                <div className="setup-step-title">Capture</div>
-                <div className="mode-switch">
-                  {CAN_SHARE_SCREEN && (
-                    <button
-                      type="button"
-                      className={`mode-tile${captureMode === 'screen' ? ' on' : ''}`}
-                      onClick={() => setCaptureMode('screen')}
-                    >
-                      <IconScreen size={16} strokeWidth={1.8} />
-                      <span className="mode-title">Screen</span>
-                      <span className="mode-desc">Slides, a call, a video — with the sound.</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className={`mode-tile${captureMode === 'camera' ? ' on' : ''}`}
-                    onClick={() => setCaptureMode('camera')}
-                  >
-                    <IconCamera size={16} strokeWidth={1.8} />
-                    <span className="mode-title">Camera</span>
-                    <span className="mode-desc">Point it at the board or the projector.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`mode-tile${captureMode === 'audio' ? ' on' : ''}`}
-                    onClick={() => setCaptureMode('audio')}
-                  >
-                    <IconMic size={16} strokeWidth={1.8} />
-                    <span className="mode-title">Audio</span>
-                    <span className="mode-desc">Just listen — in person, quick and simple.</span>
-                  </button>
-                </div>
-                {captureMode === 'audio' ? (
-                  <div className="mic-card">
-                    <div className="mic-card-top">
-                      <span className={`mic-dot${micPreview ? ' live' : ''}`} />
-                      <span>{micPreview ? 'Microphone ready — say something' : 'Waiting for microphone access…'}</span>
-                    </div>
-                    <AudioLevel stream={micPreview} />
-                    {!CAN_SHARE_SCREEN && (
-                      <div className="mic-card-tip">
-                        On a call or in a meeting on this phone? Put it on speaker so Sitka hears both
-                        sides. Keep Sitka on screen, or open it in split screen with the other app, so
-                        the phone keeps recording.
-                      </div>
-                    )}
-                    <div className="banner-pick">
-                      {banner ? (
-                        <>
-                          <img src={banner} alt="" className="banner-pick-img" />
-                          <div className="banner-pick-text">
-                            <div className="banner-pick-title">Banner</div>
-                            <div className="banner-pick-sub">Shown where the video would be.</div>
-                          </div>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
-                            Remove
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <div className="banner-pick-text">
-                            <div className="banner-pick-title">Banner (optional)</div>
-                            <div className="banner-pick-sub">
-                              A picture shown where the video would be: a poster, a logo, the speaker.
-                            </div>
-                          </div>
-                          <label className="btn btn-ghost btn-sm">
-                            Add picture
-                            <input
-                              type="file"
-                              accept="image/*"
-                              hidden
-                              onChange={(e) => {
-                                const f = e.target.files?.[0]
-                                if (!f) return
-                                void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
-                                e.target.value = ''
-                              }}
-                            />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ) : captureMode === 'camera' ? (
-                  <button
-                    type="button"
-                    className={`web-pick${webStream ? ' has-stream' : ''}`}
-                    onClick={() => void pickCamera()}
-                    title="Open the camera"
-                  >
-                    {webStream ? (
-                      <>
-                        <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
-                        <div className="web-pick-bar">
-                          <span className="web-pick-live" />
-                          <span className="web-pick-label">Your camera</span>
-                          <span className="web-pick-change">Tap to reopen</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="web-pick-empty">
-                        <div className="web-pick-icon">
-                          <IconCamera size={26} strokeWidth={1.5} />
-                        </div>
-                        <div className="web-pick-title">Tap to open the camera</div>
-                        <div className="web-pick-sub">
-                          Point it at the board, the projector or a screen. Sitka reads what it sees and listens to the room.
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                ) : IS_WEB ? (
-                  <>
-                  <button
-                    type="button"
-                    className={`web-pick${webStream ? ' has-stream' : ''}`}
-                    onClick={() => void pickWebScreen()}
-                    title="Choose a screen, window or tab"
-                  >
-                    {webStream ? (
-                      <>
-                        <video ref={webPreviewRef} className="web-pick-video" autoPlay muted playsInline />
-                        <div className="web-pick-bar">
-                          <span className="web-pick-live" />
-                          <span className="web-pick-label">{webLabel(webStream)}</span>
-                          <span className="web-pick-change">Tap to change</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="web-pick-empty">
-                        <div className="web-pick-icon">
-                          <IconScreen size={26} strokeWidth={1.5} />
-                        </div>
-                        <div className="web-pick-title">Tap to choose your screen</div>
-                        <div className="web-pick-sub">
-                          Like sharing in a call. Best: open the call in this same Chrome and pick its
-                          tab — its picture and its sound come with it, and you can use Sitka freely
-                          in another tab while the capture stays on the call. If the call must stay in
-                          a different Chrome window or profile, pick the entire screen and use Pop out
-                          to keep Sitka floating above it. A single window of a call comes through
-                          blank and silent.
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                  {blankPicture && webStream && (
-                    <div className="web-pick-warn">
-                      <span>
-                        The shared picture is blank: the browser is not passing on the presented video
-                        from this window. Choose the tab where the call is running instead, or the
-                        whole screen.
-                      </span>
-                      <button type="button" className="btn btn-sm" onClick={() => void pickWebScreen()}>
-                        Choose again
-                      </button>
-                    </div>
-                  )}
-                  </>
-                ) : (
-                  <div className="source-grid">
-                    {sources.map((s) => (
-                      <button
-                        key={s.id}
-                        className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
-                        onClick={() => setSelectedSource(s.id)}
-                      >
-                        <img className="source-thumb" src={s.thumbnail} alt="" />
-                        <div className="source-name">{s.name}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {captureMode === 'screen' && (
-                  <div className="audio-chips">
-                    <span className="audio-chips-label">Sound from</span>
+                {/* Sound is decided before the tap, because the tap is the start. */}
+                {CAN_SHARE_SCREEN && (
+                  <div className="setup2-sound">
+                    <span className="setup2-sound-label">For a screen, sound from</span>
                     <button
                       type="button"
                       className={`chip-toggle${systemAudioOn ? ' on' : ''}`}
@@ -2090,6 +1900,110 @@ export default function LiveSession({
                     </button>
                   </div>
                 )}
+
+                {/* One tap each. The pick is the start. */}
+                <div className="act-tiles">
+                  {CAN_SHARE_SCREEN && (
+                    <button
+                      type="button"
+                      className="act-tile"
+                      disabled={phase === 'starting'}
+                      onClick={() => {
+                        setCaptureMode('screen')
+                        if (IS_WEB) void pickWebScreen()
+                      }}
+                    >
+                      <span className="act-icon">
+                        <IconScreen size={22} strokeWidth={1.6} />
+                      </span>
+                      <span className="act-text">
+                        <b>Share my screen</b>
+                        <span>Slides, a call, a video — with its sound. Pick the call's tab for both.</span>
+                      </span>
+                      <span className="act-go">
+                        <IconChevron size={16} strokeWidth={2.2} />
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="act-tile"
+                    disabled={phase === 'starting'}
+                    onClick={() => {
+                      setCaptureMode('camera')
+                      void pickCamera()
+                    }}
+                  >
+                    <span className="act-icon">
+                      <IconCamera size={22} strokeWidth={1.6} />
+                    </span>
+                    <span className="act-text">
+                      <b>Use my camera</b>
+                      <span>Point it at the board, the projector or the room.</span>
+                    </span>
+                    <span className="act-go">
+                      <IconChevron size={16} strokeWidth={2.2} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="act-tile"
+                    disabled={phase === 'starting'}
+                    onClick={() => {
+                      setCaptureMode('audio')
+                      queueMicrotask(() => void startRef.current())
+                    }}
+                  >
+                    <span className="act-icon">
+                      <IconMic size={22} strokeWidth={1.6} />
+                    </span>
+                    <span className="act-text">
+                      <b>Just listen</b>
+                      <span>In person, through the microphone. On a call, put it on speaker.</span>
+                    </span>
+                    <span className="act-go">
+                      <IconChevron size={16} strokeWidth={2.2} />
+                    </span>
+                  </button>
+                </div>
+
+                {/* The desktop app chooses among its screens and windows here; a tap starts. */}
+                {!IS_WEB && CAN_SHARE_SCREEN && captureMode === 'screen' && sources.length > 0 && (
+                  <div className="source-grid" style={{ marginTop: 14 }}>
+                    {sources.map((s) => (
+                      <button
+                        key={s.id}
+                        className={`source-tile${selectedSource === s.id ? ' selected' : ''}`}
+                        disabled={phase === 'starting'}
+                        onClick={() => {
+                          setSelectedSource(s.id)
+                          void startRef.current(s.id)
+                        }}
+                      >
+                        <img className="source-thumb" src={s.thumbnail} alt="" />
+                        <div className="source-name">{s.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {blankPicture && webStream && (
+                  <div className="web-pick-warn">
+                    <span>
+                      The shared picture is blank: the browser is not passing on the presented video
+                      from this window. Choose the tab where the call is running instead, or the whole
+                      screen.
+                    </span>
+                    <button type="button" className="btn btn-sm" onClick={() => void pickWebScreen()}>
+                      Choose again
+                    </button>
+                  </div>
+                )}
+                {!CAN_SHARE_SCREEN && (
+                  <div className="mic-card-tip" style={{ borderTop: 0, paddingTop: 0 }}>
+                    On a call or in a meeting on this phone? Put it on speaker so Sitka hears both
+                    sides, and keep Sitka on screen or in split screen so the phone keeps recording.
+                  </div>
+                )}
               </div>
             </section>
 
@@ -2102,6 +2016,41 @@ export default function LiveSession({
                 <div className="setup-step-body" style={{ marginTop: 10 }}>
                   <div className="setup-step-hint">
                     Sitka reads them before it listens, so it knows where the session is heading.
+                  </div>
+                  <div className="banner-pick" style={{ marginTop: 0, marginBottom: 12 }}>
+                    {banner ? (
+                      <>
+                        <img src={banner} alt="" className="banner-pick-img" />
+                        <div className="banner-pick-text">
+                          <div className="banner-pick-title">Banner</div>
+                          <div className="banner-pick-sub">Shown where the video would be, for a listen-only session.</div>
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="banner-pick-text">
+                          <div className="banner-pick-title">Banner for a listen-only session</div>
+                          <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be.</div>
+                        </div>
+                        <label className="btn btn-ghost btn-sm">
+                          Add picture
+                          <input
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={(e) => {
+                              const f = e.target.files?.[0]
+                              if (!f) return
+                              void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                   <MaterialsPanel
                     compact
@@ -2119,45 +2068,23 @@ export default function LiveSession({
             </section>
           </div>
 
-          <div className="setup-foot">
-            <div className="setup-foot-text">
-              {phase === 'starting' ? (
-                <>
-                  <Mark size={15} live /> Starting…
-                </>
-              ) : ready ? (
-                <>
-                  <Mark size={15} />
-                  {captureMode === 'audio'
-                    ? 'Listening through your microphone'
-                    : captureMode === 'camera'
-                      ? 'Watching through your camera'
-                      : 'Watching your screen'}{' '}
-                  ·{' '}
-                  {kindLabel.toLowerCase()}
-                  {pendingMats.length > 0 ? ` · ${pendingMats.length} ${pendingMats.length === 1 ? 'document' : 'documents'} read` : ''}
-                </>
-              ) : (
-                'Choose a screen to continue'
-              )}
-            </div>
-            <button
-              className="btn btn-primary btn-lg"
-              disabled={!ready || phase === 'starting'}
-              onClick={() => void start()}
-            >
-              {phase === 'starting' ? (
-                'Starting…'
-              ) : eventLocked ? (
-                <>
-                  <IconBroadcast size={15} strokeWidth={2} /> Launch event
-                </>
-              ) : hosting ? (
-                'Start & show QR'
-              ) : (
-                'Start'
-              )}
-            </button>
+          <div className="setup2-status">
+            {phase === 'starting' ? (
+              <>
+                <Mark size={15} live /> Starting your {kindLabel.toLowerCase()}
+                {hosting ? ' and opening the room' : ''}…
+              </>
+            ) : (
+              <>
+                <Mark size={15} />
+                {ready && captureMode === 'screen' && !IS_WEB
+                  ? 'Tap a screen or window above to start'
+                  : 'Tap what to capture above — the session starts at once'}
+                {pendingMats.length > 0
+                  ? ` · ${pendingMats.length} ${pendingMats.length === 1 ? 'document' : 'documents'} read first`
+                  : ''}
+              </>
+            )}
           </div>
         </div>
         {dialogs}

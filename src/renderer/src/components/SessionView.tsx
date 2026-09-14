@@ -190,9 +190,16 @@ export default function SessionView({
         // is in hand, so seeking can never fail.
         await window.sitka.prepareSession(sessionId)
         if (cancelled) return
-        // On the website the recording is streamed part by part: it plays
-        // within seconds while the rest arrives. The whole file is read only
-        // when streaming is not possible.
+        // On the website the recording plays from one whole file when there is
+        // one: native, progressive, the fastest start on any device. Failing
+        // that it is streamed part by part; the whole file is read into memory
+        // only when neither is possible.
+        const url = await window.sitka.videoUrl(sessionId)
+        if (cancelled) return
+        if (url) {
+          setVideoSrc(url)
+          return
+        }
         const parts = await window.sitka.listVideoParts(sessionId)
         if (cancelled) return
         if (parts.length > 0 && typeof MediaSource !== 'undefined') {

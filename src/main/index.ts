@@ -1147,8 +1147,10 @@ function registerIpc(): void {
     return meta
   })
 
-  // The desktop keeps one local file per recording: nothing to stream in parts.
+  // The desktop keeps one local file per recording: nothing to stream in parts,
+  // and no cloud link; the file is read whole from disk, which is instant.
   ipcMain.handle('session:videoParts', () => [])
+  ipcMain.handle('session:videoUrl', () => null)
   ipcMain.handle('session:banner', (_e, id: string, banner: string | null) => {
     const meta = store.getMeta(id)
     if (!meta) return null

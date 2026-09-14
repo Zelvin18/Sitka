@@ -106,6 +106,8 @@ const api = {
     ipcRenderer.invoke('session:readVideo', id, file),
   /** links to the recording's parts, in order, for streaming playback; [] when it must be read whole */
   listVideoParts: (id: string): Promise<string[]> => ipcRenderer.invoke('session:videoParts', id),
+  /** a link to the recording as one whole file, playable natively; null when there is none yet */
+  videoUrl: (id: string): Promise<string | null> => ipcRenderer.invoke('session:videoUrl', id),
   setRecordingState: (state: { id: string; startedAt: number } | null): Promise<void> =>
     ipcRenderer.invoke('session:recordingState', state),
   markNow: (): Promise<void> => ipcRenderer.invoke('session:markNow'),

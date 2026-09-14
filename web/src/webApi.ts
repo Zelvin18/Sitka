@@ -25,6 +25,7 @@ import { ON_SCREEN_PREFIX } from '../../src/shared/types'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
+import { mediaType } from '../../src/shared/progressive'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -252,6 +253,40 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sleep(400 * (attempt + 1))
     }
     return null
+  }
+
+  // ---------- one whole file per recording ----------
+  // Parts are what the recorder uploads while it runs. Once a session is over
+  // and every part is in the cloud, they are joined into one file with its
+  // length written in, so any player, on any phone, can play it natively and
+  // start within a second or two. Runs once; a second call is a no-op.
+  const consolidating = new Set<string>()
+  async function consolidateRecording(id: string): Promise<void> {
+    if (consolidating.has(id)) return
+    consolidating.add(id)
+    try {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d || d.meta.whole || d.meta.readOnly || d.meta.sample) return
+      if ((await localParts(id)).length > 0) return // not all in the cloud yet
+      const bytes = await api.readVideo(id, 'video')
+      if (!bytes || bytes.byteLength < 5000) return
+      const kind = mediaType(bytes.subarray(0, 12))
+      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: kind })
+      const { error } = await sb.storage
+        .from('recordings')
+        .upload(videoPath(id), blob, { upsert: true, contentType: kind })
+      if (error) {
+        console.warn('Sitka: whole-file upload failed', error.message)
+        return
+      }
+      d.meta.whole = true
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+    } catch (err) {
+      console.warn('Sitka: could not consolidate the recording', err)
+    } finally {
+      consolidating.delete(id)
+    }
   }
 
   /** A key frame as stored in sessions.slides; `read` = captioned by a model that saw it. */
@@ -546,6 +581,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     bytes: number
     thumbDone: boolean
     chain: Promise<void>
+    /** 'video/mp4' or 'video/webm', read off the first chunk */
+    kind?: string
   }
   const recBuf = new Map<string, RecBuf>()
   const PART_BYTES = 8 * 1024 * 1024
@@ -569,10 +606,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await forgetPart(p) // nothing to send: the record is stale
       return true
     }
-    const blob = new Blob(bufs, { type: 'video/webm' })
+    // labelled by what the recording is (MP4 or WebM): phones refuse a file
+    // whose label lies about its format. Only the first part carries the
+    // header, so the session remembers the kind for the rest.
+    const sniffed = mediaType(new Uint8Array(bufs[0].slice(0, 12)))
+    const kind =
+      sniffed !== 'application/octet-stream'
+        ? sniffed
+        : recBuf.get(p.sessionId)?.kind ??
+          cache.get(p.sessionId)?.meta.mime ??
+          (await loadSession(p.sessionId))?.meta.mime ??
+          'video/webm'
+    const blob = new Blob(bufs, { type: kind })
     const { error } = await sb.storage
       .from('recordings')
-      .upload(partPath(p.sessionId, p.partNo), blob, { upsert: true, contentType: 'video/webm' })
+      .upload(partPath(p.sessionId, p.partNo), blob, { upsert: true, contentType: kind })
     if (error) {
       console.error('Sitka: part upload failed', p.sessionId, p.partNo, error.message)
       return false
@@ -2081,6 +2129,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const b = recBuf.get(id)
       if (!b) return
       const seq = b.seq++
+      if (seq === 0) {
+        // the first chunk says which format the recorder chose; the session keeps it
+        b.kind = mediaType(new Uint8Array(chunk.slice(0, 12)))
+        const d = cache.get(id)
+        if (d && b.kind !== 'application/octet-stream') d.meta.mime = b.kind
+      }
       // The device keeps it first; the cloud gets it next.
       await idb('chunks', 'readwrite', (s) => {
         s.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk)
@@ -2093,6 +2147,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     retryUploads: async (sessionId: string) => {
       const left = await retryPendingUploads(sessionId)
       return { pending: left < 0 ? (await localParts(sessionId)).length : left }
+    },
+
+    // The whole recording as one file, played natively over range requests:
+    // the fastest start on every device, phones included, with no streaming
+    // engine in the way. Made once, after the session, from the parts.
+    videoUrl: async (id: string) => {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d) return null
+      if (!d.meta.whole) {
+        // an older session: make the whole file in the background for next time
+        void consolidateRecording(id)
+        return null
+      }
+      const { data: signed } = await sb.storage.from('recordings').createSignedUrl(videoPath(id), 3600)
+      return signed?.signedUrl ?? null
     },
 
     // The parts of a recording as links, in order, so the player can stream
@@ -2317,6 +2386,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (left < 0) left = (await localParts(id)).length
         if (left > 0) d.meta.recordingPending = true
         else delete d.meta.recordingPending
+        // every part is up: join them into the one whole file players start fastest from
+        if (left === 0) void consolidateRecording(id)
       }
       await patchSession(id, { meta: d.meta })
       backupSession(id) // belt-and-braces: text survives even if the row write above failed
@@ -3008,15 +3079,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       // A fresh file needs only the insert policy. Only a republish falls back
       // to replacing the object, which storage checks against update + select.
-      const blob = new Blob([video.slice().buffer], { type: 'video/webm' })
+      const kind = mediaType(video.subarray(0, 12))
+      const blob = new Blob([video.slice().buffer], { type: kind })
       const path = `${evId}.webm`
       let { error } = await sb.storage
         .from('replays')
-        .upload(path, blob, { upsert: false, contentType: 'video/webm' })
+        .upload(path, blob, { upsert: false, contentType: kind })
       if (error && /exists|duplicate/i.test(error.message)) {
         ;({ error } = await sb.storage
           .from('replays')
-          .update(path, blob, { upsert: true, contentType: 'video/webm' }))
+          .update(path, blob, { upsert: true, contentType: kind }))
       }
       if (error) {
         const detail = error.message || 'unknown error'

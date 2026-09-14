@@ -202,6 +202,19 @@ function loadMedia(): Promise<boolean> {
         v.src = `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
       } else {
         const dir = `${data.owner}/${data.sessionId}`
+        // One whole file first, when the session has made one: played natively
+        // over range requests, which every phone does and which starts fastest.
+        const whole = await sb.storage.from('recordings').createSignedUrl(`${dir}.webm`, 3600)
+        if (whole.data?.signedUrl) {
+          v.src = whole.data.signedUrl
+          v.hidden = false
+          mediaReady = true
+          el('stage').classList.add('hasvideo')
+          el('playtext').textContent = 'Play'
+          el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+          console.info('[recap] whole file')
+          return true
+        }
         const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
         if (error) throw error
         const parts = (files ?? [])

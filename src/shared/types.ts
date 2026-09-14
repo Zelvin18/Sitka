@@ -76,6 +76,10 @@ export interface SessionMeta {
   recapUrl?: string
   /** the event's recap page (/r/<eventId>), set once a hosted event ends */
   replayUrl?: string
+  /** the recording also exists as one whole file in the cloud (fast, native playback anywhere) */
+  whole?: boolean
+  /** the recording's container, 'video/mp4' or 'video/webm', from its first bytes */
+  mime?: string
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */
