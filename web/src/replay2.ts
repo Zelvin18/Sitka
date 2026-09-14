@@ -192,8 +192,16 @@ function loadMedia(): Promise<boolean> {
       el('stage').classList.add('hasvideo')
       el('playtext').textContent = 'Play'
       el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
-      // the first frame becomes the picture behind the title
-      v.currentTime = 0.1
+      // the first frame becomes the picture behind the title, once the
+      // browser knows the file well enough to seek in it
+      v.addEventListener(
+        'loadedmetadata',
+        () => {
+          if (pendingSeek === null && Number.isFinite(v.duration)) v.currentTime = 0.1
+        },
+        { once: true }
+      )
+      v.load()
       return true
     } catch {
       el('playtext').textContent = 'The recording could not be loaded'
@@ -212,14 +220,28 @@ function loadMedia(): Promise<boolean> {
  * hand this runs inside the tap and always works; while it is still coming
  * the request is kept and honoured the moment it lands.
  */
+function refused(err: unknown): void {
+  // The browser said no. Say why on the pill, and hand the recording its own
+  // controls, which a browser always honours from a direct tap.
+  const v = video()
+  const name = err instanceof Error ? err.name : String(err)
+  console.error('[recap] play refused', name, err)
+  el('playtext').textContent = 'Tap the recording to play'
+  el('playsub').textContent =
+    name === 'NotAllowedError'
+      ? 'The browser wants the tap on the player itself.'
+      : name === 'NotSupportedError'
+        ? 'This browser cannot play this recording.'
+        : name.slice(0, 60)
+  v.controls = true
+  el('bar').style.display = 'none'
+}
+
 function play(at?: number): void {
   const v = video()
   if (mediaReady) {
     if (at !== undefined) v.currentTime = at
-    v.play().catch(() => {
-      // refused by the browser: the next tap on the pill plays it directly
-      el('playtext').textContent = 'Tap to play'
-    })
+    v.play().catch(refused)
     return
   }
   pendingSeek = at ?? pendingSeek
@@ -227,17 +249,37 @@ function play(at?: number): void {
     if (!ok) return
     if (pendingSeek !== null) v.currentTime = pendingSeek
     pendingSeek = null
-    v.play().catch(() => {
-      el('playtext').textContent = 'Tap to play'
-    })
+    v.play().catch(refused)
   })
 }
 
 function wireMedia(): void {
   const v = video()
   const stage = el('stage')
-  v.onloadedmetadata = () => {
+  // Whatever the browser says about the file, the page says too, in plain
+  // words on the pill, so a failure is never a silent black box.
+  v.addEventListener('error', () => {
+    const code = v.error?.code
+    const why =
+      code === 4
+        ? 'This browser cannot decode this recording.'
+        : code === 3
+          ? 'The recording is damaged partway through.'
+          : code === 2
+            ? 'The connection dropped while loading.'
+            : 'The recording could not be opened.'
+    el('playtext').textContent = 'Could not play'
+    el('playsub').textContent = why + (v.error?.message ? ` (${v.error.message.slice(0, 80)})` : '')
+    el('playbig').classList.add('dim')
+    console.error('[recap] media error', code, v.error?.message)
+  })
+  // a picture is a picture once a frame has decoded; only then is "audio only" decided
+  v.addEventListener('loadeddata', () => {
     stage.classList.toggle('audio', v.videoWidth === 0)
+    stage.classList.add('hasvideo')
+  })
+  v.addEventListener('resize', () => stage.classList.toggle('audio', v.videoWidth === 0))
+  v.onloadedmetadata = () => {
     if (!Number.isFinite(v.duration)) {
       // stitched parts may not know their length: find the end once
       v.currentTime = 1e101
