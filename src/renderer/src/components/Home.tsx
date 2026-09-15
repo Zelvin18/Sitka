@@ -1,3 +1,4 @@
+import Photo from './Photo'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionMeta, Settings } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
@@ -5,7 +6,6 @@ import { IconPlus, IconScreen, IconStar, IconTrash } from '../lib/icons'
 import Loading, { LOADING_WORDS } from './Loading'
 import { formatDuration } from '../lib/format'
 
-const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
 
 interface Props {
   sessions: SessionMeta[]
@@ -32,6 +32,7 @@ export default function Home({
   onDeleteSession,
   onSettings
 }: Props): React.JSX.Element {
+  const sceneRef = useRef<HTMLDivElement>(null)
   const [pendingDelete, setPendingDelete] = useState<SessionMeta | null>(null)
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
@@ -175,15 +176,8 @@ export default function Home({
             {/* A blank page on a lecture seat: the library before its first session.
                 The picture lives with the web app; the desktop app reaches for the
                 same file, and if it is missing the words stand on their own. */}
-            <div className="empty-scene">
-              <img
-                src={IS_WEB ? '/library-empty.webp' : 'https://sitka-blue.vercel.app/library-empty.webp'}
-                alt=""
-                aria-hidden="true"
-                onError={(e) => {
-                  e.currentTarget.parentElement?.classList.add('gone')
-                }}
-              />
+            <div className="empty-scene" ref={sceneRef}>
+              <Photo name="library-empty" onMissing={() => sceneRef.current?.classList.add('gone')} />
             </div>
             <div className="empty-title">Your library starts with your first session</div>
             <div style={{ marginBottom: 20, maxWidth: 420, margin: '0 auto 20px' }}>

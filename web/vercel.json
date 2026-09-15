@@ -1,6 +1,12 @@
 {
   "trailingSlash": false,
   "functions": { "api/*.js": { "maxDuration": 60 } },
+  "headers": [
+    {
+      "source": "/(.*)\\.(webp|jpg|jpeg|png)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+    }
+  ],
   "rewrites": [
     { "source": "/app", "destination": "/app.html" },
     { "source": "/legal", "destination": "/legal.html" },

@@ -1,3 +1,4 @@
+import Photo from './Photo'
 import React, { useEffect, useRef, useState } from 'react'
 import { IconQr, Mark } from '../lib/icons'
 
@@ -201,23 +202,30 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
 
   return (
     <div className="content">
-      <div className="content-inner join" style={{ maxWidth: 560 }}>
-        <h1 className="page-title">Join a session</h1>
-        <p className="page-subtitle">
-          {wantScan
-            ? 'Point the camera at the QR code the host is showing. You will get the captions, the slides and your own Sitka, on this device.'
-            : 'Paste the link the host shared, or scan their QR code with the camera on this computer. You will get the captions, the slides and your own Sitka.'}
-        </p>
-
-        {!wantScan && (
-          <div className="join-choice">
-            <button type="button" className="btn btn-ghost" onClick={() => setWantScan(true)}>
-              <IconQr size={16} strokeWidth={1.8} />
-              Scan a QR code with the camera
-            </button>
-            <span className="join-choice-note">The camera opens only when you choose this.</span>
+      <div className="content-inner join" style={{ maxWidth: 860 }}>
+        <div className="ev-hero photo join-hero">
+          <Photo name="join-hero" position="72% center" />
+          <div className="ev-hero-veil" aria-hidden="true" />
+          <div className="ev-hero-text">
+            <h1 className="ev-hero-title">Join a session</h1>
+            <p className="ev-hero-sub">
+              {wantScan
+                ? 'Point the camera at the QR code the host is showing. You will get the captions, the slides and your own Sitka, on this device.'
+                : 'Paste the link the host shared, or scan their QR code with the camera on this computer. You will get the captions, the slides and your own Sitka.'}
+            </p>
+            {!wantScan && (
+              <div className="join-choice">
+                <button type="button" className="btn btn-primary" onClick={() => setWantScan(true)}>
+                  <IconQr size={16} strokeWidth={1.8} />
+                  Scan a QR code
+                </button>
+                <span className="join-choice-note">The camera opens only when you choose this.</span>
+              </div>
+            )}
           </div>
-        )}
+          <div className="ev-hero-art" aria-hidden="true" />
+        </div>
+        <div style={{ maxWidth: 560 }}>
 
         {wantScan && (
         <div className={`join-stage${camera === 'on' ? ' on' : ''}`}>
@@ -297,6 +305,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 22 }} onClick={onBack}>
           Back
         </button>
+        </div>
       </div>
     </div>
   )

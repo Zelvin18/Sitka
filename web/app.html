@@ -7,6 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Sitka</title>
+<link rel="preload" as="image" href="/signin.webp" fetchpriority="high">
+<link rel="preload" as="image" href="/library-empty.webp" fetchpriority="low">
+<link rel="preload" as="image" href="/coach-hero.webp" fetchpriority="low">
+<link rel="preload" as="image" href="/events-hero.webp" fetchpriority="low">
+<link rel="preload" as="image" href="/join-hero.webp" fetchpriority="low">
+<link rel="preload" as="image" href="/setup-hero.jpeg" fetchpriority="low">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/site.webmanifest">
@@ -27,10 +33,12 @@
 /* ---- left: the brand side, dark ---- */
 .gbrand-side{position:relative;background:#111114;color:#f1f1f3;padding:40px 48px;display:flex;flex-direction:column;overflow:hidden}
 /* the photograph fills the side; a veil deepens towards the foot so the words read in white */
-.gphoto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;display:block}
+.gphoto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;display:block;opacity:0;transition:opacity .35s ease}
+.gphoto.in{opacity:1}
+.gglimpse{position:absolute;inset:-6%;background-size:cover;background-position:center 42%;filter:blur(18px);transform:scale(1.04)}
 .gveil{position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,12,.92) 0%,rgba(10,10,12,.62) 38%,rgba(10,10,12,.18) 70%,rgba(10,10,12,.28) 100%);pointer-events:none}
 .gbrand-side > *{position:relative;z-index:1}
-.gbrand-side > .gphoto,.gbrand-side > .gveil{position:absolute;z-index:0}
+.gbrand-side > .gphoto,.gbrand-side > .gveil,.gbrand-side > .gglimpse{position:absolute;z-index:0}
 .gbrand-side .gbrand{text-shadow:0 1px 8px rgba(0,0,0,.4)}
 .gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:17px;letter-spacing:-.01em}
 .gbrand .mark{width:22px;height:22px}
@@ -103,7 +111,7 @@
   .gclaim p{font-size:14.5px;margin-bottom:18px}
   .gscene,.gfoot{display:none}
   .gbrand-side{min-height:220px;padding:22px 20px 20px}
-  .gphoto{object-position:center 58%}
+  .gphoto,.gglimpse{background-position:center 58%;object-position:center 58%}
   .gclaim{padding-bottom:0}
   .gform-side{padding:26px 20px 40px;align-items:flex-start}
 }
@@ -112,7 +120,7 @@
 <body>
 <div id="gate">
   <aside class="gbrand-side">
-    <img class="gphoto" src="/signin.webp" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+    <div class="gglimpse" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAArACADASIAAhEBAxEB/8QAGQABAQEAAwAAAAAAAAAAAAAABQQCAQMG/8QAKRAAAgEDAwMCBwEAAAAAAAAAAQIDAAQRBRIhEyIxBkEUMjNRYXKBwf/EABYBAQEBAAAAAAAAAAAAAAAAAAEAAv/EABURAQEAAAAAAAAAAAAAAAAAAAAB/9oADAMBAAIRAxEAPwAbT1K3JHjAPFJ7MtG3kGpNJj6166sQDzzS9xEIpoI+B25rJM2PU2OI1VRuPmhvVAcTQ7yDx7DFO2rKivk47zQfqdw80BH2/wBpQbSZ/h7p5GG4qD/aqlupruaF+mVxgcDihlupovpuQDVkepSLtO0keeDRYXpnn2253HGGJJofVnLPGckjHvWk1yJ1KTI4Q+RjOan1G/F3cp0UxCi4BxyaoA5RmGSK4AYHtzn8VXHyP7XdZorTgEZBJpSWN3GQ61uE9p9u6r9RijjutqKANtHw/Kf2oL//2Q==)" aria-hidden="true"></div><img class="gphoto" src="/signin.webp" alt="" aria-hidden="true" decoding="async" fetchpriority="high" onload="this.classList.add('in')">
     <div class="gveil" aria-hidden="true"></div>
     <div class="gbrand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</div>
     <div class="gclaim">

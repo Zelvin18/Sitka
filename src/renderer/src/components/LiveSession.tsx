@@ -1,3 +1,4 @@
+import Photo from './Photo'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -1789,15 +1790,7 @@ export default function LiveSession({
             {/* The photograph (web/public/setup-hero.jpeg) fills the band; a dark veil on
                 the left carries the words in white, the way the mock-up has it. If the
                 file is missing the veil alone stands, still readable. */}
-            <img
-              className="setup2-photo"
-              src={IS_WEB ? '/setup-hero.jpeg' : 'https://sitka-blue.vercel.app/setup-hero.jpeg'}
-              alt=""
-              aria-hidden="true"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
-            />
+            <Photo name="setup-hero" ext="jpeg" className="setup2-photo" />
             <div className="setup2-veil" aria-hidden="true" />
             <div className="setup2-words">
               <div className="setup2-kicker">

@@ -2856,22 +2856,41 @@ body {
   position: relative;
 }
 
-/* a photograph fills the card; a veil from the left keeps the words readable in either theme */
-.ev-hero.photo {
-  min-height: 300px;
-  background: var(--bg-soft);
+/* a photograph that is never a hole: the blurred glimpse first, the picture fading in over it */
+.photo-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
-.ev-hero-photo {
+.photo-glimpse {
+  position: absolute;
+  inset: -6%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(18px);
+  transform: scale(1.04);
+}
+.photo-img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 68% center;
-  display: none;
+  object-position: center;
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
-.ev-hero.photo .ev-hero-photo {
-  display: block;
+.photo-frame.in .photo-img {
+  opacity: 1;
+}
+
+/* a photograph fills the card; a veil from the left keeps the words readable in either theme */
+.ev-hero.photo {
+  min-height: 300px;
+  background: var(--bg-soft);
+}
+.ev-hero.photo > .photo-frame {
+  z-index: 0;
 }
 .ev-hero-veil {
   position: absolute;
@@ -4244,11 +4263,8 @@ body {
   background: var(--bg-soft);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.12);
 }
-.empty-scene img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.empty-scene {
+  position: relative;
 }
 .empty-scene.gone {
   display: none;
@@ -6765,7 +6781,13 @@ body.dragging-row .splitter-h {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  margin: 8px 0 26px;
+  margin: 8px 0 0;
+}
+.join-hero {
+  margin-bottom: 28px;
+}
+.join-hero .ev-hero-veil {
+  background: linear-gradient(90deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 88%, transparent) 36%, color-mix(in srgb, var(--bg) 40%, transparent) 60%, transparent 82%);
 }
 .join-choice .btn {
   display: inline-flex;
@@ -7706,12 +7728,6 @@ body.dragging-row .splitter-h {
   color: #fff;
 }
 .setup2-hero .setup2-photo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
   z-index: 0;
 }
 .setup2-hero .setup2-veil {

@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sitka — The AI that attends with you</title>
+<link rel="preload" as="image" href="/sitka1.webp">
+<link rel="preload" as="image" href="/sitka2.webp">
+<link rel="preload" as="image" href="/sitka3.webp">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/site.webmanifest">
@@ -71,7 +74,9 @@ h1{font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.035em;font-w
 .reel-track{display:flex;width:max-content;animation:reel 52s linear infinite;will-change:transform}
 .reel:hover .reel-track{animation-play-state:paused}
 .reel-card{flex:none;width:min(760px,84vw);margin-right:24px;aspect-ratio:2.4/1;border-radius:20px;overflow:hidden;border:1px solid var(--border);background:var(--soft);box-shadow:0 26px 70px var(--shadow)}
-.reel-card img{display:block;width:100%;height:100%;object-fit:cover}
+.reel-card{background-size:cover;background-position:center}
+.reel-card img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease}
+.reel-card img.in{opacity:1}
 @keyframes reel{to{transform:translateX(-50%)}}
 @media(max-width:640px){.reel{padding-bottom:44px}.reel-card{border-radius:14px;margin-right:14px}}
 @media(prefers-reduced-motion:reduce){.reel{mask-image:none;-webkit-mask-image:none;overflow-x:auto}.reel-track{animation:none}}
@@ -224,12 +229,12 @@ footer{border-top:1px solid var(--border);background:var(--soft);padding:64px 0 
 
 <div class="reel" aria-label="Sitka in pictures">
   <div class="reel-track">
-    <div class="reel-card"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="Ask your library: search, ask and explore everything you have captured" width="1600" height="667" decoding="async"></picture></div>
-    <div class="reel-card"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="Start a live session: capture meetings, lectures and events in real time" width="1600" height="667" decoding="async"></picture></div>
-    <div class="reel-card"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="Plan an event: from conferences to workshops" width="1600" height="667" decoding="async"></picture></div>
-    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
-    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
-    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAGAAAAwEBAAAAAAAAAAAAAAAABAUGAgP/xAAhEAABBAICAgMAAAAAAAAAAAABAAIEEQMhBRITcSIxQf/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFREBAQAAAAAAAAAAAAAAAAAAABH/2gAMAwEAAhEDEQA/AHPyDtA16CGndcmMY3AguND2tPyvOMi/xB4gATRdo6s3RUqx3jxZXGxnloZX2aNqa5XL555zOcb12pOORly2Q3uMhzgdVQCmOxLiSg//2Q==)"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="Ask your library: search, ask and explore everything you have captured" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
+    <div class="reel-card" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAGAAAAgMAAAAAAAAAAAAAAAAABAUCAwb/xAAkEAACAQMDAwUAAAAAAAAAAAABAgMABBESITEFE0EUIlFxof/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFREBAQAAAAAAAAAAAAAAAAAAABH/2gAMAwEAAhEDEQA/ANESwbbOPqqrm6SAJqDAswVdvNSeRlQtnihJQbl4pGONBOBUqwOepv3O2WPPuONh+Ub6qdbSV1BZ1Ow+aVlrgSlRcsAD4UUwtA5jZZJDJq5Lc0pH/9k=)"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="Start a live session: capture meetings, lectures and events in real time" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
+    <div class="reel-card" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAFwAAAwEAAAAAAAAAAAAAAAAAAgUGA//EACIQAAIBBAIBBQAAAAAAAAAAAAECAwAEERIhMUEFE1Fhkf/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AeS7ZGvOfgUDaEAyDAz581Kz3kwfaN2XPjYnFBFfEqVZXYns+4cflQVRa3IyACPpaT3V2kc+iLsDseBWUXqc9tEY4sBO8Hml0twqhyIzsR2WzRX//2Q==)"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="Plan an event: from conferences to workshops" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
+    <div class="reel-card" aria-hidden="true" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAGAAAAwEBAAAAAAAAAAAAAAAABAUGAgP/xAAhEAABBAICAgMAAAAAAAAAAAABAAIEEQMhBRITcSIxQf/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFREBAQAAAAAAAAAAAAAAAAAAABH/2gAMAwEAAhEDEQA/AHPyDtA16CGndcmMY3AguND2tPyvOMi/xB4gATRdo6s3RUqx3jxZXGxnloZX2aNqa5XL555zOcb12pOORly2Q3uMhzgdVQCmOxLiSg//2Q==)"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
+    <div class="reel-card" aria-hidden="true" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAGAAAAgMAAAAAAAAAAAAAAAAABAUCAwb/xAAkEAACAQMDAwUAAAAAAAAAAAABAgMABBESITEFE0EUIlFxof/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFREBAQAAAAAAAAAAAAAAAAAAABH/2gAMAwEAAhEDEQA/ANESwbbOPqqrm6SAJqDAswVdvNSeRlQtnihJQbl4pGONBOBUqwOepv3O2WPPuONh+Ub6qdbSV1BZ1Ow+aVlrgSlRcsAD4UUwtA5jZZJDJq5Lc0pH/9k=)"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
+    <div class="reel-card" aria-hidden="true" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAANACADASIAAhEBAxEB/8QAFwAAAwEAAAAAAAAAAAAAAAAAAgUGA//EACIQAAIBBAIBBQAAAAAAAAAAAAECAwAEERIhMUEFE1Fhkf/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AeS7ZGvOfgUDaEAyDAz581Kz3kwfaN2XPjYnFBFfEqVZXYns+4cflQVRa3IyACPpaT3V2kc+iLsDseBWUXqc9tEY4sBO8Hml0twqhyIzsR2WzRX//2Q==)"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="" width="1600" height="667" decoding="async" onload="this.classList.add('in')"></picture></div>
   </div>
 </div>
 
