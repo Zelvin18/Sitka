@@ -5,6 +5,8 @@ import { IconPlus, IconScreen, IconStar, IconTrash } from '../lib/icons'
 import Loading, { LOADING_WORDS } from './Loading'
 import { formatDuration } from '../lib/format'
 
+const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 interface Props {
   sessions: SessionMeta[]
   /** false until the first list has arrived, so an empty library is never shown by mistake */
@@ -150,9 +152,19 @@ export default function Home({
         {!loaded && sessions.length === 0 ? (
           <Loading words={LOADING_WORDS.library} />
         ) : sessions.length === 0 ? (
-          <div className="empty">
-            <div className="empty-icon">
-              <IconScreen size={36} strokeWidth={1.3} />
+          <div className="empty empty-photo">
+            {/* A blank page on a lecture seat: the library before its first session.
+                The picture lives with the web app; the desktop app reaches for the
+                same file, and if it is missing the words stand on their own. */}
+            <div className="empty-scene">
+              <img
+                src={IS_WEB ? '/library-empty.webp' : 'https://sitka-blue.vercel.app/library-empty.webp'}
+                alt=""
+                aria-hidden="true"
+                onError={(e) => {
+                  e.currentTarget.parentElement?.classList.add('gone')
+                }}
+              />
             </div>
             <div className="empty-title">Your library starts with your first session</div>
             <div style={{ marginBottom: 20, maxWidth: 420, margin: '0 auto 20px' }}>

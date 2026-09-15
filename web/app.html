@@ -26,15 +26,18 @@
 
 /* ---- left: the brand side, dark ---- */
 .gbrand-side{position:relative;background:#111114;color:#f1f1f3;padding:40px 48px;display:flex;flex-direction:column;overflow:hidden}
-.gbrand-side::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 30% 30%,rgba(255,255,255,.08),transparent 70%);pointer-events:none}
-.gbrand-side::after{content:'';position:absolute;inset:0;background-image:radial-gradient(#2c2c32 1px,transparent 1.2px);background-size:22px 22px;opacity:.5;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 40% 40%,#000 10%,transparent 75%);mask-image:radial-gradient(ellipse 70% 70% at 40% 40%,#000 10%,transparent 75%);pointer-events:none}
+/* the photograph fills the side; a veil deepens towards the foot so the words read in white */
+.gphoto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;display:block}
+.gveil{position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,12,.92) 0%,rgba(10,10,12,.62) 38%,rgba(10,10,12,.18) 70%,rgba(10,10,12,.28) 100%);pointer-events:none}
 .gbrand-side > *{position:relative;z-index:1}
+.gbrand-side > .gphoto,.gbrand-side > .gveil{position:absolute;z-index:0}
+.gbrand-side .gbrand{text-shadow:0 1px 8px rgba(0,0,0,.4)}
 .gbrand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:17px;letter-spacing:-.01em}
 .gbrand .mark{width:22px;height:22px}
-.gclaim{margin:auto 0;max-width:460px}
+.gclaim{margin:auto 0 0;padding-bottom:28px;max-width:460px;text-shadow:0 1px 10px rgba(0,0,0,.35)}
 .gclaim h1{font-size:clamp(30px,3.6vw,46px);line-height:1.05;letter-spacing:-.035em;font-weight:800;margin:0 0 16px}
-.gclaim p{color:#b9b9c0;font-size:16px;line-height:1.55;margin:0 0 28px}
-.gscene{border:1px solid #2e2e34;background:#1a1a1e;border-radius:18px;max-width:440px;box-shadow:0 30px 70px rgba(0,0,0,.45);overflow:hidden}
+.gclaim p{color:#d6d6dc;font-size:16px;line-height:1.55;margin:0}
+.gscene{display:none;border:1px solid #2e2e34;background:#1a1a1e;border-radius:18px;max-width:440px;box-shadow:0 30px 70px rgba(0,0,0,.45);overflow:hidden}
 .gscene-top{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#e6e6ea;padding:12px 16px;border-bottom:1px solid #2e2e34}
 .gscene-top .mark{width:14px;height:14px}
 .glive{margin-left:auto;font-size:10px;font-weight:750;letter-spacing:.08em;color:#e0655a;display:inline-flex;align-items:center;gap:5px}
@@ -99,6 +102,9 @@
   .gclaim h1{font-size:28px;margin-bottom:10px}
   .gclaim p{font-size:14.5px;margin-bottom:18px}
   .gscene,.gfoot{display:none}
+  .gbrand-side{min-height:220px;padding:22px 20px 20px}
+  .gphoto{object-position:center 58%}
+  .gclaim{padding-bottom:0}
   .gform-side{padding:26px 20px 40px;align-items:flex-start}
 }
 </style>
@@ -106,6 +112,8 @@
 <body>
 <div id="gate">
   <aside class="gbrand-side">
+    <img class="gphoto" src="/signin.webp" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+    <div class="gveil" aria-hidden="true"></div>
     <div class="gbrand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</div>
     <div class="gclaim">
       <h1>Attend once.<br>Keep it forever.</h1>

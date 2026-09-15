@@ -4173,6 +4173,42 @@ body {
   margin-bottom: 4px;
 }
 
+/* the empty library: a photograph above the words, quiet and wide */
+.empty-photo {
+  padding-top: 28px;
+}
+.empty-scene {
+  max-width: 640px;
+  margin: 0 auto 26px;
+  aspect-ratio: 2 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.12);
+}
+.empty-scene img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.empty-scene.gone {
+  display: none;
+}
+.empty-photo .empty-title {
+  font-size: 18px;
+}
+@media (max-width: 640px) {
+  .empty-photo {
+    padding: 16px 0 40px;
+  }
+  .empty-scene {
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+}
+
 /* ============ Session intent ============ */
 
 .page-back {
