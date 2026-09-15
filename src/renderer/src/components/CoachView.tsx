@@ -24,6 +24,8 @@ import {
 } from '../lib/icons'
 import { formatTime } from '../lib/format'
 
+const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 interface Props {
   hasChatKey: boolean
   hasSttKey: boolean
@@ -364,8 +366,16 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
     return (
       <div className="content">
         <div className="content-inner" style={{ maxWidth: 860 }}>
-          <div className="ev-hero">
-            <div>
+          <div className="ev-hero photo">
+            <img
+              className="ev-hero-photo"
+              src={IS_WEB ? '/coach-hero.webp' : 'https://sitka-blue.vercel.app/coach-hero.webp'}
+              alt=""
+              aria-hidden="true"
+              onError={(e) => e.currentTarget.parentElement?.classList.remove('photo')}
+            />
+            <div className="ev-hero-veil" aria-hidden="true" />
+            <div className="ev-hero-text">
               <h1 className="ev-hero-title">
                 Walk in
                 <br />

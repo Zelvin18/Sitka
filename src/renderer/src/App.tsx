@@ -366,13 +366,16 @@ export default function App(): React.JSX.Element {
 
   // Sessions are scoped: general shows only general ones, an ecosystem only its own.
   const inSpace = (s: SessionMeta): boolean => (space ? s.space === space : !s.space)
-  const scopedSessions = sessions.filter(inSpace)
+  // The sidebar: every hosted event on top, wherever it was filed, and then
+  // the sessions of the ecosystem the person is in. A plain Business or
+  // Education session stays in the library until they step into that space.
+  const sidebarSessions = sessions.filter((s) => s.hosted || inSpace(s))
 
   return (
     <div className="app">
       {(sidebarOpen || phone) && (
         <Sidebar
-          sessions={scopedSessions}
+          sessions={sidebarSessions}
           activeView={view.name}
           activeSessionId={activeSessionId}
           recordingSessionId={recordingSessionId}

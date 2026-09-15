@@ -4,6 +4,8 @@ import type { ScheduledEvent } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
 import { IconBroadcast, IconCalendar, IconNotes, IconPlus } from '../lib/icons'
 
+const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 interface Props {
   /** open this event's dashboard directly (deep link) */
   initialEventId?: string
@@ -604,7 +606,15 @@ export default function EventsView({
   return (
     <div className="content">
       <div className="content-inner" style={{ maxWidth: 860 }}>
-        <div className="ev-hero">
+        <div className="ev-hero photo">
+          <img
+            className="ev-hero-photo"
+            src={IS_WEB ? '/events-hero.webp' : 'https://sitka-blue.vercel.app/events-hero.webp'}
+            alt=""
+            aria-hidden="true"
+            onError={(e) => e.currentTarget.parentElement?.classList.remove('photo')}
+          />
+          <div className="ev-hero-veil" aria-hidden="true" />
           <div className="ev-hero-text">
             <h1 className="ev-hero-title">
               Events people
