@@ -6,10 +6,10 @@
     { "source": "/legal", "destination": "/legal.html" },
     { "source": "/host", "destination": "/host.html" },
     { "source": "/host/:path*", "destination": "/host.html" },
-    { "source": "/e/:id", "destination": "/event.html" },
-    { "source": "/r/:id", "destination": "/replay2.html" },
-    { "source": "/r2/:id", "destination": "/replay2.html" },
-    { "source": "/r1/:id", "destination": "/replay.html" },
+    { "source": "/e/:id", "destination": "/api/page?kind=event&id=:id" },
+    { "source": "/r/:id", "destination": "/api/page?kind=recap&id=:id" },
+    { "source": "/r2/:id", "destination": "/api/page?kind=recap&id=:id" },
+    { "source": "/r1/:id", "destination": "/api/page?kind=recap1&id=:id" },
     { "source": "/s/:id", "destination": "/stage.html" },
     { "source": "/admin", "destination": "/admin.html" }
   ]

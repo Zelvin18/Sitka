@@ -447,9 +447,16 @@ function upsertSeg(row: SegRow, translated?: string): void {
   if (pane.classList.contains('sel')) pane.scrollTop = pane.scrollHeight
   // English listeners speak originals; translated listeners speak on translation arrival
   if (!translatedForMe()) speakText(row.text)
-  else if (translated) speakText(translated)
+  else if (translated) {
+    appliedTrans.add(row.idx)
+    speakText(translated)
+  }
 }
+/** lines already shown in the person's language: never spoken twice */
+const appliedTrans = new Set<number>()
 function applyTranslation(idx: number, text: string): void {
+  if (appliedTrans.has(idx)) return
+  appliedTrans.add(idx)
   const node = segEls.get(idx)
   if (node) {
     ;(node.children[1] as HTMLElement).textContent = text
@@ -1500,6 +1507,8 @@ async function join(newJoin: boolean): Promise<void> {
   let lastSegIdx = -1
   let watching = false
   let endedTicks = 0
+  let lastTransIdx = -1
+  let pollTicks = 0
   const watchEvent = async (): Promise<void> => {
     if (watching || !ev) return
     // After the end, the recap flag and the recording can still change for a
@@ -1531,6 +1540,36 @@ async function join(newJoin: boolean): Promise<void> {
           lastSegIdx = Math.max(lastSegIdx, r.idx)
           if (!segEls.has(r.idx)) upsertSeg(r, pendingTranslations.get(r.idx))
         }
+        // The same for the translations and the poll, which until now came
+        // only over the live link: a phone that slept through a minute and
+        // woke to captions in English gets its own language back, and a poll
+        // opened while the link was down still reaches it.
+        if (wantTrans) {
+          const { data: tr } = await sb
+            .from('translations')
+            .select('idx,text')
+            .eq('event_id', eventId)
+            .eq('lang', myLang)
+            .gt('idx', lastTransIdx)
+            .order('idx', { ascending: true })
+            .limit(80)
+          for (const row of tr ?? []) {
+            const r = row as { idx: number; text: string }
+            lastTransIdx = Math.max(lastTransIdx, r.idx)
+            applyTranslation(r.idx, r.text)
+          }
+        }
+        pollTicks++
+        if (pollTicks % 4 === 0) {
+          const { data: pollRows } = await sb
+            .from('polls')
+            .select('id,question,options,status')
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+          const latest = pollRows && pollRows.length > 0 ? (pollRows[0] as PollRow) : null
+          if (latest && (!activePoll || activePoll.id !== latest.id || activePoll.status !== latest.status)) setPoll(latest)
+        }
       }
     } catch {
       /* the next tick tries again */
@@ -1556,6 +1595,7 @@ async function join(newJoin: boolean): Promise<void> {
       .eq('event_id', eventId)
       .eq('lang', myLang)
     transMap = new Map((tr ?? []).map((r) => [r.idx as number, r.text as string]))
+    for (const k of transMap.keys()) lastTransIdx = Math.max(lastTransIdx, k)
   }
   const wasListening = listening
   listening = false // don't speak the whole backlog

@@ -79,6 +79,51 @@ function formatTime(totalSeconds: number): string {
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
   return `${m}:${String(sec).padStart(2, '0')}`
 }
+/**
+ * The part of a session a question needs. Sending an hour of words on every
+ * "what did she say about X" is what made answers slow: the free models
+ * refuse prompts that big and the request limps through the fallbacks. Kept:
+ * every line that mentions a word from the question, with its neighbours; the
+ * most recent minutes, so "now" means now; and, when little matched, an even
+ * spread so the shape of the session is present. A short session goes whole.
+ */
+const EXCERPT_STOP = new Set(
+  'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only onto over under after before earlier later show shown showed said say tell explain please hello thanks thank lecturer lecture speaker session talk mean means meant'.split(' ')
+)
+function excerptFor(segments: TranscriptSegment[], question: string, live: boolean): string {
+  const whole = transcriptBlock(segments)
+  if (whole.length <= 16000) return whole
+  const words = question
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 4 && !EXCERPT_STOP.has(w))
+  const keep = new Set<number>()
+  if (words.length > 0) {
+    segments.forEach((seg, i) => {
+      const t = seg.text.toLowerCase()
+      if (words.some((w) => t.includes(w))) {
+        for (let k = Math.max(0, i - 2); k <= Math.min(segments.length - 1, i + 2); k++) keep.add(k)
+      }
+    })
+  }
+  // the last few minutes are always present: "now" has to mean now
+  const tail = live ? 40 : 12
+  for (let i = Math.max(0, segments.length - tail); i < segments.length; i++) keep.add(i)
+  // little matched: the shape of the whole session, evenly
+  if (keep.size < 30) {
+    const step = Math.max(1, Math.floor(segments.length / 80))
+    for (let i = 0; i < segments.length; i += step) keep.add(i)
+  }
+  const lines: string[] = []
+  let size = 0
+  for (const i of [...keep].sort((a, b) => a - b)) {
+    const line = transcriptBlock([segments[i]]) + '\n'
+    if (size + line.length > 16000) break
+    lines.push(line)
+    size += line.length
+  }
+  return lines.join('')
+}
 function transcriptBlock(segments: TranscriptSegment[]): string {
   if (segments.length === 0) return '(No speech has been transcribed yet.)'
   return segments.map((s) => `[${formatTime(s.start)}] ${s.text.trim()}`).join('\n')
@@ -399,7 +444,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     system: string,
     messages: ChatMsg[],
     maxTokens = 2000,
-    requireVision = false
+    requireVision = false,
+    fast = false
   ): Promise<{ text: string; vision: boolean }> {
     const k = storedSettings()
     let lastError = 'AI error'
@@ -415,7 +461,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             system,
             messages,
             maxTokens,
-            requireVision
+            requireVision,
+            fast
           })
         })
       } catch {
@@ -916,10 +963,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         : 'The session has ended. The transcript below covers the full recording.',
       '',
       'Rules:',
-      '- Ground every answer in the transcript. If something was not covered, say so plainly instead of guessing.',
+      '- Answer every question. Look in the session first: when the session covers it, answer from what was said and shown, and never present your own knowledge as the speaker\'s words.',
+      '- When the session does not cover the question, or the question is about something else entirely, never refuse. Say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge. Be as helpful as a good tutor would be. Keep it to a few clear sentences unless the user asks for more.',
       '- Lines beginning with "[On screen]" are what Sitka read from the presenter\'s screen — slides, the whiteboard, documents, charts. Treat them as part of the session. When the user asks what is shown, written, on the board, on the slide or on the screen, answer from those lines and from any attached image of the screen, quoting the text and equations exactly as they appear. If neither shows it, say the screen has not been read yet.',
       '- Drawing what was on screen: when the user asks to see, redraw, reproduce or copy a table, chart, graph or diagram that was shown, rebuild it from the [On screen] lines and any attached image. A table becomes a markdown table with every value. A chart becomes a ```chart block — lines "type: bar" (or line), "title: …", "labels: Q1, Q2, Q3", then one line per series like "Sales: 10, 20, 30". A diagram or process becomes a ```flow block with one connection per line, like "Input -> Model -> Output". Use only values you can actually read; if a value is not legible, say so instead of inventing it.',
-      '- If the question has nothing to do with this session, say so in one short clause and then answer briefly from general knowledge: a few plain sentences, no headings or long lists. The user is in the middle of a session and should not be pulled away from it; go deeper only if they ask again. Never present general knowledge as something the speaker said.',
+      '- A question that starts in the session and reaches beyond it (background, a definition, why something is so, how it compares) gets both: what the speaker said, then the wider explanation, kept apart so the user knows which is which.',
       '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
       '- When you reference a specific moment, cite it inline with the exact format [[M:SS]] or [[H:MM:SS]] using a single timestamp that appears in the transcript (for example [[12:37]]). Never cite a range — cite the moment it starts. The app turns these into clickable links that jump the recording to that moment.',
       '- Citations must use plain ASCII double square brackets exactly as shown: [[ and ]]. Never use fullwidth brackets like 【 】, single brackets, or parentheses around a citation.',
@@ -1957,17 +2005,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // the recap's title, summary and moments, so an old share never keeps
       // a stale name.
       if (d?.meta.recapUrl) {
-        void sb
-          .from('recaps')
-          .update({
-            title: d.meta.title,
-            summary: d.meta.summary ?? '',
-            highlights: d.meta.highlights ?? [],
-            has_recording: !d.meta.readOnly && !d.meta.sample,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', id)
-          .then(() => undefined, () => undefined)
+        void (async () => {
+          const thumb = await api.getThumb(id).catch(() => null)
+          await sb
+            .from('recaps')
+            .update({
+              title: d.meta.title,
+              summary: d.meta.summary ?? '',
+              highlights: d.meta.highlights ?? [],
+              has_recording: !d.meta.readOnly && !d.meta.sample,
+              ...(thumb ? { thumb } : {}),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .then(() => undefined, () => undefined)
+        })()
       }
       return d
     },
@@ -2637,7 +2689,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const langRule = lang
             ? `\n- Always answer in ${lang}, whatever language the session or the question is in, unless the user explicitly asks for another language.\n`
             : ''
-          system = `${askSystemPrompt(req.live)}${langRule}\n${materials ? materials + '\n\n' : ''}${screenNow}${transcriptBlock(segments)}`
+          // the part of the session this question needs, not the whole hour
+          system = `${askSystemPrompt(req.live)}${langRule}\n${materials ? materials + '\n\n' : ''}${screenNow}${excerptFor(segments, req.question, req.live)}`
         }
         const history: ChatMsg[] = req.history
           .slice(-10)
@@ -2664,7 +2717,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
                 content: [...parts, { type: 'text', text: `${notes.join('\n')}\n\n${folded.question}` }]
               }
             : { role: 'user', content: folded.question }
-        const text = await aiChat(system, [...history, last])
+        // no picture to read: the quick models answer first
+        const text = (await aiChatFull(system, [...history, last], 2000, false, parts.length === 0)).text
         emitAi({ requestId: req.requestId, type: 'delta', text })
         emitAi({ requestId: req.requestId, type: 'done' })
       } catch (err) {
@@ -3254,9 +3308,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (d.segments.length === 0) {
         return { error: 'Nothing to share yet — this session has no transcript.' }
       }
+      const thumb = await api.getThumb(sessionId).catch(() => null)
       const { error } = await sb.from('recaps').upsert({
         id: sessionId,
         owner: user.id,
+        thumb: thumb ?? null,
         title: d.meta.title,
         summary: d.meta.summary ?? '',
         highlights: d.meta.highlights ?? [],

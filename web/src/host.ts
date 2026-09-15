@@ -875,10 +875,28 @@ el('endbtn').onclick = async () => {
   })
   st.micStream.getTracks().forEach((t) => t.stop())
   st.displayStream?.getTracks().forEach((t) => t.stop())
-  await sb
-    .from('events')
-    .update({ status: 'ended', updated_at: new Date().toISOString() })
-    .eq('id', current.id)
+  // Ended, and the recap opened for the room at the same moment: the recap
+  // page reads the captions the room already has, so the link works at once
+  // even though this console keeps no recording in the cloud. The write is
+  // tried a few times and checked: it is the one every phone is waiting on.
+  let endErr = ''
+  for (const delay of [0, 1200, 3000]) {
+    if (delay) await new Promise((r) => setTimeout(r, delay))
+    const { error } = await sb
+      .from('events')
+      .update({
+        status: 'ended',
+        replay: { enabled: true, title: current.title, summary: '', highlights: [], video: false, publishedAt: Date.now() },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', current.id)
+    if (!error) {
+      endErr = ''
+      break
+    }
+    endErr = error.message
+  }
+  if (endErr) alert('The event could not be marked as ended: ' + endErr + '. Check the connection and press End again.')
   current.status = 'ended'
   el('endsummary').textContent = `${st.attendeeCount} attendees · ${st.askCount} AI answers · ${st.questionCount} questions for you. Attendees can grab their take-home packs now.`
   const blob = await recorded

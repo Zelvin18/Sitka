@@ -870,7 +870,7 @@ function wireAsk(d: Loaded): void {
     [
       `You are Sitka, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
       d.summary ? `Summary of the session: ${d.summary}` : '',
-      'Ground every answer in the excerpt (and materials) below; if something was not covered there, say so plainly rather than guessing.',
+      'Answer every question. Look in the excerpt (and materials) below first; when the session covers it, answer from what was said. When it does not, or the question is about something else, never refuse: say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge, kept clearly apart from what the speaker said.',
       'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
       'When you reference a specific moment, cite the time exactly as it appears at the start of that line, inside plain double square brackets — for example [[12:37]] or [[1:02:15]]. Never write letters inside the brackets, never a range. These become tap-to-play links.',
       'Cite a moment when the reader would want to jump to it; a summary reads as prose.',
