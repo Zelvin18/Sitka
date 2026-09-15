@@ -306,6 +306,7 @@ function loadMedia(): Promise<boolean> {
   if (!data.video) return Promise.resolve(false)
   const big = el('playbig')
   big.classList.add('busy')
+  el('stage').classList.add('loading')
   el('playtext').textContent = 'Fetching the recording'
   const v = video()
   mediaPromise = (async () => {
@@ -422,6 +423,7 @@ function loadMedia(): Promise<boolean> {
       return true
     } catch (err) {
       el('stage').classList.add('err')
+      el('stage').classList.remove('loading')
       const msg = err instanceof Error ? err.message : String(err)
       const transient = /storage \d|timeout|failed to fetch|load failed|network/i.test(msg)
       el('playtext').textContent = transient ? 'Could not fetch the recording' : 'The recording could not be loaded'
@@ -451,6 +453,7 @@ function refused(err: unknown): void {
   const name = err instanceof Error ? err.name : String(err)
   console.error('[recap] play refused', name, err)
   el('stage').classList.add('err')
+  el('stage').classList.remove('loading')
   el('playtext').textContent = 'Tap the recording to play'
   el('playsub').textContent =
     name === 'NotAllowedError'
@@ -496,6 +499,7 @@ function wireMedia(): void {
             ? 'The connection dropped while loading.'
             : 'The recording could not be opened.'
     stage.classList.add('err')
+    stage.classList.remove('loading')
     el('playtext').textContent = 'Could not play'
     el('playsub').textContent = why + (mediaDiag ? ` · ${mediaDiag}` : '')
     el('playbig').classList.add('dim')
@@ -505,7 +509,9 @@ function wireMedia(): void {
   v.addEventListener('loadeddata', () => {
     stage.classList.toggle('audio', v.videoWidth === 0)
     stage.classList.add('hasvideo')
+    stage.classList.remove('loading')
   })
+  v.addEventListener('playing', () => stage.classList.remove('loading'))
   v.addEventListener('resize', () => stage.classList.toggle('audio', v.videoWidth === 0))
   v.onloadedmetadata = () => {
     if (!Number.isFinite(v.duration)) {

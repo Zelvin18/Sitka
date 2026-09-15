@@ -77,6 +77,13 @@ h1.title{font-family:var(--serif);font-weight:500;font-size:clamp(24px,3.2vw,40p
 .playbig.busy .pring .ring{display:block;width:22px;height:22px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:orbit .9s linear infinite}
 .stage.playing:not(.paused) .playbig{opacity:0;pointer-events:none}
 .stage.audio .playbig{top:62%}
+/* while the recording is on its way: the mark, turning, over the picture, the same as in the app */
+.stage-wait{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font-size:13.5px;font-weight:600;letter-spacing:.01em;background:rgba(0,0,0,.28);pointer-events:none;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.stage-wait .mark{width:28px;height:28px}
+.stage.loading:not(.err) .stage-wait{display:flex}
+@media(max-width:900px){.stage-wait{padding-bottom:26vh}}
+.stage.loading:not(.err) .playbig{opacity:0;pointer-events:none}
+.stage.loading:not(.err) .pstatus{display:none}
 /* what is happening, said once, small, under the title: only while loading or when something is wrong */
 .pstatus{margin-top:10px;font-size:13px;color:rgba(255,255,255,.72);display:flex;flex-direction:column;gap:2px}
 .pstatus small{font-size:12px;color:rgba(255,255,255,.5)}
@@ -332,6 +339,7 @@ html,body{overflow-x:hidden;max-width:100vw}
     <button class="playbig" id="playbig" type="button" aria-label="Play">
       <span class="pring"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg><span class="ring"></span></span>
     </button>
+    <div class="stage-wait" id="stagewait" aria-live="polite"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span data-words="Fetching the recording|Almost there">Fetching the recording</span></div>
     <button class="xfull" id="xfull" type="button" aria-label="Leave full screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <button class="askfab" id="askfab" type="button"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitka</button>
     <div class="bar" id="bar">
