@@ -73,6 +73,8 @@ export default function OrgView({
   const [createError, setCreateError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
+  const [confirmDeleteOrg, setConfirmDeleteOrg] = useState(false)
+  const [deleteOrgError, setDeleteOrgError] = useState<string | null>(null)
   const [confirmDeleteSpace, setConfirmDeleteSpace] = useState<OrgSpace | null>(null)
 
   // per-space data
@@ -369,9 +371,13 @@ export default function OrgView({
                 ? 'What you ask Sitka stays yours. Lecturers see how the room understood, never who asked what.'
                 : 'What you ask Sitka stays yours. Leads see how a meeting landed, never who asked what.'}
             </span>
-            {org.role !== 'owner' && (
+            {org.role !== 'owner' ? (
               <button className="link-btn" onClick={() => setConfirmLeave(true)}>
                 Leave {org.name}
+              </button>
+            ) : (
+              <button className="link-btn" onClick={() => setConfirmDeleteOrg(true)}>
+                Delete {org.name}
               </button>
             )}
           </div>
@@ -441,6 +447,31 @@ export default function OrgView({
           </div>
         )}
 
+        {confirmDeleteOrg && (
+          <ConfirmDialog
+            title={`Delete ${org.name}?`}
+            message={
+              (education
+                ? 'Every course in it, with its materials, is removed for every member. '
+                : 'Every space in it, with its materials, is removed for every member. ') +
+              'Sessions are not deleted: they stay with the people who recorded them. This cannot be undone.'
+            }
+            confirmLabel="Delete for everyone"
+            onConfirm={() => {
+              setConfirmDeleteOrg(false)
+              void window.sitka.deleteOrg(org.id).then((r) => {
+                if (r.error) setDeleteOrgError(r.error)
+                else onLeft()
+              })
+            }}
+            onCancel={() => setConfirmDeleteOrg(false)}
+          />
+        )}
+        {deleteOrgError && (
+          <div className="notice notice-error" style={{ margin: '12px 0 0' }}>
+            <span>{deleteOrgError}</span>
+          </div>
+        )}
         {confirmLeave && (
           <ConfirmDialog
             title={`Leave ${org.name}?`}
@@ -611,11 +642,19 @@ export default function OrgView({
         {tab === 'materials' && (
           <div className="brain-results">
             {lead ? (
-              <MaterialsPanel
-                materials={materials.map((m) => ({ id: m.id, name: m.name, chars: m.chars, addedAt: m.addedAt }))}
-                onAdd={async (name, text) => setMaterials(await window.sitka.addSpaceMaterial(active.id, name, text))}
-                onRemove={async (id) => setMaterials(await window.sitka.removeSpaceMaterial(active.id, id))}
-              />
+              <>
+                <MaterialsPanel
+                  materials={materials.map((m) => ({ id: m.id, name: m.name, chars: m.chars, addedAt: m.addedAt }))}
+                  onAdd={async (name, text) => setMaterials(await window.sitka.addSpaceMaterial(active.id, name, text))}
+                  onRemove={async (id) => setMaterials(await window.sitka.removeSpaceMaterial(active.id, id))}
+                />
+                <div className="org-danger">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
+                    <IconTrash size={13} />
+                    Delete this {noun}
+                  </button>
+                </div>
+              </>
             ) : materials.length === 0 ? (
               <div className="transcript-waiting">
                 {active.kind === 'course'

@@ -2853,6 +2853,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     leaveOrg: async (orgId: string) => {
       await sb.from('org_members').delete().eq('org_id', orgId).eq('user_id', user.id)
     },
+    deleteOrg: async (orgId: string) => {
+      // The row goes and the database takes its members, spaces and materials
+      // with it. Sessions filed in its spaces are untouched: they belong to
+      // the people who recorded them and simply stop being filed anywhere.
+      const { error, count } = await sb.from('organizations').delete({ count: 'exact' }).eq('id', orgId)
+      if (error) return { error: error.message }
+      if (!count) return { error: 'Only the owner can delete an organisation.' }
+      track('org_deleted', { org: orgId })
+      return {}
+    },
     listOrgMembers: async (orgId: string): Promise<OrgMember[]> => {
       const { data } = await sb
         .from('org_members')

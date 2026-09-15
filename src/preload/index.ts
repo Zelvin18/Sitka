@@ -67,6 +67,8 @@ const api = {
   joinOrg: (code: string): Promise<{ org?: Organization; error?: string }> =>
     ipcRenderer.invoke('org:join', code),
   leaveOrg: (orgId: string): Promise<void> => ipcRenderer.invoke('org:leave', orgId),
+  /** the owner removes the organisation for everyone: its spaces and materials go with it, sessions stay with whoever recorded them */
+  deleteOrg: (orgId: string): Promise<{ error?: string }> => ipcRenderer.invoke('org:delete', orgId),
   listOrgMembers: (orgId: string): Promise<OrgMember[]> => ipcRenderer.invoke('org:members', orgId),
   listSpaces: (orgId: string): Promise<OrgSpace[]> => ipcRenderer.invoke('org:spaces', orgId),
   createSpace: (

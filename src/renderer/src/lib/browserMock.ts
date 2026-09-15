@@ -38,6 +38,7 @@ export function installBrowserMockIfNeeded(): void {
     createOrg: async () => ({ error: 'unavailable in browser preview' }),
     joinOrg: async () => ({ error: 'unavailable in browser preview' }),
     leaveOrg: async () => undefined,
+    deleteOrg: async () => ({}),
     listOrgMembers: async () => [],
     listSpaces: async () => [],
     createSpace: async () => ({ error: 'unavailable in browser preview' }),

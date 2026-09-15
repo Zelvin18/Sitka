@@ -310,6 +310,7 @@ function registerIpc(): void {
   ipcMain.handle('org:create', () => ONLINE_ONLY)
   ipcMain.handle('org:join', () => ONLINE_ONLY)
   ipcMain.handle('org:leave', () => undefined)
+  ipcMain.handle('org:delete', () => ({ error: 'Organisations are managed on the website.' }))
   ipcMain.handle('org:members', () => [])
   ipcMain.handle('org:spaces', () => [])
   ipcMain.handle('org:createSpace', () => ONLINE_ONLY)
