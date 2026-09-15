@@ -3730,4 +3730,87 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   // Close out anything a crash left open, and finish uploads the cloud is missing.
   setTimeout(() => void recoverInterrupted(), 2500)
+
+  // ---------- recordings made before the move ----------
+  // Sessions recorded while recordings lived in Supabase are carried over to
+  // Cloudflare in the background, one at a time, so they load as fast as new
+  // ones and stop counting against the small Supabase allowance. Each file is
+  // copied, the copy is checked against the original's size, and only then is
+  // the original removed. Whatever is not finished carries on next time the
+  // app opens. Left to laptops: a phone should not hold a whole lecture in
+  // memory for this.
+  const MIGRATE_AT = 'sitka.migrated-at.' + user.id
+  async function migrateOldRecordings(): Promise<void> {
+    if (window.innerWidth < 900) return
+    // a sweep every few hours is plenty: it only costs anything when there is something to move
+    const last = Number(localStorage.getItem(MIGRATE_AT) || 0)
+    if (Date.now() - last < 6 * 3600 * 1000) return
+    if (!(await store.ready())) return
+    const { data } = await sb.from('sessions').select('id,meta').order('created_at', { ascending: false })
+    const rows = (data as { id: string; meta: SessionMeta }[] | null) ?? []
+    let remaining = 0
+    for (const row of rows) {
+      const m = row.meta
+      if (m.store === 'r2' || m.readOnly || m.sample || m.status !== 'complete') continue
+      if (m.id === recordingState?.id || liveInAnotherTab(m.id)) continue
+      try {
+        const moved = await migrateOne(m.id)
+        if (moved) track('recording_moved', { session: m.id })
+        else remaining++
+      } catch (err) {
+        remaining++
+        console.warn('Sitka: could not move a recording yet', m.id, err)
+      }
+    }
+    if (remaining === 0) localStorage.setItem(MIGRATE_AT, String(Date.now()))
+  }
+
+  /** True once nothing of this session is left in Supabase. */
+  async function migrateOne(id: string): Promise<boolean> {
+    const folders = [`${user.id}/${id}`, `${user.id}/${id}-slides`]
+    const keys: string[] = []
+    for (const f of folders) {
+      for (const o of await store.listIn(f, 'sb')) keys.push(`${f}/${o.name}`)
+    }
+    // the whole file has no folder of its own: it is found by trying it
+    const wholeKey = videoPath(id)
+    const { data: wholeUrl } = await sb.storage.from('recordings').createSignedUrl(wholeKey, 120)
+    if (wholeUrl?.signedUrl) keys.push(wholeKey)
+
+    const d = cache.get(id) ?? (await loadSession(id))
+    if (keys.length === 0) {
+      // nothing in Supabase for this session: it is already where it should be
+      if (d) {
+        d.meta.store = 'r2'
+        await patchSession(id, { meta: d.meta })
+      }
+      return true
+    }
+    for (const key of keys) {
+      const bytes = await store.download(key, 'sb')
+      if (!bytes || bytes.byteLength === 0) return false
+      const kind = key.endsWith('.jpg') ? 'image/jpeg' : mediaType(new Uint8Array(bytes.slice(0, 12)))
+      const { error } = await store.upload(key, new Blob([bytes], { type: kind }), kind)
+      if (error) return false
+      // the copy must be the same size before the original goes
+      let copiedSize = -1
+      if (key === wholeKey) {
+        copiedSize = (await store.media(user.id, id)).wholeSize ?? -1
+      } else {
+        const folder = key.slice(0, key.lastIndexOf('/'))
+        const name = key.slice(key.lastIndexOf('/') + 1)
+        copiedSize = (await store.listIn(folder, 'r2')).find((o) => o.name === name)?.size ?? -1
+      }
+      if (copiedSize !== bytes.byteLength) return false
+      await store.remove([key], 'sb')
+    }
+    if (d) {
+      d.meta.store = 'r2'
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+      if (!d.meta.whole) void consolidateRecording(id)
+    }
+    return true
+  }
+  setTimeout(() => void migrateOldRecordings(), 12000)
 }

@@ -29,6 +29,8 @@ export interface Listing {
 export interface Media {
   where: Where | 'none'
   whole: string | null
+  /** bytes of the whole file, when the store reports it */
+  wholeSize?: number
   parts: string[]
 }
 
@@ -197,12 +199,14 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     // Asked straight out, without first checking whether R2 is set up: this is
     // the one request between opening a recap and the first frame, and a
     // deployment without R2 simply answers that it has none.
-    const res = await post<{ where: Where | 'none'; whole: string | null; parts: { url: string }[] }>(
-      'media',
-      { owner, session }
-    )
+    const res = await post<{
+      where: Where | 'none'
+      whole: string | null
+      wholeSize?: number
+      parts: { url: string }[]
+    }>('media', { owner, session })
     if (res && res.where !== 'none') {
-      return { where: 'r2', whole: res.whole, parts: (res.parts ?? []).map((p) => p.url) }
+      return { where: 'r2', whole: res.whole, wholeSize: res.wholeSize, parts: (res.parts ?? []).map((p) => p.url) }
     }
     const dir = `${owner}/${session}`
     const objects = await listIn(dir, 'sb')

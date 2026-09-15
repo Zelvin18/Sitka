@@ -188,7 +188,8 @@ async function mediaLinks(res, cfg, owner, body) {
   // parts share a prefix: <owner>/<session>.webm and <owner>/<session>/part-*
   const objects = await r2List(cfg, `${ownerId}/${sessionId}`)
   const wholeKey = `${ownerId}/${sessionId}.webm`
-  const whole = objects.find((o) => o.key === wholeKey) ? presign(cfg, 'GET', wholeKey, READ_SECS) : null
+  const wholeObj = objects.find((o) => o.key === wholeKey)
+  const whole = wholeObj ? presign(cfg, 'GET', wholeKey, READ_SECS) : null
   const parts = objects
     .filter((o) => /\/part-\d+\.webm$/.test(o.key))
     .sort((a, b) => (a.key < b.key ? -1 : 1))
@@ -196,6 +197,7 @@ async function mediaLinks(res, cfg, owner, body) {
   return res.status(200).json({
     where: whole || parts.length > 0 ? 'r2' : 'none',
     whole,
+    wholeSize: wholeObj ? wholeObj.size : undefined,
     parts,
     expiresIn: READ_SECS
   })
