@@ -110,3 +110,21 @@ cannot use this endpoint. On the free plan that upload fails for anything over
 
 Live room stage frames are also still in Supabase. They are single small JPEGs,
 overwritten in place, and cost nothing.
+
+## Moving an existing library in one go
+
+The app moves older recordings on its own, one file at a time, whenever it is
+open on a laptop. For a whole library at once, run the script instead. It works
+server to server, four files at a time, and checks every copy before removing
+the original.
+
+Create a file named `.env.migrate` in the project root (git ignores it) with
+the six values named at the top of `scripts/move-recordings.mjs`, then:
+
+```bash
+node scripts/move-recordings.mjs --dry-run
+node scripts/move-recordings.mjs
+```
+
+Do not record while it runs. Run it again if anything failed; it only touches
+what is still in Supabase.

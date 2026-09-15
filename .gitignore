@@ -6,3 +6,6 @@ web/node_modules/
 web/dist/
 *.log
 .DS_Store
+
+# keys for scripts/move-recordings.mjs, never committed
+.env.migrate
