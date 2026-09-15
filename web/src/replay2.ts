@@ -121,8 +121,11 @@ async function loadRecap(): Promise<Loaded | null> {
     transcript: { start: number; text: string }[]
     duration_ms: number
     session_at: string | null
+    thumb?: string | null
   } | null
   if (!rc || !rc.enabled) return null
+  // a frame of the recording stands in as the picture until the file is ready
+  if (rc.thumb && rc.thumb.startsWith('data:image/')) video().poster = rc.thumb
   // A recap shared before the flag existed says nothing about its recording:
   // look in the owner's folder once, and play it if the parts are there.
   let hasParts = Boolean(rc.has_recording && rc.owner)

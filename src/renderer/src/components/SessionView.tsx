@@ -63,6 +63,21 @@ export default function SessionView({
   // true once the player has a frame (or, for sound alone, data) on screen;
   // until then the orbiting mark stays over the player
   const [videoLive, setVideoLive] = useState(false)
+  // the library's thumbnail stands in as the picture until the first frame arrives
+  const [poster, setPoster] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setPoster(null)
+    void window.sitka
+      .getThumb(sessionId)
+      .then((t) => {
+        if (!cancelled) setPoster(t)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
   // preparing an older WebM recording as MP4 for phones: progress from the web layer
   const [phonePrep, setPhonePrep] = useState<{ pct: number; error?: string } | null>(null)
   useEffect(() => {
@@ -618,6 +633,7 @@ export default function SessionView({
               <video
                 ref={videoRef}
                 src={videoSrc === 'progressive' ? undefined : videoSrc}
+                poster={poster ?? undefined}
                 controls
                 playsInline
                 onLoadedMetadata={onLoadedMetadata}

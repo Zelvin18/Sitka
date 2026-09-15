@@ -82,6 +82,8 @@ export interface SessionMeta {
   mime?: string
   /** where the recording is kept: 'r2' for Cloudflare, absent for the older Supabase store */
   store?: 'r2' | 'sb'
+  /** the whole file has been rewritten as a plain MP4 (index first), so any player starts at once */
+  flat?: boolean
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */

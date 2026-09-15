@@ -26,6 +26,7 @@ import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
+import { defragmentMp4, isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore, type Where } from './store'
 import type {
   AiStreamEvent,
@@ -318,7 +319,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const bytes = await api.readVideo(id, 'video')
       if (!bytes || bytes.byteLength < 5000) return
       const kind = mediaType(bytes.subarray(0, 12))
-      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: kind })
+      // The recorder writes MP4 in fragments with an empty header, which a
+      // player must read to the end before showing a frame. Rewritten with
+      // the index first, it starts in a second however long the session ran.
+      const flat = kind === 'video/mp4' ? flatten(bytes) : null
+      const blob = new Blob([(flat ?? bytes).buffer as ArrayBuffer], { type: kind })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       const { error } = await store.upload(videoPath(id), blob, kind)
       if (error) {
@@ -327,6 +332,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       d.meta.store = where
       d.meta.whole = true
+      d.meta.flat = kind !== 'video/mp4' || Boolean(flat)
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
     } catch (err) {
@@ -399,13 +405,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       v.remove()
       URL.revokeObjectURL(src)
       await ctx.close().catch(() => undefined)
-      const whole = new Blob(out, { type: 'video/mp4' })
+      let whole = new Blob(out, { type: 'video/mp4' })
       if (whole.size < 5000) return { ok: false, error: 'The prepared file came out empty.' }
+      // index first, so phones start it at once
+      const flatBytes = flatten(new Uint8Array(await whole.arrayBuffer()))
+      if (flatBytes) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       const { error } = await store.upload(videoPath(id), whole, 'video/mp4')
       if (error) return { ok: false, error: 'Could not store the prepared file: ' + error }
       d.meta.store = where
       d.meta.whole = true
+      d.meta.flat = true
       d.meta.mime = 'video/mp4'
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
@@ -3867,6 +3877,77 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // the original removed. Whatever is not finished carries on next time the
   // app opens. Left to laptops: a phone should not hold a whole lecture in
   // memory for this.
+  /** A fragmented MP4 rewritten plain; anything else, or a failure, is null. */
+  function flatten(bytes: Uint8Array): Uint8Array | null {
+    try {
+      if (!isFragmentedMp4(bytes)) return null
+      const t0 = performance.now()
+      const out = defragmentMp4(bytes)
+      if (out) console.info('[sitka] recording rewritten with its index first', Math.round(out.byteLength / 1e6), 'MB in', Math.round(performance.now() - t0), 'ms')
+      return out
+    } catch {
+      return null
+    }
+  }
+
+  // ---------- whole files made before the rewrite ----------
+  // A recording joined into one file before this change is still in fragments
+  // and still slow to start. On a laptop, with time to spare, each such file is
+  // fetched, rewritten and put back, one at a time, largest last.
+  const FLATTEN_AT = 'sitka.flattened-at.' + user.id
+  async function flattenOldRecordings(): Promise<void> {
+    if (window.innerWidth < 900) return
+    const last = Number(localStorage.getItem(FLATTEN_AT) || 0)
+    if (Date.now() - last < 6 * 3600 * 1000) return
+    if (!(await store.ready())) return
+    const { data } = await sb.from('sessions').select('id,meta').order('created_at', { ascending: false })
+    const rows = ((data as { id: string; meta: SessionMeta }[] | null) ?? []).filter(
+      (r) => r.meta.whole && !r.meta.flat && !r.meta.readOnly && !r.meta.sample && r.meta.status === 'complete' && r.meta.mime !== 'video/webm'
+    )
+    let left = 0
+    for (const row of rows) {
+      if (row.id === recordingState?.id || liveInAnotherTab(row.id)) continue
+      try {
+        const ok = await flattenOne(row.id)
+        if (!ok) left++
+      } catch (err) {
+        left++
+        console.warn('Sitka: could not rewrite a recording yet', row.id, err)
+      }
+    }
+    if (left === 0) localStorage.setItem(FLATTEN_AT, String(Date.now()))
+  }
+  async function flattenOne(id: string): Promise<boolean> {
+    const d = cache.get(id) ?? (await loadSession(id))
+    if (!d) return true
+    const where = whereOf(d.meta)
+    const bytes = await store.download(videoPath(id), where)
+    if (!bytes) return false
+    // a file this size, twice over, is more than a tab should hold
+    if (bytes.byteLength > 1200 * 1024 * 1024) return true
+    const src = new Uint8Array(bytes)
+    if (mediaType(src.subarray(0, 12)) !== 'video/mp4') {
+      d.meta.flat = true
+      await patchSession(id, { meta: d.meta })
+      return true
+    }
+    const flat = flatten(src)
+    if (!flat) {
+      // not in fragments after all, or beyond this rewriter: leave it, and stop asking
+      d.meta.flat = true
+      await patchSession(id, { meta: d.meta })
+      return true
+    }
+    const { error } = await store.upload(videoPath(id), new Blob([flat.buffer as ArrayBuffer], { type: 'video/mp4' }), 'video/mp4')
+    if (error) return false
+    d.meta.flat = true
+    await patchSession(id, { meta: d.meta })
+    emitSession(d.meta)
+    track('recording_flattened', { session: id, mb: Math.round(flat.byteLength / 1e6) })
+    return true
+  }
+  setTimeout(() => void flattenOldRecordings(), 45000)
+
   const MIGRATE_AT = 'sitka.migrated-at.' + user.id
   async function migrateOldRecordings(): Promise<void> {
     if (window.innerWidth < 900) return
