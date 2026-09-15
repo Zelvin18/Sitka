@@ -7,7 +7,7 @@
 from PIL import Image, ImageFilter
 import base64, io, json, os
 
-NAMES = ['sitka1', 'sitka2', 'sitka3', 'coach-hero', 'events-hero', 'join-hero', 'library-empty', 'signin', 'setup-hero']
+NAMES = ['sitka1', 'sitka2', 'sitka3', 'coach-hero', 'events-hero', 'join-hero', 'business-hero', 'education-hero', 'library-empty', 'signin', 'setup-hero']
 out = {}
 for n in NAMES:
     src = next((n + ext for ext in ('.png', '.jpeg', '.jpg', '.webp') if os.path.exists(n + ext)), None)

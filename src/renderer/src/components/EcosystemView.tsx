@@ -1,3 +1,4 @@
+import Photo from './Photo'
 import React from 'react'
 import type { Organization, SessionKind, SessionMeta } from '@shared/types'
 import OrgGate from './OrgGate'
@@ -153,16 +154,21 @@ export default function EcosystemView({
   return (
     <div className="content">
       <div className="content-inner" style={{ maxWidth: 900 }}>
-        <div className="eco-hero">
-          <div className="eco-kicker">{business ? 'Sitka for Business' : 'Sitka for Education'}</div>
-          <h1 className="page-title" style={{ marginBottom: 8 }}>
-            {business ? 'Turn conversations into coordinated action.' : 'Never learn alone again.'}
-          </h1>
-          <p className="page-subtitle" style={{ maxWidth: 600 }}>
-            {business
-              ? 'Meetings, projects, presentations, events and decisions — Sitka listens, understands, remembers, and helps your company act.'
-              : 'Before class, during class, after class, before the exam — an AI that stays with you through your whole education.'}
-          </p>
+        <div className="ev-hero photo eco-hero">
+          <Photo name={business ? 'business-hero' : 'education-hero'} position="70% center" />
+          <div className="ev-hero-veil" aria-hidden="true" />
+          <div className="ev-hero-text">
+            <div className="eco-kicker">{business ? 'Sitka for Business' : 'Sitka for Education'}</div>
+            <h1 className="ev-hero-title">
+              {business ? 'Turn conversations into coordinated action.' : 'Never learn alone again.'}
+            </h1>
+            <p className="ev-hero-sub">
+              {business
+                ? 'Meetings, projects, presentations, events and decisions — Sitka listens, understands, remembers, and helps your company act.'
+                : 'Before class, during class, after class, before the exam — an AI that stays with you through your whole education.'}
+            </p>
+          </div>
+          <div className="ev-hero-art" aria-hidden="true" />
         </div>
 
         {orgs.length === 0 ? (

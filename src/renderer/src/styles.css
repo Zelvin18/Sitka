@@ -9427,6 +9427,9 @@ video.is-hidden {
 .eco-hero {
   margin-bottom: 26px;
 }
+.ev-hero.eco-hero .eco-kicker {
+  margin-bottom: 10px;
+}
 
 .eco-kicker {
   font-size: 11px;
