@@ -196,13 +196,48 @@ function setExpanded(on: boolean): void {
   stage.classList.add('expanded')
   document.documentElement.classList.add('expanded')
   const req = stage.requestFullscreen as undefined | (() => Promise<void>)
-  if (typeof req === 'function') void req.call(stage).catch(() => undefined)
+  if (typeof req === 'function') {
+    // Real full screen, and the screen turned to landscape where the browser
+    // allows it (Android), the way a video app does.
+    void req
+      .call(stage)
+      .then(() => lockLandscape())
+      .catch(() => undefined)
+  } else {
+    // No full screen for a page here (iPhone): the stage turns sideways when
+    // the phone is upright, and turns back the moment the phone is on its side.
+    fitRotation()
+    window.addEventListener('resize', fitRotation)
+    window.addEventListener('orientationchange', fitRotation)
+  }
   window.dispatchEvent(new Event('resize'))
+}
+/** Upright phone: lie the stage on its side. Phone already sideways: no need. */
+function fitRotation(): void {
+  const stage = el('stage')
+  if (!stage.classList.contains('expanded')) return
+  const upright = window.innerHeight > window.innerWidth
+  stage.classList.toggle('rotated', upright)
+}
+function lockLandscape(): void {
+  const o = (screen as Screen & { orientation?: { lock?: (k: string) => Promise<void>; unlock?: () => void } }).orientation
+  if (o && typeof o.lock === 'function') void o.lock('landscape').catch(() => undefined)
+}
+function unlockOrientation(): void {
+  const o = (screen as Screen & { orientation?: { unlock?: () => void } }).orientation
+  try {
+    o?.unlock?.()
+  } catch {
+    /* not held */
+  }
 }
 function leaveExpanded(): void {
   const stage = el('stage')
-  stage.classList.remove('expanded')
+  stage.classList.remove('expanded', 'rotated')
   document.documentElement.classList.remove('expanded')
+  window.removeEventListener('resize', fitRotation)
+  window.removeEventListener('orientationchange', fitRotation)
+  unlockOrientation()
   setSheet(false)
   for (const [node, home] of homes) home.parent.insertBefore(node, home.next)
   homes.clear()

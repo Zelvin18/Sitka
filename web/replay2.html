@@ -207,6 +207,26 @@ html[data-theme=light] .stage.expanded .sheet{background:rgba(19,19,21,.66);colo
   .stage.expanded .sheet.open{transform:none}
   .stage.expanded .dock{right:12px;left:12px;width:auto}
 }
+/* A phone that cannot go full screen or turn its screen (iPhone) turns the
+   stage instead: the whole stage lies sideways to fill the screen in
+   landscape, the way YouTube's web player does. Everything inside turns with
+   it, so the picture fills the long way, Ask Sitka sits in the bottom right
+   corner of the turned view, and the conversation opens down its right side.
+   These rules come after the phone rules above and take precedence. */
+.stage.expanded.rotated{inset:auto;top:0;left:100vw;width:100vh;width:100dvh;height:100vw;min-height:0;transform:rotate(90deg);transform-origin:left top}
+.stage.expanded.rotated video{position:absolute;inset:0;width:100%;height:100%;right:0;bottom:0}
+.stage.expanded.rotated.chat video{right:min(340px,46%);width:auto;bottom:0;height:100%}
+.stage.expanded.rotated .bar{left:18px;right:18px;bottom:16px}
+.stage.expanded.rotated.chat .bar{right:calc(min(340px,46%) + 18px);bottom:16px}
+.stage.expanded.rotated .playbig{left:50%;top:50%}
+.stage.expanded.rotated.chat .playbig{left:calc((100% - min(340px,46%)) / 2);top:50%}
+.stage.expanded.rotated .sheet{top:0;right:0;bottom:0;left:auto;height:auto;width:min(340px,46%);border-top:0;border-left:1px solid rgba(255,255,255,.14);transform:translateX(100%)}
+.stage.expanded.rotated .sheet.open{transform:none}
+.stage.expanded.rotated .sheet-body{padding-bottom:80px}
+.stage.expanded.rotated .dock{left:auto;right:10px;bottom:10px;width:calc(min(340px,46%) - 20px)}
+.stage.expanded.rotated .askfab{right:18px;bottom:68px}
+.stage.expanded.rotated .xfull{top:12px;right:12px}
+.stage.expanded.rotated.chat .xfull{display:none}
 
 /* ask dock and sheet */
 .dock{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:40;width:min(640px,calc(100vw - 32px));display:flex;align-items:center;gap:10px;background:rgba(19,19,21,.82);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--line2);border-radius:30px;padding:8px 8px 8px 16px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
