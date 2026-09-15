@@ -67,14 +67,21 @@ button{font:inherit;color:inherit}
 .kicker .ldot{width:7px;height:7px;border-radius:50%;background:var(--danger)}
 h1.title{font-family:var(--serif);font-weight:500;font-size:clamp(24px,3.2vw,40px);line-height:1.08;letter-spacing:-.015em;margin:0 0 10px;max-width:22ch;font-variation-settings:'opsz' 96}
 .meta{font-size:13.5px;color:var(--t2);display:flex;gap:14px;flex-wrap:wrap}
-.playbig{flex:none;display:flex;align-items:center;gap:14px;background:#fff;color:#0c0c0d;border:0;border-radius:40px;padding:12px 22px 12px 14px;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 12px 40px rgba(0,0,0,.5);transition:transform .15s ease}
-.playbig:hover{transform:translateY(-1px)}
-.playbig .pring{width:40px;height:40px;border-radius:50%;background:#0c0c0d;color:#fff;display:flex;align-items:center;justify-content:center}
-.playbig small{display:block;font-weight:500;font-size:12px;color:#5a5a62}
+/* one quiet glyph in the middle of the picture: there while it is paused, gone while it plays */
+.playbig{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,255,255,.22);background:rgba(12,12,13,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:opacity .25s ease,transform .15s ease;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.playbig:hover{transform:translate(-50%,-50%) scale(1.04)}
+.playbig .pring{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.playbig .pring svg{margin-left:3px}
 .playbig .pring .ring{display:none}
 .playbig.busy .pring svg{display:none}
-.playbig.busy .pring .ring{display:block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:orbit .9s linear infinite}
-.stage.hasvideo:not(.playing) .playbig{box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.playbig.busy .pring .ring{display:block;width:22px;height:22px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:orbit .9s linear infinite}
+.stage.playing:not(.paused) .playbig{opacity:0;pointer-events:none}
+.stage.audio .playbig{top:62%}
+/* what is happening, said once, small, under the title: only while loading or when something is wrong */
+.pstatus{margin-top:10px;font-size:13px;color:rgba(255,255,255,.72);display:flex;flex-direction:column;gap:2px}
+.pstatus small{font-size:12px;color:rgba(255,255,255,.5)}
+.stage.hasvideo:not(.err) .pstatus{display:none}
+.stage.err .pstatus{color:#fff}
 .para span.l.screen{display:inline-block;margin:6px 0;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-size:14px;line-height:1.55}
 .para span.l.screen::before{content:'On screen';display:block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:3px}
 .para span.l b{color:var(--text);font-weight:600}
@@ -91,13 +98,12 @@ html[data-theme=light] .para span.l.now{background:rgba(0,0,0,.08)}
 html[data-theme=light] .moment.now{border-color:var(--ink)}
 html[data-theme=light] .unfold{color:var(--text)}
 html[data-theme=light] .mini .mbar i{background:var(--ink)}
-.playbig.busy .pring svg{animation:orbit 1.1s linear infinite}
-.playbig.dim{background:rgba(255,255,255,.12);color:#fff;box-shadow:none;cursor:default}
-.playbig.dim .pring{background:rgba(255,255,255,.14)}
-.playbig.dim small{color:var(--t2)}
+.playbig.dim{opacity:.35;cursor:default;pointer-events:none}
 /* the recording's own controls, ours */
 .bar{position:absolute;left:40px;right:40px;bottom:22px;display:flex;align-items:center;gap:12px;opacity:0;transition:opacity .25s ease}
-.stage.hasvideo.playing .bar,.stage.hasvideo:hover .bar,.stage.hasvideo.paused .bar{opacity:1}
+.stage.hasvideo.playing .bar{opacity:1}
+/* once it has played, the title sits above the bar when paused, never behind it */
+.stage.playing .hero{bottom:64px}
 .bar button{width:36px;height:36px;border-radius:50%;border:1px solid var(--line2);background:rgba(12,12,13,.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
 .bar .track{flex:1;height:22px;display:flex;align-items:center;cursor:pointer}
 .bar .track i{position:relative;display:block;width:100%;height:3px;border-radius:3px;background:rgba(255,255,255,.22)}
@@ -171,6 +177,37 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 .unfold[hidden]{display:none}
 .empty{color:var(--t3);font-size:14px;padding:18px;border:1px dashed var(--line);border-radius:12px}
 
+/* the picture fills the screen; the conversation opens over its right edge */
+.stage.expanded{position:fixed;inset:0;z-index:60;height:100vh;height:100dvh;min-height:0;width:100vw}
+html.expanded,html.expanded body{overflow:hidden}
+.stage.expanded .hero{display:none}
+.stage.expanded .bar{left:18px;right:18px;bottom:18px;transition:right .25s ease}
+.stage.expanded.chat video{right:min(400px,100vw);width:auto;transition:right .25s ease}
+.stage.expanded.chat .bar{right:calc(min(400px,100vw) + 18px)}
+.stage.expanded.chat .playbig{left:calc((100vw - min(400px,100vw)) / 2)}
+.xfull{position:absolute;top:14px;right:14px;z-index:3;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(12,12,13,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .25s ease}
+.stage.expanded .xfull{display:flex}
+@media(min-width:641px){.stage.expanded.chat .xfull{display:none}}
+.stage.expanded:hover .xfull,.stage.expanded.paused .xfull,.stage.expanded:not(.playing) .xfull{opacity:1}
+.askfab{position:absolute;right:18px;bottom:72px;z-index:3;display:none;align-items:center;gap:9px;height:42px;padding:0 16px 0 12px;border-radius:24px;border:1px solid rgba(255,255,255,.22);background:rgba(19,19,21,.5);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 10px 36px rgba(0,0,0,.4);opacity:.86;transition:opacity .2s ease,transform .15s ease}
+.askfab .mark{width:16px;height:16px}
+.askfab:hover{opacity:1;transform:translateY(-1px)}
+.stage.expanded:not(.chat) .askfab{display:flex}
+.stage.expanded .sheet{width:min(400px,100vw);background:rgba(19,19,21,.66);border-left:1px solid rgba(255,255,255,.14)}
+html[data-theme=light] .stage.expanded .sheet{background:rgba(19,19,21,.66);color:#fff}
+.stage.expanded .sheet-body{padding-bottom:92px}
+.stage.expanded .dock{display:none;left:auto;right:12px;bottom:12px;transform:none;width:min(376px,calc(100vw - 24px))}
+.stage.expanded.chat .dock{display:flex}
+.stage.expanded .dock .open{display:none}
+@media(max-width:640px){
+  .stage.expanded.chat video{right:0;width:100%;bottom:46vh;height:auto}
+  .stage.expanded.chat .bar{right:18px;bottom:calc(46vh + 12px)}
+  .stage.expanded.chat .playbig{left:50%;top:27vh}
+  .stage.expanded .sheet{top:auto;height:46vh;width:100vw;border-left:0;border-top:1px solid rgba(255,255,255,.14);transform:translateY(100%)}
+  .stage.expanded .sheet.open{transform:none}
+  .stage.expanded .dock{right:12px;left:12px;width:auto}
+}
+
 /* ask dock and sheet */
 .dock{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:40;width:min(640px,calc(100vw - 32px));display:flex;align-items:center;gap:10px;background:rgba(19,19,21,.82);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--line2);border-radius:30px;padding:8px 8px 8px 16px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
 .dock .mark{width:18px;height:18px;color:#fff}
@@ -222,6 +259,7 @@ html,body{overflow-x:hidden;max-width:100vw}
   .spine .follow{display:none}
   .stage{height:56vh;min-height:300px}
   .stage .hero{padding:0 18px 22px;flex-direction:column;align-items:flex-start}
+  .stage.playing .hero{bottom:50px}
   .bar{left:18px;right:18px;bottom:14px}
   .hdr{padding:0 14px}
   .lang span{display:none}
@@ -259,7 +297,7 @@ html,body{overflow-x:hidden;max-width:100vw}
 
 <main id="main" class="hidden">
   <section class="stage" id="stage">
-    <video id="video" playsinline preload="metadata" hidden></video>
+    <video id="video" playsinline preload="auto" hidden></video>
     <div class="grain"></div>
     <div class="audio-bars" aria-hidden="true"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.05s"></i><i style="animation-delay:.25s"></i><i style="animation-delay:.4s"></i><i style="animation-delay:.1s"></i></div>
     <div class="shade"></div>
@@ -269,16 +307,19 @@ html,body{overflow-x:hidden;max-width:100vw}
         <h1 class="title" id="title"></h1>
         <div class="meta" id="meta"></div>
       </div>
-      <button class="playbig" id="playbig" type="button">
-        <span class="pring"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg><span class="ring"></span></span>
-        <span><span id="playtext">Play the recording</span><small id="playsub">Loads when you tap</small></span>
-      </button>
+      <div class="pstatus" id="pstatus"><span id="playtext">Fetching the recording</span><small id="playsub"></small></div>
     </div>
+    <button class="playbig" id="playbig" type="button" aria-label="Play">
+      <span class="pring"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg><span class="ring"></span></span>
+    </button>
+    <button class="xfull" id="xfull" type="button" aria-label="Leave full screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button class="askfab" id="askfab" type="button"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitka</button>
     <div class="bar" id="bar">
       <button id="pp" aria-label="Play or pause"><svg id="ppi" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button>
       <button id="back10" aria-label="Back ten seconds" title="Back 10 s"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button>
       <div class="track" id="track"><i><b id="fill"></b><em id="knob"></em></i></div>
       <span class="t" id="tnow">0:00</span><span class="t" style="color:rgba(255,255,255,.6)" id="tlen"></span>
+      <button id="fullbtn" aria-label="Full screen" title="Full screen"><svg id="fulli" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     </div>
   </section>
 

@@ -162,6 +162,47 @@ let stageVisible = true
 function setSheet(open: boolean): void {
   el('sheet').classList.toggle('open', open)
   el('dock').classList.toggle('expanded', open)
+  el('stage').classList.toggle('chat', open)
+}
+
+/**
+ * The picture fills the screen. Where the browser offers real full screen
+ * (laptops, Android) the stage takes it; elsewhere (iPhone) the stage is
+ * pinned over the page, which fills the screen sideways the moment the phone
+ * turns. The conversation and its type bar move inside the stage for the
+ * duration, so they stay reachable over the picture either way.
+ */
+const homes = new Map<HTMLElement, { parent: HTMLElement; next: Node | null }>()
+function setExpanded(on: boolean): void {
+  const stage = el('stage')
+  if (on === stage.classList.contains('expanded')) return
+  if (!on) {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => leaveExpanded())
+      return
+    }
+    leaveExpanded()
+    return
+  }
+  for (const id of ['sheet', 'dock']) {
+    const node = el(id)
+    homes.set(node, { parent: node.parentElement as HTMLElement, next: node.nextSibling })
+    stage.appendChild(node)
+  }
+  stage.classList.add('expanded')
+  document.documentElement.classList.add('expanded')
+  const req = stage.requestFullscreen as undefined | (() => Promise<void>)
+  if (typeof req === 'function') void req.call(stage).catch(() => undefined)
+  window.dispatchEvent(new Event('resize'))
+}
+function leaveExpanded(): void {
+  const stage = el('stage')
+  stage.classList.remove('expanded')
+  document.documentElement.classList.remove('expanded')
+  setSheet(false)
+  for (const [node, home] of homes) home.parent.insertBefore(node, home.next)
+  homes.clear()
+  window.dispatchEvent(new Event('resize'))
 }
 let lineEls: { sec: number; node: HTMLElement }[] = []
 let chapterEls: { sec: number; node: HTMLElement }[] = []
@@ -177,6 +218,31 @@ let translateRun = 0
 // black box. Play then happens inside the tap itself, which browsers allow;
 // a play started after a long download is the one they refuse.
 let mediaPromise: Promise<boolean> | null = null
+/**
+ * Paint the first frame without waiting for a tap. Browsers refuse to start
+ * sound on their own, but a muted start is allowed everywhere, phones
+ * included, so the recording is played for an instant with the sound off,
+ * paused, and wound back. The stage then shows the picture, not a black box.
+ */
+let previewing = false
+let previewed = false
+async function preview(): Promise<void> {
+  const v = video()
+  if (previewed || !mediaReady) return
+  previewed = true
+  previewing = true
+  try {
+    v.muted = true
+    await v.play()
+    v.pause()
+    v.currentTime = 0
+  } catch {
+    // not allowed here: the picture appears on the first tap instead
+  } finally {
+    v.muted = false
+    previewing = false
+  }
+}
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
 let candidateAt = 0
@@ -219,6 +285,7 @@ function loadMedia(): Promise<boolean> {
           el('playtext').textContent = 'Play'
           el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
           console.info('[recap] whole file')
+          void preview()
           return true
         }
         const paths = found.parts
@@ -245,6 +312,7 @@ function loadMedia(): Promise<boolean> {
           el('stage').classList.add('hasvideo')
           el('playtext').textContent = 'Play'
           console.info('[recap] streaming', paths.length, 'parts')
+          void preview()
           return true
         }
         v.removeAttribute('src')
@@ -308,8 +376,10 @@ function loadMedia(): Promise<boolean> {
         { once: true }
       )
       v.load()
+      void preview()
       return true
     } catch {
+      el('stage').classList.add('err')
       el('playtext').textContent = 'The recording could not be loaded'
       el('playsub').textContent = 'The owner may have removed it, or their storage rules need updating.'
       big.classList.add('dim')
@@ -332,6 +402,7 @@ function refused(err: unknown): void {
   const v = video()
   const name = err instanceof Error ? err.name : String(err)
   console.error('[recap] play refused', name, err)
+  el('stage').classList.add('err')
   el('playtext').textContent = 'Tap the recording to play'
   el('playsub').textContent =
     name === 'NotAllowedError'
@@ -376,6 +447,7 @@ function wireMedia(): void {
           : code === 2
             ? 'The connection dropped while loading.'
             : 'The recording could not be opened.'
+    stage.classList.add('err')
     el('playtext').textContent = 'Could not play'
     el('playsub').textContent = why + (mediaDiag ? ` · ${mediaDiag}` : '')
     el('playbig').classList.add('dim')
@@ -406,11 +478,13 @@ function wireMedia(): void {
   }
   v.ontimeupdate = onTime
   v.onplay = () => {
+    if (previewing) return
     stage.classList.add('playing')
     stage.classList.remove('paused')
     setPlayIcons(true)
   }
   v.onpause = () => {
+    if (previewing) return
     stage.classList.add('paused')
     setPlayIcons(false)
   }
@@ -419,7 +493,20 @@ function wireMedia(): void {
     setPlayIcons(false)
   }
   el('playbig').onclick = () => void play()
+  stage.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement
+    if (t.closest('.bar, .playbig, .xfull, .askfab, .sheet, .dock, a, input, select')) return
+    if (!mediaReady) return
+    if (v.paused) void play()
+    else v.pause()
+  })
   el('pp').onclick = () => (v.paused ? void play() : v.pause())
+  el('fullbtn').onclick = () => setExpanded(!stage.classList.contains('expanded'))
+  el('xfull').onclick = () => setExpanded(false)
+  el('askfab').onclick = () => setSheet(true)
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && stage.classList.contains('expanded')) leaveExpanded()
+  })
   el('mp').onclick = () => (v.paused ? void play() : v.pause())
   el('back10').onclick = () => {
     if (mediaReady) v.currentTime = Math.max(0, v.currentTime - 10)
@@ -448,7 +535,10 @@ function wireMedia(): void {
     else if (e.key === '/') {
       e.preventDefault()
       ;(el('ask') as HTMLInputElement).focus()
-    } else if (e.key === 'Escape') setSheet(false)
+    } else if (e.key === 'Escape') {
+      if (el('stage').classList.contains('expanded') && !el('sheet').classList.contains('open')) setExpanded(false)
+      else setSheet(false)
+    }
   })
 }
 
