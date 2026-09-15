@@ -11,6 +11,9 @@ interface Props {
   sessions: SessionMeta[]
   /** false until the first list has arrived, so an empty library is never shown by mistake */
   loaded?: boolean
+  /** 'slow' or 'failed' when the list could not be fetched; '' when it could */
+  loadError?: string
+  onRetry?: () => void
   settings: Settings | null
   onNewSession: () => void
   onOpenSession: (id: string) => void
@@ -21,6 +24,8 @@ interface Props {
 export default function Home({
   sessions,
   loaded = true,
+  loadError = '',
+  onRetry,
   settings,
   onNewSession,
   onOpenSession,
@@ -151,6 +156,20 @@ export default function Home({
 
         {!loaded && sessions.length === 0 ? (
           <Loading words={LOADING_WORDS.library} />
+        ) : loadError && sessions.length === 0 ? (
+          <div className="empty">
+            <div className="empty-title">
+              {loadError === 'slow' ? 'Your library is taking a while to arrive' : 'Your library could not be loaded'}
+            </div>
+            <div style={{ maxWidth: 420, margin: '0 auto 20px' }}>
+              {loadError === 'slow'
+                ? 'The connection is slow. Your sessions are safe; try again in a moment.'
+                : 'Check your connection, then try again. Nothing has been lost.'}
+            </div>
+            <button className="btn btn-primary" onClick={onRetry}>
+              Try again
+            </button>
+          </div>
         ) : sessions.length === 0 ? (
           <div className="empty empty-photo">
             {/* A blank page on a lecture seat: the library before its first session.

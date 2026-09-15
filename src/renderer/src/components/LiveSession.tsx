@@ -451,8 +451,16 @@ export default function LiveSession({
           }
         }
       }
-    } catch {
-      /* user cancelled the browser picker */
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      // a cancelled picker is not an error; everything else is said plainly
+      if (name === 'NotAllowedError' && /denied by system|permission/i.test(String(err))) {
+        setError('Screen sharing is blocked for this browser. On a Mac, allow Screen Recording for your browser in System Settings, then try again.')
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        setError('The screen could not be captured. Close other apps that record the screen, then try again.')
+      } else if (name === 'NotFoundError' || name === 'NotSupportedError') {
+        setError('This browser cannot share a screen. Try Chrome or Edge on a laptop, or use the camera instead.')
+      }
     }
   }, [systemAudioOn])
   // The phone's back camera, pointed at the board or the projector.
@@ -470,8 +478,15 @@ export default function LiveSession({
           setWebStream(null)
         }
       })
-    } catch {
-      setError('Camera access was not allowed. Check the camera permission for this site in your browser settings.')
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      setError(
+        name === 'NotFoundError'
+          ? 'No camera was found on this device.'
+          : name === 'NotReadableError'
+            ? 'The camera is in use by another app. Close it, then try again.'
+            : 'Camera access was not allowed. Check the camera permission for this site in your browser settings.'
+      )
     }
   }, [])
   // A preview belongs to one mode: switching modes lets it go.
@@ -1048,10 +1063,18 @@ export default function LiveSession({
   const enqueueAppend = useCallback((blob: Blob): void => {
     const id = sessionIdRef.current
     if (!id) return
-    appendQueueRef.current = appendQueueRef.current.then(async () => {
-      const buf = await blob.arrayBuffer()
-      await window.sitka.appendChunk(id, buf)
-    })
+    // Each chunk stands alone in the queue: one that fails to store is
+    // written down and skipped, and every chunk after it still lands. A
+    // rejection left in the chain would silently drop the rest of the session.
+    appendQueueRef.current = appendQueueRef.current
+      .then(async () => {
+        const buf = await blob.arrayBuffer()
+        await window.sitka.appendChunk(id, buf)
+      })
+      .catch((err) => {
+        const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+        report?.(location.pathname, 'chunk store failed: ' + (err instanceof Error ? err.message : String(err)))
+      })
   }, [])
 
   const transcribeBlob = useCallback(async (blob: Blob, offsetSec: number): Promise<void> => {
@@ -1254,6 +1277,11 @@ export default function LiveSession({
           streamsRef.current.push(micStream)
         } catch {
           micStream = null
+          // sharing a screen still works without it, but the person asked for
+          // their voice, so they are told it is not in the recording
+          if (captureMode === 'screen') {
+            setSttError('Your microphone could not be opened, so only the shared sound is being captured. Check the microphone permission for this site.')
+          }
         }
       }
       if (captureMode !== 'screen' && !micStream) {
@@ -1400,8 +1428,18 @@ export default function LiveSession({
     const recorder = recorderRef.current
     if (recorder && recorder.state !== 'inactive') {
       await new Promise<void>((resolve) => {
-        recorder.onstop = () => resolve()
-        recorder.stop()
+        // a recorder that never says it stopped is not waited on forever
+        const done = window.setTimeout(resolve, 8000)
+        recorder.onstop = () => {
+          window.clearTimeout(done)
+          resolve()
+        }
+        try {
+          recorder.stop()
+        } catch {
+          window.clearTimeout(done)
+          resolve()
+        }
       })
     }
     await appendQueueRef.current
@@ -1416,7 +1454,14 @@ export default function LiveSession({
     setNoSound('')
 
     const durationMs = Date.now() - sessionStartRef.current
-    await window.sitka.finalizeSession(id, durationMs)
+    try {
+      await window.sitka.finalizeSession(id, durationMs)
+    } catch (err) {
+      // the recording is on this device and the cloud has its parts; the
+      // session opens anyway and finishes its bookkeeping on the next visit
+      const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+      report?.(location.pathname, 'finalize failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
     onFinished(id)
   }, [onFinished])
 

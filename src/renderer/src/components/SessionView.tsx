@@ -153,10 +153,22 @@ export default function SessionView({
   const tabInitializedRef = useRef(false)
   const autoAnalyzedRef = useRef<string | null>(null)
 
+  const [gone, setGone] = useState<'' | 'missing' | 'failed'>('')
   useEffect(() => {
     let cancelled = false
-    void window.sitka.getSession(sessionId).then((d) => {
+    setGone('')
+    // A session that no longer exists (deleted in another tab, a stale link)
+    // or one that cannot be fetched must not sit on "Opening" for good.
+    const stall = window.setTimeout(() => {
+      if (!cancelled) setGone((g) => g || 'failed')
+    }, 25000)
+    void window.sitka.getSession(sessionId).catch(() => null).then((d) => {
       if (cancelled) return
+      window.clearTimeout(stall)
+      if (!d) {
+        setGone('missing')
+        return
+      }
       setData(d)
       // The title and summary are written automatically. If that has not
       // happened yet (the tab was closed, the AI was busy), it happens now.
@@ -363,6 +375,25 @@ export default function SessionView({
   }
 
   if (!data) {
+    if (gone) {
+      return (
+        <div className="content">
+          <div className="empty">
+            <div className="empty-title">
+              {gone === 'missing' ? 'This session is no longer here' : 'This session could not be opened'}
+            </div>
+            <div style={{ maxWidth: 420, margin: '0 auto 20px' }}>
+              {gone === 'missing'
+                ? 'It may have been deleted, or the link is out of date.'
+                : 'Check your connection, then try again.'}
+            </div>
+            <button className="btn btn-primary" onClick={() => window.dispatchEvent(new Event('sitka:home'))}>
+              Back to the library
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="content">
         <Loading words={LOADING_WORDS.session} />
@@ -593,10 +624,38 @@ export default function SessionView({
                 onLoadedData={() => setVideoLive(true)}
                 onPlaying={() => setVideoLive(true)}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onError={() => {
+                  // The link did not open: expired, gone, or refused. Never a
+                  // spinner for good: fall back to the parts, then to the file.
+                  if (videoSrc === 'progressive' || videoSrc?.startsWith('blob:')) {
+                    setVideoError(true)
+                    return
+                  }
+                  void (async () => {
+                    const parts = await window.sitka.listVideoParts(sessionId).catch(() => [])
+                    if (parts.length > 0 && typeof MediaSource !== 'undefined') {
+                      streamPartsRef.current = parts
+                      setVideoSrc('progressive')
+                      return
+                    }
+                    const bytes = await window.sitka.readVideo(sessionId).catch(() => null)
+                    if (!bytes || bytes.byteLength === 0) {
+                      setVideoError(true)
+                      return
+                    }
+                    setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' })))
+                  })()
+                }}
               />
               {!videoLive && !meta.audioOnly && (
                 <div className="video-waiting">
                   <Loading compact onDark words={LOADING_WORDS.recording} delay={0} />
+                  {meta.recordingPending && (
+                    <div className="video-waiting-note">
+                      The last parts are still uploading from this device. Keep this tab open
+                      until the recording appears.
+                    </div>
+                  )}
                 </div>
               )}
               {meta.audioOnly && (

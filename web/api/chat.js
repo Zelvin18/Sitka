@@ -63,6 +63,7 @@ async function listGroqModels(key) {
   const hit = listCache.get(tail)
   if (hit && Date.now() - hit.at < 600000) return hit.ids
   const r = await fetch('https://api.groq.com/openai/v1/models', {
+    signal: AbortSignal.timeout(12000),
     headers: { Authorization: `Bearer ${key}` }
   })
   const j = await r.json().catch(() => ({}))
@@ -178,6 +179,7 @@ async function groqOnce(key, modelId, system, messages, maxTokens, keepImages) {
   let r
   try {
     r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      signal: AbortSignal.timeout(45000),
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -294,7 +296,7 @@ let geminiListCache = { ids: null, at: 0 }
 async function geminiCandidates(key) {
   if (geminiListCache.ids && Date.now() - geminiListCache.at < 600000) return geminiListCache.ids
   try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`)
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`, { signal: AbortSignal.timeout(12000) })
     const j = await r.json().catch(() => ({}))
     if (!r.ok) return KNOWN_GEMINI
     const ids = (j.models || [])
@@ -342,6 +344,7 @@ async function geminiChain(keys, system, messages, maxTokens) {
         r = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           {
+            signal: AbortSignal.timeout(45000),
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -389,6 +392,7 @@ async function geminiChain(keys, system, messages, maxTokens) {
 
 async function anthropicOnce(key, system, messages, maxTokens) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
+    signal: AbortSignal.timeout(50000),
     method: 'POST',
     headers: {
       'x-api-key': key,
@@ -419,7 +423,10 @@ export default async function handler(req, res) {
     return
   }
   try {
-    const { keys = {}, system = '', messages = [], maxTokens = 1600, requireVision = false, fast = false } = req.body || {}
+    const { keys = {}, system = '', messages = [], requireVision = false, fast = false } = req.body || {}
+    // what a caller may ask for is bounded, so one request cannot run the
+    // function to its limit
+    const maxTokens = Math.min(4000, Math.max(64, Number((req.body || {}).maxTokens) || 1600))
     const usingOwnKeys = Boolean(keys.anthropicApiKey || keys.groqApiKey)
     if (!usingOwnKeys) {
       const ip = String(req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim()
@@ -463,7 +470,12 @@ export default async function handler(req, res) {
     // Only treat the Anthropic field as real when it looks like an Anthropic
     // key — otherwise stray text there would block the working Groq path.
     if (anthropicKey.startsWith('sk-')) {
-      const out = await anthropicOnce(anthropicKey, system, messages, maxTokens)
+      // a network fault on the way to Anthropic is one more reason to move
+      // down the chain, never a reason to stop here
+      const out = await anthropicOnce(anthropicKey, system, messages, maxTokens).catch((err) => ({
+        text: '',
+        error: String((err && err.message) || err)
+      }))
       if (out.text) {
         res.status(200).json({ text: out.text, vision: withImages, model: 'claude' })
         return

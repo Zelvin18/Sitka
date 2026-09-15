@@ -102,10 +102,23 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
         },
         body: JSON.stringify({ op, session: session?.() ?? undefined, ...body })
       })
+      // 501 means R2 is not set up and 4xx means not allowed: both are
+      // answers. A 5xx is the server failing, and the caller may try again.
+      if (r.status >= 500) throw new Error(`storage ${r.status}`)
       if (!r.ok) return null
       return (await r.json()) as T
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && /^storage \d+$/.test(err.message)) throw err
       return null
+    }
+  }
+  /** One retry after a short pause, for the server's bad moment. */
+  async function postRetry<T>(op: string, body: Record<string, unknown>): Promise<T | null> {
+    try {
+      return await post<T>(op, body)
+    } catch {
+      await sleep(900)
+      return post<T>(op, body)
     }
   }
 
@@ -129,7 +142,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       // asked for in one request, however many parts there are
       for (let i = 0; i < missing.length; i += 200) {
         const slice = missing.slice(i, i + 200)
-        const res = await post<{ links: { key: string; url: string }[]; expiresIn: number }>('get', {
+        const res = await postRetry<{ links: { key: string; url: string }[]; expiresIn: number }>('get', {
           keys: slice
         })
         const until = now + Math.max(60, (res?.expiresIn ?? 3600) - 300) * 1000
@@ -171,7 +184,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
   async function listIn(prefix: string, where: Where): Promise<StoreObject[]> {
     if (where === 'r2') {
       if (!(await ready())) return []
-      const res = await post<{ objects: StoreObject[] }>('list', { prefix })
+      const res = await postRetry<{ objects: StoreObject[] }>('list', { prefix })
       return res?.objects ?? []
     }
     const { data } = await sb.storage.from('recordings').list(prefix, {
@@ -199,7 +212,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     // Asked straight out, without first checking whether R2 is set up: this is
     // the one request between opening a recap and the first frame, and a
     // deployment without R2 simply answers that it has none.
-    const res = await post<{
+    const res = await postRetry<{
       where: Where | 'none'
       whole: string | null
       wholeSize?: number

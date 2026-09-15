@@ -9,6 +9,7 @@
 //
 //   node scripts/move-recordings.mjs            move everything
 //   node scripts/move-recordings.mjs --dry-run  only say what would move
+//   node scripts/move-recordings.mjs --check    show what each store holds, per session
 //
 // It reads its keys from a file named .env.migrate in the project root, which
 // git ignores. Put these six lines in it, with your own values:
@@ -49,7 +50,7 @@ if (!SUPA || !KEY) {
   console.error('SUPABASE_URL and SUPABASE_SERVICE_KEY are needed in .env.migrate')
   process.exit(1)
 }
-const { r2Config, presign, r2Fetch } = await import(pathToFileURL(join(root, 'web/api/_r2.js')).href)
+const { r2Config, presign, r2Fetch, r2List } = await import(pathToFileURL(join(root, 'web/api/_r2.js')).href)
 const cfg = r2Config()
 if (!cfg) {
   console.error('R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are needed in .env.migrate')
@@ -125,6 +126,39 @@ const sessionOf = (key) => {
 
 // ---------- go ----------
 const fmt = (n) => (n > 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB')
+
+if (process.argv.includes('--check')) {
+  // What each store holds, session by session, against the sessions table.
+  const inR2 = await r2List(cfg, '')
+  const inSb = await listFolder('')
+  const sess = await fetch(`${SUPA}/rest/v1/sessions?select=id,meta&order=created_at.desc`, { headers: auth })
+  const rows = sess.ok ? await sess.json() : []
+  const tally = (objs) => {
+    const m = new Map()
+    for (const o of objs) {
+      const id = sessionOf(o.key)
+      if (!id) continue
+      const t = m.get(id) || { files: 0, bytes: 0, whole: false }
+      t.files++
+      t.bytes += o.size
+      if (/\/[^/]+\.[a-z0-9]+$/i.test(o.key) && o.key.split('/').length === 2) t.whole = true
+      m.set(id, t)
+    }
+    return m
+  }
+  const r2 = tally(inR2), sb = tally(inSb)
+  console.log(`${rows.length} sessions in the database · ${r2.size} with files in Cloudflare · ${sb.size} with files in Supabase
+`)
+  for (const row of rows) {
+    const m = row.meta || {}
+    const a = r2.get(row.id), b = sb.get(row.id)
+    const where = a && b ? 'BOTH' : a ? 'Cloudflare' : b ? 'Supabase' : m.readOnly ? 'desktop only' : 'no recording'
+    const size = a ? fmt(a.bytes) + (a.whole ? ', whole file' : ', parts only') : b ? fmt(b.bytes) : ''
+    console.log(`  ${where.padEnd(13)} ${(m.title || '(untitled)').slice(0, 44).padEnd(45)} ${size}`)
+  }
+  process.exit(0)
+}
+
 console.log('Looking through Supabase…')
 const all = await listFolder('')
 const total = all.reduce((n, o) => n + o.size, 0)

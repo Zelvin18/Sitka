@@ -61,18 +61,99 @@ function lockFrame(): void {
   })
 }
 
+/**
+ * A page that cannot open must say so, never sit on "Opening your workspace"
+ * for good. Each step is named, so a slow one is reported by name; a step
+ * that fails shows what happened and a way to try again; and the commonest
+ * failure of all, a page from before a deploy asking for code that no longer
+ * exists, reloads itself once to fetch the current page.
+ */
+const RELOADED = 'sitka.reloaded-once'
+const looksStale = (msg: string): boolean =>
+  /dynamically imported module|Importing a module script failed|error loading dynamically|Loading chunk|Unexpected token '<'/i.test(msg)
+
+function report(message: string, stack?: string): void {
+  // straight to the errors table: the backend may be the thing that failed
+  void sb
+    .from('client_errors')
+    .insert({ page: location.pathname, message: message.slice(0, 500), stack: (stack ?? '').slice(0, 2000), ua: navigator.userAgent.slice(0, 200) })
+    .then(() => undefined, () => undefined)
+}
+
+function showOpenProblem(stage: string, detail: string): void {
+  const box = el('gateload')
+  box.innerHTML = ''
+  const p = document.createElement('div')
+  p.className = 'gwait'
+  p.style.flexDirection = 'column'
+  p.style.gap = '14px'
+  const t = document.createElement('span')
+  t.textContent = 'Sitka could not open.'
+  const d = document.createElement('span')
+  d.style.cssText = 'font-weight:500;font-size:13px;color:var(--t3);max-width:360px;text-align:center'
+  d.textContent = `It stopped while ${stage}. ${detail}`.trim()
+  const b = document.createElement('button')
+  b.className = 'gbtn'
+  b.style.marginTop = '4px'
+  b.innerHTML = '<span>Try again</span>'
+  b.onclick = () => location.reload()
+  p.append(t, d, b)
+  box.appendChild(p)
+}
+
 async function launch(): Promise<void> {
   el('gatecard').classList.add('hidden')
   el('gateload').classList.remove('hidden')
   lockFrame()
-  const { installWebApi } = await webApiModule
-  await installWebApi(sb)
-  resolveReady()
-  await rendererModule
-  // The sign-in form leaves the page entirely. Left in the document, hidden,
-  // it still counts as a login form: an iPhone would offer to fill the
-  // password into it at odd moments, keyboard and all.
-  el('gate').remove()
+  let stage = 'fetching the app'
+  const began = Date.now()
+  // Slow, not broken: say so at twenty seconds and offer a way out, and write
+  // down which step it was, so a slow step shows up in the operations view.
+  const slow = window.setTimeout(() => {
+    const w = el('gateload').querySelector('span')
+    if (w) w.textContent = 'Still opening. Your connection looks slow.'
+    const b = document.createElement('button')
+    b.className = 'gforgot'
+    b.textContent = 'Reload'
+    b.onclick = () => location.reload()
+    el('gateload').appendChild(b)
+    report(`slow open: 20s and still ${stage}`)
+  }, 20000)
+  try {
+    const { installWebApi } = await webApiModule
+    stage = 'connecting to your account'
+    await installWebApi(sb)
+    resolveReady()
+    stage = 'loading the workspace'
+    await rendererModule
+    window.clearTimeout(slow)
+    sessionStorage.removeItem(RELOADED)
+    const took = Date.now() - began
+    if (took > 8000) report(`open took ${Math.round(took / 1000)}s`)
+    // The sign-in form leaves the page entirely. Left in the document, hidden,
+    // it still counts as a login form: an iPhone would offer to fill the
+    // password into it at odd moments, keyboard and all.
+    el('gate').remove()
+  } catch (err) {
+    window.clearTimeout(slow)
+    const msg = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : undefined
+    report(`open failed while ${stage}: ${msg}`, stack)
+    if (looksStale(msg) && !sessionStorage.getItem(RELOADED)) {
+      // the page is older than the site: fetch the current one, once
+      sessionStorage.setItem(RELOADED, '1')
+      location.reload()
+      return
+    }
+    showOpenProblem(
+      stage,
+      looksStale(msg)
+        ? 'The site was updated while this page was open.'
+        : /failed to fetch|load failed|network/i.test(msg)
+          ? 'Check your connection.'
+          : msg.slice(0, 140)
+    )
+  }
 }
 
 async function boot(): Promise<void> {
@@ -99,34 +180,87 @@ async function boot(): Promise<void> {
     })
     err.textContent = error ? error.message : 'Reset link sent — check your email.'
   }
-  ;(el('gsignin') as HTMLButtonElement).onclick = async () => {
-    err.textContent = ''
-    const { error } = await sb.auth.signInWithPassword({
-      email: (el('gemail') as HTMLInputElement).value.trim(),
-      password: (el('gpassword') as HTMLInputElement).value
-    })
-    if (error) {
-      err.textContent = error.message
-      return
+  // One request at a time: the button says it is working and ignores a
+  // second press; a request that never answers is given up on after a while.
+  let busy = false
+  const withBusy = async (btn: HTMLButtonElement, label: string, run: () => Promise<boolean>): Promise<void> => {
+    if (busy) return
+    busy = true
+    const was = btn.innerHTML
+    btn.disabled = true
+    btn.innerHTML = `<span>${label}</span>`
+    let proceed = false
+    try {
+      proceed = await Promise.race([
+        run(),
+        new Promise<boolean>((_, reject) =>
+          setTimeout(() => reject(new Error('The sign-in service did not answer. Check your connection and try again.')), 25000)
+        )
+      ])
+    } catch (e) {
+      err.textContent = e instanceof Error ? e.message : String(e)
+    } finally {
+      busy = false
+      btn.disabled = false
+      btn.innerHTML = was
     }
-    await launch()
+    // the workspace opening has its own patience and its own messages
+    if (proceed) await launch()
   }
-  ;(el('gsignup') as HTMLButtonElement).onclick = async () => {
-    err.textContent = ''
-    const { data: d, error } = await sb.auth.signUp({
-      email: (el('gemail') as HTMLInputElement).value.trim(),
-      password: (el('gpassword') as HTMLInputElement).value
+  const creds = (): { email: string; password: string } => ({
+    email: (el('gemail') as HTMLInputElement).value.trim(),
+    password: (el('gpassword') as HTMLInputElement).value
+  })
+  const plain = (m: string): string =>
+    /invalid login credentials/i.test(m)
+      ? 'That email and password do not match.'
+      : /email not confirmed/i.test(m)
+        ? 'Confirm your email first: the link is in your inbox.'
+        : /rate limit|too many/i.test(m)
+          ? 'Too many tries. Wait a minute, then try again.'
+          : /password.*(6|characters)/i.test(m)
+            ? 'The password needs at least 6 characters.'
+            : /already registered|already exists/i.test(m)
+              ? 'There is already an account with that email. Sign in instead.'
+              : m
+  ;(el('gsignin') as HTMLButtonElement).onclick = () =>
+    withBusy(el('gsignin') as HTMLButtonElement, 'Signing in…', async () => {
+      err.textContent = ''
+      const c = creds()
+      if (!c.email || !c.password) {
+        err.textContent = 'Type your email and password first.'
+        return false
+      }
+      const { error } = await sb.auth.signInWithPassword(c)
+      if (error) {
+        err.textContent = plain(error.message)
+        return false
+      }
+      return true
     })
-    if (error) {
-      err.textContent = error.message
-      return
-    }
-    if (!d.session) {
-      err.textContent = 'Account created — check your email to confirm, then sign in.'
-      return
-    }
-    await launch()
-  }
+  ;(el('gsignup') as HTMLButtonElement).onclick = () =>
+    withBusy(el('gsignup') as HTMLButtonElement, 'Creating your account…', async () => {
+      err.textContent = ''
+      const c = creds()
+      if (!c.email || !c.password) {
+        err.textContent = 'Type your email and a password first.'
+        return false
+      }
+      if (c.password.length < 6) {
+        err.textContent = 'The password needs at least 6 characters.'
+        return false
+      }
+      const { data: d, error } = await sb.auth.signUp(c)
+      if (error) {
+        err.textContent = plain(error.message)
+        return false
+      }
+      if (!d.session) {
+        err.textContent = 'Account created — check your email to confirm, then sign in.'
+        return false
+      }
+      return true
+    })
   ;(el('gpassword') as HTMLInputElement).addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return
     // Enter submits whichever action the page is showing: sign in or create.

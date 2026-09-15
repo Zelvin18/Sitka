@@ -125,7 +125,9 @@ export async function r2List(cfg, prefix) {
     const query = { 'list-type': '2', prefix, 'max-keys': '1000' }
     if (token) query['continuation-token'] = token
     const r = await r2Fetch(cfg, 'GET', '', query)
-    if (!r.ok) break
+    // a failed listing is an error, never an empty folder: saying "nothing
+    // here" about a recording that exists is worse than saying "try again"
+    if (!r.ok) throw new Error(`R2 list failed (HTTP ${r.status})`)
     const xml = await r.text()
     const re = /<Contents>([\s\S]*?)<\/Contents>/g
     let m

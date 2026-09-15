@@ -192,15 +192,25 @@ async function enterDash(): Promise<void> {
   if (!user) return
   el('userbox').classList.remove('hidden')
   el('usermail').textContent = user.email || ''
-  const { data } = await sb
-    .from('events')
-    .select('*')
-    .eq('owner', user.id)
-    .order('starts_at', { ascending: false, nullsFirst: false })
-  events = (data as EventRow[]) || []
+  // the page is shown whatever the answer, so a slow or failed list is a
+  // message on the dashboard rather than a blank screen
   const list = el('evlist')
   list.innerHTML = ''
-  if (events.length === 0) {
+  let error = ''
+  try {
+    const res = await Promise.race([
+      sb.from('events').select('*').eq('owner', user.id).order('starts_at', { ascending: false, nullsFirst: false }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000))
+    ])
+    if (res.error) error = res.error.message
+    events = (res.data as EventRow[]) || []
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err)
+    events = []
+  }
+  if (error) {
+    list.innerHTML = '<div class="sub">Your events could not be loaded. Check your connection and reload.</div>'
+  } else if (events.length === 0) {
     list.innerHTML = '<div class="sub">No events yet — create your first one below.</div>'
   }
   for (const ev of events) {

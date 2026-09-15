@@ -189,17 +189,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // The setup probe and the platform-key check run side by side, and the
   // probe never holds the workspace back: a missing table shows a banner.
   let platform = { chat: false, stt: false }
-  void sb
-    .from('sessions')
-    .select('id', { count: 'exact', head: true })
-    .then((probe) => {
-      if (probe.error) storageProblem(probe.error.message)
-    })
+  // Asked twice before anything is said: the first request of a page load is
+  // the one most likely to be cut off by a connection still waking up, and a
+  // blank error message is that, not a missing table.
+  const probeOnce = async (): Promise<string | null> => {
+    try {
+      const probe = await sb.from('sessions').select('id', { count: 'exact', head: true })
+      return probe.error ? probe.error.message || 'no reply' : null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+  void (async () => {
+    const first = await probeOnce()
+    if (!first) return
+    await new Promise((r) => setTimeout(r, 2500))
+    const second = await probeOnce()
+    if (second) storageProblem(second)
+  })()
   try {
-    const r = await fetch('/api/health')
+    // a few seconds at most: the workspace waits on this, nothing else should
+    const r = await fetch('/api/health', { signal: AbortSignal.timeout(6000) })
     if (r.ok) platform = { ...platform, ...(await r.json()) }
   } catch {
-    /* offline — user keys still work */
+    /* offline or slow — user keys still work, and the platform keys are checked again on first use */
   }
 
   // ---------- settings (AI keys live only in this browser) ----------
@@ -662,6 +675,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   let recordingState: { id: string; startedAt: number } | null = null
   /** parts whose data lives only in memory because IndexedDB was unavailable */
   const memParts = new Map<string, ArrayBuffer[]>()
+  /** sessions whose upload has failed at least once since it last succeeded */
+  const uploadTrouble = new Set<string>()
+  // Closing the tab while a recording is still going up would strand the last
+  // parts on this device. The browser asks first, the way it does mid-session.
+  window.addEventListener('beforeunload', (e) => {
+    if (recordingState || memParts.size > 0) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+  })
 
   function videoPath(id: string): string {
     return `${user.id}/${id}.webm`
@@ -694,8 +717,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const { error } = await store.upload(partPath(p.sessionId, p.partNo), blob, kind)
     if (error) {
       console.error('Sitka: part upload failed', p.sessionId, p.partNo, error)
+      // said once per session, so a blocked network shows up in the operations view
+      if (!uploadTrouble.has(p.sessionId)) {
+        uploadTrouble.add(p.sessionId)
+        track('upload_error', { reason: error.slice(0, 120), part: p.partNo })
+        reportError(location.pathname, 'Recording upload failed: ' + error)
+      }
       return false
     }
+    uploadTrouble.delete(p.sessionId)
     const b = recBuf.get(p.sessionId)
     if (p.partNo === 0 && (!b || !b.thumbDone)) {
       if (b) b.thumbDone = true
@@ -826,7 +856,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (!d.meta.durationMs || d.meta.durationMs <= 0) {
           d.meta.durationMs = lastAt > d.meta.createdAt ? lastAt - d.meta.createdAt : 0
         }
-        d.meta.recordingPending = true
+        // pending only when this device still holds parts the cloud lacks;
+        // a session whose every part had landed is simply complete
+        if ((await localParts(r.id)).length > 0) d.meta.recordingPending = true
+        else delete d.meta.recordingPending
         await patchSession(r.id, { meta: d.meta })
         emitSession(d.meta)
         if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(r.id)
@@ -1530,8 +1563,40 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     })
   }
 
+  /**
+   * A write the room depends on, tried a few times before giving up. Used for
+   * the two words that change what every attendee's phone shows: live, ended.
+   */
+  async function setEventStatus(eventId: string, status: 'live' | 'ended', extra: Record<string, unknown> = {}): Promise<string | null> {
+    let last = ''
+    for (const delay of [0, 1200, 3000]) {
+      if (delay) await wait(delay)
+      const { error } = await sb
+        .from('events')
+        .update({ status, ...extra, updated_at: new Date().toISOString() })
+        .eq('id', eventId)
+      if (!error) return null
+      last = error.message
+      if (!isNetworkError(last)) break
+    }
+    reportError(location.pathname, `event ${status} write failed: ${last}`)
+    return last
+  }
+
   async function endConf(sessionId: string): Promise<void> {
-    if (!conf || conf.sessionId !== sessionId) return
+    if (!conf || conf.sessionId !== sessionId) {
+      // The room was started in an earlier page of this tab (a reload, a
+      // crash) so nothing here remembers it: the event row still does, and
+      // the attendees are still on it. End it from the row.
+      const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+      const eid = d?.meta.eventId
+      if (!eid || !d?.meta.hosted) return
+      const err = await setEventStatus(eid, 'ended')
+      if (err) return
+      d.meta.replayUrl = replayUrlFor(eid)
+      await openReplay(d.meta).catch(() => undefined)
+      return
+    }
     const c = conf
     clearInterval(c.workTimer)
     clearInterval(c.statsTimer)
@@ -1546,10 +1611,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const d = cache.get(sessionId)
     if (d) d.report = report
     await patchSession(sessionId, { report })
-    await sb
-      .from('events')
-      .update({ status: 'ended', updated_at: new Date().toISOString() })
-      .eq('id', c.eventId)
+    await setEventStatus(c.eventId, 'ended')
     // The room gets its recap link straight away.
     if (d) {
       d.meta.replayUrl = replayUrlFor(c.eventId)
@@ -2216,7 +2278,19 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
     retryUploads: async (sessionId: string) => {
       const left = await retryPendingUploads(sessionId)
-      return { pending: left < 0 ? (await localParts(sessionId)).length : left }
+      const pending = left < 0 ? (await localParts(sessionId)).length : left
+      // nothing left on this device: the flag comes off the row too, so the
+      // notice does not return on the next open
+      if (pending === 0) {
+        const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+        if (d?.meta.recordingPending) {
+          delete d.meta.recordingPending
+          await patchSession(sessionId, { meta: d.meta })
+          emitSession(d.meta)
+          if (!d.meta.whole) void consolidateRecording(sessionId)
+        }
+      }
+      return { pending }
     },
 
     // The whole recording as one file, played natively over range requests:
@@ -2970,10 +3044,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           d.meta.eventId = eventId
           await patchSession(sessionId, { meta: d.meta })
         } else {
-          await sb
-            .from('events')
-            .update({ status: 'live', session_id: sessionId, updated_at: new Date().toISOString() })
-            .eq('id', eventId)
+          const err = await setEventStatus(eventId, 'live', { session_id: sessionId })
+          if (err) return { error: 'The event could not be set live: ' + err }
         }
         if (conf) {
           clearInterval(conf.workTimer)
@@ -3004,10 +3076,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (conf) {
         clearInterval(conf.workTimer)
         clearInterval(conf.statsTimer)
-        await sb
-          .from('events')
-          .update({ status: 'ended', updated_at: new Date().toISOString() })
-          .eq('id', conf.eventId)
+        await setEventStatus(conf.eventId, 'ended')
         conf = null
       }
     },
@@ -3729,7 +3798,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   ;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
 
   // Close out anything a crash left open, and finish uploads the cloud is missing.
+  // Once soon after opening, and once more two minutes on, for a session whose
+  // last chunk was too fresh to be sure about the first time.
   setTimeout(() => void recoverInterrupted(), 2500)
+  setTimeout(() => void recoverInterrupted(), 120000)
 
   // ---------- recordings made before the move ----------
   // Sessions recorded while recordings lived in Supabase are carried over to
@@ -3755,8 +3827,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (m.id === recordingState?.id || liveInAnotherTab(m.id)) continue
       try {
         const moved = await migrateOne(m.id)
-        if (moved) track('recording_moved', { session: m.id })
-        else remaining++
+        if (moved === 'moved') track('recording_moved', { session: m.id })
+        else if (moved === 'pending') remaining++
       } catch (err) {
         remaining++
         console.warn('Sitka: could not move a recording yet', m.id, err)
@@ -3765,8 +3837,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (remaining === 0) localStorage.setItem(MIGRATE_AT, String(Date.now()))
   }
 
-  /** True once nothing of this session is left in Supabase. */
-  async function migrateOne(id: string): Promise<boolean> {
+  /** 'moved' when files were carried over, 'none' when there was nothing to carry, 'pending' when something is left. */
+  async function migrateOne(id: string): Promise<'moved' | 'none' | 'pending'> {
     const folders = [`${user.id}/${id}`, `${user.id}/${id}-slides`]
     const keys: string[] = []
     for (const f of folders) {
@@ -3784,14 +3856,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         d.meta.store = 'r2'
         await patchSession(id, { meta: d.meta })
       }
-      return true
+      return 'none'
     }
     for (const key of keys) {
       const bytes = await store.download(key, 'sb')
-      if (!bytes || bytes.byteLength === 0) return false
+      if (!bytes || bytes.byteLength === 0) return 'pending'
       const kind = key.endsWith('.jpg') ? 'image/jpeg' : mediaType(new Uint8Array(bytes.slice(0, 12)))
       const { error } = await store.upload(key, new Blob([bytes], { type: kind }), kind)
-      if (error) return false
+      if (error) return 'pending'
       // the copy must be the same size before the original goes
       let copiedSize = -1
       if (key === wholeKey) {
@@ -3801,7 +3873,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const name = key.slice(key.lastIndexOf('/') + 1)
         copiedSize = (await store.listIn(folder, 'r2')).find((o) => o.name === name)?.size ?? -1
       }
-      if (copiedSize !== bytes.byteLength) return false
+      if (copiedSize !== bytes.byteLength) return 'pending'
       await store.remove([key], 'sb')
     }
     if (d) {
@@ -3810,7 +3882,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       emitSession(d.meta)
       if (!d.meta.whole) void consolidateRecording(id)
     }
-    return true
+    return 'moved'
   }
   setTimeout(() => void migrateOldRecordings(), 12000)
 }

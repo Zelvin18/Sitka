@@ -87,6 +87,12 @@ export default function App(): React.JSX.Element {
     rememberView()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // A page with nothing to show (a session that is gone) asks for the library.
+  useEffect(() => {
+    const home = (): void => setView({ name: 'home' })
+    window.addEventListener('sitka:home', home)
+    return () => window.removeEventListener('sitka:home', home)
+  }, [setView])
   const goBack = useCallback((): void => {
     const prev = historyRef.current.pop()
     if (!prev) return
@@ -266,9 +272,22 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [quickRecord])
 
+  const [sessionsError, setSessionsError] = useState('')
   const refreshSessions = useCallback(async (): Promise<void> => {
-    setSessions(await window.sitka.listSessions())
-    setSessionsLoaded(true)
+    // The library must never spin for good: a list that stalls or fails is
+    // said out loud, with a way to ask again.
+    try {
+      const list = await Promise.race([
+        window.sitka.listSessions(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
+      ])
+      setSessions(list)
+      setSessionsError('')
+    } catch (err) {
+      setSessionsError(err instanceof Error && err.message === 'timeout' ? 'slow' : 'failed')
+    } finally {
+      setSessionsLoaded(true)
+    }
   }, [])
 
   // Organisations: a university or a company the user belongs to.
@@ -541,6 +560,11 @@ export default function App(): React.JSX.Element {
           <Home
             sessions={sessions}
             loaded={sessionsLoaded}
+            loadError={sessionsError}
+            onRetry={() => {
+              setSessionsLoaded(false)
+              void refreshSessions()
+            }}
             settings={settings}
             onNewSession={() => setView({ name: 'live' })}
             onOpenSession={openSession}

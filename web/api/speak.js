@@ -75,7 +75,8 @@ async function geminiModels(key) {
   let listed = []
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`
+      `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`,
+      { signal: AbortSignal.timeout(10000) }
     )
     if (r.ok) {
       const j = await r.json()
@@ -98,6 +99,7 @@ async function geminiSpeakWith(key, model, text) {
   const r = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
+      signal: AbortSignal.timeout(25000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -149,6 +151,7 @@ async function groqModels(key) {
   let listed = []
   try {
     const r = await fetch('https://api.groq.com/openai/v1/models', {
+      signal: AbortSignal.timeout(10000),
       headers: { Authorization: `Bearer ${key}` }
     })
     if (r.ok) {
@@ -170,6 +173,7 @@ async function groqModels(key) {
 
 async function groqSpeakWith(key, model, voice, text) {
   const r = await fetch('https://api.groq.com/openai/v1/audio/speech', {
+    signal: AbortSignal.timeout(25000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({ model, voice, input: text, response_format: 'wav' })

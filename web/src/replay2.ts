@@ -378,11 +378,17 @@ function loadMedia(): Promise<boolean> {
       v.load()
       void preview()
       return true
-    } catch {
+    } catch (err) {
       el('stage').classList.add('err')
-      el('playtext').textContent = 'The recording could not be loaded'
-      el('playsub').textContent = 'The owner may have removed it, or their storage rules need updating.'
-      big.classList.add('dim')
+      const msg = err instanceof Error ? err.message : String(err)
+      const transient = /storage \d|timeout|failed to fetch|load failed|network/i.test(msg)
+      el('playtext').textContent = transient ? 'Could not fetch the recording' : 'The recording could not be loaded'
+      el('playsub').textContent = transient
+        ? 'Check the connection and tap to try again.'
+        : 'The owner may have removed it, or their storage rules need updating.'
+      big.classList.remove('dim')
+      // the next tap asks again rather than repeating this answer
+      mediaPromise = null
       return false
     } finally {
       big.classList.remove('busy')

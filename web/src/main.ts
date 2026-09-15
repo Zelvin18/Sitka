@@ -40,11 +40,12 @@ let myName = ''
 
 // ---------- the room: who is here, and what they are saying ----------
 async function refreshCount(): Promise<void> {
-  const { count } = await sb
-    .from('attendees')
-    .select('id', { count: 'exact', head: true })
-    .eq('event_id', eventId)
-  if (typeof count === 'number') {
+  // The number only, from a function that may count what the room may not
+  // read (supabase/wave13.sql). Before that script runs, the badge stays away.
+  const { data, error } = await sb.rpc('attendee_count', { eid: eventId })
+  if (error) return
+  const count = Number(data)
+  if (Number.isFinite(count)) {
     el('countn').textContent = String(count)
     el('count').classList.toggle('hidden', count < 1)
   }
@@ -1038,17 +1039,22 @@ function refreshEndCard(): void {
     ? 'Your recap is ready: what was said, the key moments, and the recording. Ask it anything, any time.'
     : 'Thanks for being here. Your take-home pack is in the last tab.'
 }
+let endedShown = false
 function onEnded(): void {
   setBadge('ended')
   stopStage()
   stopRtc()
   el('takewait').textContent = 'The event has ended — grab your personalized pack below.'
   refreshEndCard()
-  // On a phone the card sits at the top of the Live tab; bring it into view.
-  if (window.innerWidth < 900) {
+  // On a phone the card sits at the top of the Live tab; bring it into view,
+  // once. The row is updated several times after the end (the recap, its
+  // words), and none of those should pull a person off whatever they were
+  // reading.
+  if (!endedShown && window.innerWidth < 900) {
     ;(document.querySelector('[data-pane=live]') as HTMLElement | null)?.click()
     el('pane-live').scrollTop = 0
   }
+  endedShown = true
 }
 function applyEventState(): void {
   if (!ev || !joined) return
@@ -1389,6 +1395,9 @@ async function join(newJoin: boolean): Promise<void> {
   el('loading').classList.add('hidden')
   el('wait').classList.remove('hidden')
   setupListen()
+  // If the talk is already on, show it now. The captions so far, the room and
+  // the polls fill in behind it; none of them should keep a person waiting.
+  applyEventState()
 
   // history: restore my previous Q&A after a refresh
   const { data: prevAsks } = await sb
@@ -1585,8 +1594,16 @@ async function join(newJoin: boolean): Promise<void> {
 
 ;(el('joinbtn') as HTMLButtonElement).onclick = () => {
   myLang = (el('lang') as HTMLSelectElement).value
-  ;(el('joinbtn') as HTMLButtonElement).disabled = true
-  void join(true)
+  const btn = el('joinbtn') as HTMLButtonElement
+  btn.disabled = true
+  // a request that never answers gives the button back, with a word
+  const guard = window.setTimeout(() => {
+    if (!joined) {
+      btn.disabled = false
+      btn.textContent = 'Try again'
+    }
+  }, 15000)
+  void join(true).finally(() => window.clearTimeout(guard))
 }
 
 // ---------- "attend for me": absent-attendee proxy ----------
@@ -1693,13 +1710,45 @@ async function boot(): Promise<void> {
     el('notfound').classList.remove('hidden')
     return
   }
-  const { data } = await sb.from('events').select('*').eq('id', eventId).single()
-  if (!data) {
+  // A slow venue network must not leave the loader up for good: three tries,
+  // a limit on each, and then an honest card that says what to do. A link
+  // that really is wrong is told apart from a connection that failed.
+  let row: EventRow | null = null
+  let failed = ''
+  for (let attempt = 0; attempt < 3 && !row; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt))
+    try {
+      const res = await Promise.race([
+        sb.from('events').select('*').eq('id', eventId).single(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000))
+      ])
+      if (res.data) row = res.data as EventRow
+      else if (res.error && /PGRST116|0 rows|multiple/i.test(res.error.message)) break // truly not there
+      else failed = res.error?.message || 'no reply'
+    } catch (err) {
+      failed = err instanceof Error ? err.message : String(err)
+    }
+  }
+  if (!row) {
     el('loading').classList.add('hidden')
-    el('notfound').classList.remove('hidden')
+    const card = el('notfound')
+    if (failed) {
+      const h = card.querySelector('h1')
+      const sub = card.querySelector('.sub')
+      if (h) h.textContent = 'Could not reach the event'
+      if (sub) {
+        sub.textContent = 'Check your connection, then try again. '
+        const b = document.createElement('button')
+        b.className = 'btn'
+        b.textContent = 'Try again'
+        b.onclick = () => location.reload()
+        sub.appendChild(b)
+      }
+    }
+    card.classList.remove('hidden')
     return
   }
-  ev = data as EventRow
+  ev = row
   el('evtitle').textContent = ev.title
   document.title = ev.title + ' — Sitka Live'
   setBadge(ev.status === 'live' ? 'live' : ev.status === 'ended' ? 'ended' : 'soon')

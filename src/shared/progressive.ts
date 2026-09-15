@@ -104,9 +104,15 @@ export async function playProgressively(
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
+    // a browser that never opens the source (an element not yet in the page,
+    // a managed source that stays quiet) is given a few seconds, not forever
+    setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
     video.src = url
   }).catch(() => undefined)
-  if (ms.readyState !== 'open') return false
+  if (ms.readyState !== 'open') {
+    URL.revokeObjectURL(url)
+    return false
+  }
 
   let sb: SourceBuffer
   try {
@@ -145,11 +151,25 @@ export async function playProgressively(
 
   // parts are fetched a little ahead and appended strictly in order
   const pending = new Map<number, Promise<ArrayBuffer>>()
+  // a part that fails is asked for again, twice, before the stream gives up:
+  // one refused link must not end a lecture at the two-thirds mark
+  const fetchTwice = async (i: number): Promise<ArrayBuffer> => {
+    let last: unknown
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await fetchPart(i)
+      } catch (err) {
+        last = err
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)))
+      }
+    }
+    throw last
+  }
   const fetchAt = (i: number): Promise<ArrayBuffer> => {
     if (i === 0) return Promise.resolve(first)
     let p = pending.get(i)
     if (!p) {
-      p = fetchPart(i)
+      p = fetchTwice(i)
       pending.set(i, p)
     }
     return p
@@ -173,7 +193,10 @@ export async function playProgressively(
     return true
   } catch (err) {
     console.warn('[progressive] streaming stopped', err)
-    // whatever was appended keeps playing; the caller may not stitch over it
+    // whatever was appended keeps playing; the caller may not stitch over it,
+    // but the stop is written down so it shows in the operations view
+    const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+    report?.(location.pathname, 'streaming stopped: ' + (err instanceof Error ? err.message : String(err)))
     return true
   }
 }

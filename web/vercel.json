@@ -1,5 +1,6 @@
 {
   "trailingSlash": false,
+  "functions": { "api/*.js": { "maxDuration": 60 } },
   "rewrites": [
     { "source": "/app", "destination": "/app.html" },
     { "source": "/legal", "destination": "/legal.html" },
