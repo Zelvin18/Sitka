@@ -66,6 +66,16 @@ h1{font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.035em;font-w
 .hero-video-frame .tour-caption{font-size:14.5px;min-height:2.2em;margin:12px 4px 4px;color:var(--t2);text-align:center}
 .hero-video-frame .tour-stage{border-radius:14px}
 .hero-note{margin-top:14px;font-size:12.5px;color:var(--t3);text-align:center}
+/* the reel: the three pictures drifting past under the hero, on their own, pausing under the mouse */
+.reel{overflow:hidden;padding:10px 0 64px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.reel-track{display:flex;width:max-content;animation:reel 52s linear infinite;will-change:transform}
+.reel:hover .reel-track{animation-play-state:paused}
+.reel-card{flex:none;width:min(760px,84vw);margin-right:24px;aspect-ratio:2.4/1;border-radius:20px;overflow:hidden;border:1px solid var(--border);background:var(--soft);box-shadow:0 26px 70px var(--shadow)}
+.reel-card img{display:block;width:100%;height:100%;object-fit:cover}
+@keyframes reel{to{transform:translateX(-50%)}}
+@media(max-width:640px){.reel{padding-bottom:44px}.reel-card{border-radius:14px;margin-right:14px}}
+@media(prefers-reduced-motion:reduce){.reel{mask-image:none;-webkit-mask-image:none;overflow-x:auto}.reel-track{animation:none}}
+
 @media(max-width:700px){
   .hero{padding-top:44px}
   .hero-video{margin-top:36px}
@@ -211,6 +221,17 @@ footer{border-top:1px solid var(--border);background:var(--soft);padding:64px 0 
     <div class="hero-note">A real session, start to finish. Tap the picture to pause.</div>
   </div>
 </div></header>
+
+<div class="reel" aria-label="Sitka in pictures">
+  <div class="reel-track">
+    <div class="reel-card"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="Ask your library: search, ask and explore everything you have captured" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="Start a live session: capture meetings, lectures and events in real time" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="Plan an event: from conferences to workshops" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka1.webp" type="image/webp"><img src="/sitka1.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka2.webp" type="image/webp"><img src="/sitka2.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
+    <div class="reel-card" aria-hidden="true"><picture><source srcset="/sitka3.webp" type="image/webp"><img src="/sitka3.jpg" alt="" width="1600" height="667" decoding="async"></picture></div>
+  </div>
+</div>
 
 <div class="moments"><div class="wrap">
   <div class="moment rv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/></svg><div><b>Listens</b><span>Every word, written down with the time it was said.</span></div></div>
