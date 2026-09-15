@@ -13,6 +13,10 @@ const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const sb = createClient(SUPA_URL, SUPA_KEY)
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
+// A refreshed page starts at its top. Browsers put a reloaded page back
+// where it was scrolled, which lands people mid-section with no bearings.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 // The app's modules read this flag the moment they load, so it is set before
 // any of them arrive: this is the web build, wherever the code came from.

@@ -75,8 +75,15 @@ export function sitkaLinkFrom(raw: string): string | null {
  * Join a live session: point the camera at the host's QR code, or paste the
  * link. Attendees land on the event page, which runs in the browser.
  */
+/** A phone scans with the camera on its back; a laptop would stare at the person. */
+const PHONE = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 900)
+
 export default function JoinView({ onBack }: Props): React.JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
+  // On a laptop the camera is the person's own face, and opening it unasked
+  // reads as being filmed. There the page asks first: paste the link, or scan.
+  // On a phone the back camera is the natural way in, so it opens at once.
+  const [wantScan, setWantScan] = useState(PHONE)
   const [camera, setCamera] = useState<'starting' | 'on' | 'off'>('starting')
   const [reader, setReader] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [found, setFound] = useState<string | null>(null)
@@ -90,6 +97,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
   }
 
   useEffect(() => {
+    if (!wantScan) return undefined
     let stream: MediaStream | null = null
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -189,17 +197,29 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
       stream?.getTracks().forEach((t) => t.stop())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [wantScan])
 
   return (
     <div className="content">
       <div className="content-inner join" style={{ maxWidth: 560 }}>
         <h1 className="page-title">Join a session</h1>
         <p className="page-subtitle">
-          Point the camera at the QR code the host is showing. You will get the captions, the slides and your own
-          Sitka, on this phone.
+          {wantScan
+            ? 'Point the camera at the QR code the host is showing. You will get the captions, the slides and your own Sitka, on this device.'
+            : 'Paste the link the host shared, or scan their QR code with the camera on this computer. You will get the captions, the slides and your own Sitka.'}
         </p>
 
+        {!wantScan && (
+          <div className="join-choice">
+            <button type="button" className="btn btn-ghost" onClick={() => setWantScan(true)}>
+              <IconQr size={16} strokeWidth={1.8} />
+              Scan a QR code with the camera
+            </button>
+            <span className="join-choice-note">The camera opens only when you choose this.</span>
+          </div>
+        )}
+
+        {wantScan && (
         <div className={`join-stage${camera === 'on' ? ' on' : ''}`}>
           <video ref={videoRef} playsInline muted autoPlay />
           {camera === 'on' && !found && (
@@ -227,6 +247,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
             </div>
           )}
         </div>
+        )}
         {camera === 'on' && !found && reader !== 'failed' && (
           <div className="join-hint">
             {reader === 'ready' ? 'Hold steady over the code. It joins by itself.' : 'Getting the reader ready…'}
@@ -240,7 +261,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
         {error && <div className="notice notice-error" style={{ marginTop: 12 }}>{error}</div>}
 
         <div className="join-manual">
-          <div className="join-manual-label">Or paste the link or code</div>
+          <div className="join-manual-label">{wantScan ? 'Or paste the link or code' : 'Paste the link or code'}</div>
           <div className="join-manual-row">
             <input
               className="input"

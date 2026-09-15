@@ -76,10 +76,16 @@ export default function App(): React.JSX.Element {
   const [canBack, setCanBack] = useState(historyRef.current.length > 0)
   const rememberView = (): void =>
     writeSession(VIEW_KEY, { view: viewRef.current, history: historyRef.current.slice(-12) })
+  // Each page remembers which ecosystem it was visited in, so Back restores
+  // the menu along with the page: a page opened under "you" comes back as
+  // "you", even after a detour through Business.
+  const spaceRef = useRef<Space | undefined>(undefined)
+  const spaceHistoryRef = useRef<(Space | undefined)[]>([])
   const setView = useCallback((next: View | ((v: View) => View)): void => {
     const resolved = typeof next === 'function' ? next(viewRef.current) : next
     if (resolved.name !== viewRef.current.name || JSON.stringify(resolved) !== JSON.stringify(viewRef.current)) {
       historyRef.current = [...historyRef.current.slice(-40), viewRef.current]
+      spaceHistoryRef.current = [...spaceHistoryRef.current.slice(-40), spaceRef.current]
       setCanBack(true)
     }
     viewRef.current = resolved
@@ -96,6 +102,7 @@ export default function App(): React.JSX.Element {
   const goBack = useCallback((): void => {
     const prev = historyRef.current.pop()
     if (!prev) return
+    setSpace(spaceHistoryRef.current.pop())
     viewRef.current = prev
     setViewRaw(prev)
     setCanBack(historyRef.current.length > 0)
@@ -112,7 +119,21 @@ export default function App(): React.JSX.Element {
       return undefined
     }
   })
+  // The menu says where the person is, not where they last chose to go: back
+  // out of Business to the home page and it reads "you" again; open an
+  // organisation and it reads that organisation's kind.
   useEffect(() => {
+    if (view.name === 'homepage') setSpace(undefined)
+    else if (view.name === 'business') setSpace('business')
+    else if (view.name === 'education') setSpace('education')
+    else if (view.name === 'org') {
+      const org = orgs.find((o) => o.id === view.id)
+      if (org) setSpace(org.kind)
+    } else if (view.name === 'live' && 'space' in view) setSpace(view.space)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
+  useEffect(() => {
+    spaceRef.current = space
     try {
       if (space) localStorage.setItem('sitka.space', space)
       else localStorage.removeItem('sitka.space')

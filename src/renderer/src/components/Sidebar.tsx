@@ -133,10 +133,16 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-drag" style={{ justifyContent: 'space-between' }}>
-        <div className="wordmark">
+        <button
+          type="button"
+          className="wordmark wordmark-btn"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          title="Home"
+          onClick={onHomePage}
+        >
           <Mark size={18} />
           Sitka
-        </div>
+        </button>
         <button
           className="btn btn-ghost btn-sm"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}

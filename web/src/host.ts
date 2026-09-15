@@ -2,6 +2,10 @@ import { createClient, type User } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
 import './style.css'
 import './host.css'
+// A refreshed page starts at its top. Browsers put a reloaded page back
+// where it was scrolled, which lands people mid-section with no bearings.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string

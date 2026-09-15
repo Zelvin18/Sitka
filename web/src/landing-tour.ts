@@ -3,6 +3,10 @@
  * reveal as they scroll into view.
  */
 import { mountTour } from '../../src/shared/tour'
+// A refreshed page starts at its top. Browsers put a reloaded page back
+// where it was scrolled, which lands people mid-section with no bearings.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 const root = document.getElementById('tour')
 if (root) {
