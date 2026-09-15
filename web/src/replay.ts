@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
 import { installFocusGuard } from '../../src/shared/focusGuard'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
+import { createStore } from './store'
 
 // Phones: the keyboard appears only when a field is tapped, never on its own.
 installFocusGuard()
@@ -19,6 +20,7 @@ const el = (id: string): HTMLElement => document.getElementById(id) as HTMLEleme
 // the earlier recap page, kept at /r1/<id> for reference; /r/<id> now opens the new one
 const m = /\/r1?\/([^/?#]+)/.exec(location.pathname)
 const pageId = m ? m[1] : ''
+const store = createStore(sb, () => pageId)
 
 interface Replay {
   enabled: boolean
@@ -462,20 +464,15 @@ async function loadParts(owner: string, sessionId: string): Promise<void> {
   const v = el('rvideo') as HTMLVideoElement
   gate.classList.add('busy')
   try {
-    const dir = `${owner}/${sessionId}`
-    const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
-    if (error) throw error
-    const parts = (files ?? [])
-      .map((f) => f.name)
-      .filter((n) => /^part-\d+\.webm$/.test(n))
-      .sort()
-    const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
+    const found = await store.media(owner, sessionId)
+    const paths = found.whole ? [found.whole] : found.parts
+    if (paths.length === 0) throw new Error('no recording')
     const blobs: Blob[] = []
     for (let i = 0; i < paths.length; i++) {
       txt.textContent = `Loading the recording · ${i + 1} of ${paths.length}`
-      const { data: blob, error: e2 } = await sb.storage.from('recordings').download(paths[i])
-      if (e2 || !blob) throw e2 ?? new Error('missing part')
-      blobs.push(blob)
+      const r = await fetch(paths[i])
+      if (!r.ok) throw new Error('missing part')
+      blobs.push(await r.blob())
     }
     gate.hidden = true
     // the header gets its length written in, so the timeline shows at once

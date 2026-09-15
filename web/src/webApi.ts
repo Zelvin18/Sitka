@@ -26,6 +26,7 @@ import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
+import { createStore, type Where } from './store'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -105,6 +106,12 @@ function downloadText(name: string, text: string): void {
 export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const { data: sess } = await sb.auth.getSession()
   const user: User = sess!.session!.user
+
+  // Recordings live in Cloudflare R2, everything else in Supabase. The store
+  // hides the difference, and keeps reading recordings made before the move.
+  const store = createStore(sb)
+  /** Where a session's recording is kept. Older sessions never say, and are in Supabase. */
+  const whereOf = (m?: { store?: 'r2' | 'sb' }): Where => (m?.store === 'r2' ? 'r2' : 'sb')
 
   // ---------- what people do, for the owners' dashboard ----------
   // Named events only: which feature, when, roughly where. Never the words
@@ -229,30 +236,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   }
 
   /**
-   * Download one object from the recordings bucket, surviving a broken
-   * browser cache (Chrome's ERR_CACHE_READ_FAILURE) and a flaky connection:
-   * the SDK download first, then a signed URL fetched with the cache
-   * bypassed, three tries in all.
+   * Download one object of a recording, surviving a broken browser cache
+   * (Chrome's ERR_CACHE_READ_FAILURE) and a flaky connection: three tries,
+   * from whichever store that recording was made in.
    */
-  async function fetchObject(path: string): Promise<ArrayBuffer | null> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        if (attempt === 0) {
-          const { data } = await sb.storage.from('recordings').download(path)
-          if (data) return await data.arrayBuffer()
-        } else {
-          const { data: signed } = await sb.storage.from('recordings').createSignedUrl(path, 600)
-          if (signed?.signedUrl) {
-            const r = await fetch(signed.signedUrl, { cache: 'no-store' })
-            if (r.ok) return await r.arrayBuffer()
-          }
-        }
-      } catch (err) {
-        console.warn('Sitka: recording part fetch failed, retrying', path, err)
-      }
-      await sleep(400 * (attempt + 1))
-    }
-    return null
+  async function fetchObject(path: string, where: Where): Promise<ArrayBuffer | null> {
+    return store.download(path, where)
   }
 
   // ---------- one whole file per recording ----------
@@ -272,13 +261,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!bytes || bytes.byteLength < 5000) return
       const kind = mediaType(bytes.subarray(0, 12))
       const blob = new Blob([bytes.buffer as ArrayBuffer], { type: kind })
-      const { error } = await sb.storage
-        .from('recordings')
-        .upload(videoPath(id), blob, { upsert: true, contentType: kind })
+      const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
+      const { error } = await store.upload(videoPath(id), blob, kind)
       if (error) {
-        console.warn('Sitka: whole-file upload failed', error.message)
+        console.warn('Sitka: whole-file upload failed', error)
         return
       }
+      d.meta.store = where
       d.meta.whole = true
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
@@ -354,10 +343,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await ctx.close().catch(() => undefined)
       const whole = new Blob(out, { type: 'video/mp4' })
       if (whole.size < 5000) return { ok: false, error: 'The prepared file came out empty.' }
-      const { error } = await sb.storage
-        .from('recordings')
-        .upload(videoPath(id), whole, { upsert: true, contentType: 'video/mp4' })
-      if (error) return { ok: false, error: 'Could not store the prepared file: ' + error.message }
+      const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
+      const { error } = await store.upload(videoPath(id), whole, 'video/mp4')
+      if (error) return { ok: false, error: 'Could not store the prepared file: ' + error }
+      d.meta.store = where
       d.meta.whole = true
       d.meta.mime = 'video/mp4'
       await patchSession(id, { meta: d.meta })
@@ -702,11 +691,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           (await loadSession(p.sessionId))?.meta.mime ??
           'video/webm'
     const blob = new Blob(bufs, { type: kind })
-    const { error } = await sb.storage
-      .from('recordings')
-      .upload(partPath(p.sessionId, p.partNo), blob, { upsert: true, contentType: kind })
+    const { error } = await store.upload(partPath(p.sessionId, p.partNo), blob, kind)
     if (error) {
-      console.error('Sitka: part upload failed', p.sessionId, p.partNo, error.message)
+      console.error('Sitka: part upload failed', p.sessionId, p.partNo, error)
       return false
     }
     const b = recBuf.get(p.sessionId)
@@ -823,8 +810,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const loose = chunks.filter((c) => !covered.has(c.seq))
         if (loose.length > 0) {
           let maxNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) : -1
-          const { data: listing } = await sb.storage.from('recordings').list(`${user.id}/${r.id}`, { limit: 1000 })
-          for (const f of listing ?? []) {
+          const listing = await store.list(`${user.id}/${r.id}`)
+          for (const f of listing.objects) {
             const m = /^part-(\d+)\.webm$/.exec(f.name)
             if (m) maxNo = Math.max(maxNo, Number(m[1]))
           }
@@ -1939,16 +1926,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
       await forgetSession(id)
-      const { data: listing } = await sb.storage
-        .from('recordings')
-        .list(`${user.id}/${id}`, { limit: 1000 })
-      const paths = (listing ?? []).map((f) => `${user.id}/${id}/${f.name}`)
-      paths.push(videoPath(id))
-      const { data: slideFiles } = await sb.storage
-        .from('recordings')
-        .list(`${user.id}/${id}-slides`, { limit: 1000 })
-      paths.push(...(slideFiles ?? []).map((f) => `${user.id}/${id}-slides/${f.name}`))
-      await sb.storage.from('recordings').remove(paths)
+      // A session started before the move to Cloudflare can have left files in
+      // both stores. Clear both, so nothing survives its session and keeps
+      // costing: the parts, the whole file, and the frames read off the screen.
+      for (const where of ['r2', 'sb'] as Where[]) {
+        const parts = await store.listIn(`${user.id}/${id}`, where)
+        const slides = await store.listIn(`${user.id}/${id}-slides`, where)
+        await store.remove(
+          [
+            ...parts.map((f) => `${user.id}/${id}/${f.name}`),
+            ...slides.map((f) => `${user.id}/${id}-slides/${f.name}`),
+            videoPath(id)
+          ],
+          where
+        )
+      }
     },
 
     // ---------- session materials ----------
@@ -2044,12 +2036,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const bytes = new Uint8Array(bin.length)
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
         const path = `${user.id}/${sessionId}-slides/${String(Math.round(time * 10)).padStart(7, '0')}.jpg`
-        await sb.storage
-          .from('recordings')
-          .upload(path, new Blob([bytes], { type: 'image/jpeg' }), {
-            upsert: true,
-            contentType: 'image/jpeg'
-          })
+        await store.upload(path, new Blob([bytes], { type: 'image/jpeg' }), 'image/jpeg')
         const d = await loadSession(sessionId)
         if (d) {
           d.segments.push({ start: time, end: time + 1, text: ON_SCREEN_PREFIX + text })
@@ -2072,13 +2059,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const { data: row } = await sb.from('sessions').select('slides').eq('id', sessionId).single()
       const stored = (row?.slides as StoredSlide[] | null) ?? []
       if (stored.length === 0) return []
-      const { data: signed } = await sb.storage
-        .from('recordings')
-        .createSignedUrls(
-          stored.map((s) => s.path),
-          3600
-        )
-      const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]))
+      // Frames follow their session: newer ones are in Cloudflare, older ones
+      // still in Supabase. Ask the folder which, then sign them all at once.
+      const folder = await store.list(`${user.id}/${sessionId}-slides`)
+      const paths = stored.map((s) => s.path)
+      const signed = await store.urls(paths, folder.where)
+      const urlByPath = new Map(paths.map((p, i) => [p, signed[i]]))
       // Frames captioned before a vision model was available carry guesses.
       // They are re-read by a model that can actually see them, a few per
       // visit, and the transcript's "[On screen]" line is corrected too.
@@ -2244,8 +2230,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         void consolidateRecording(id)
         return null
       }
-      const { data: signed } = await sb.storage.from('recordings').createSignedUrl(videoPath(id), 3600)
-      return signed?.signedUrl ?? null
+      return store.url(videoPath(id), whereOf(d.meta))
     },
 
     convertForPhones: (id: string) => convertForPhones(id),
@@ -2253,31 +2238,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // The parts of a recording as links, in order, so the player can stream
     // them one after another instead of waiting for the whole file.
     listVideoParts: async (id: string) => {
-      const { data: listing } = await sb.storage
-        .from('recordings')
-        .list(`${user.id}/${id}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
-      const names = (listing ?? [])
+      const listing = await store.list(`${user.id}/${id}`)
+      const names = listing.objects
         .map((f) => f.name)
         .filter((n) => /^part-\d+\.webm$/.test(n))
         .sort()
       if (names.length === 0) return []
       // parts still on this device (not uploaded yet) mean the cloud is incomplete: stitch instead
       if ((await localParts(id)).length > 0) return []
-      const { data: signed } = await sb.storage
-        .from('recordings')
-        .createSignedUrls(names.map((n) => `${user.id}/${id}/${n}`), 3600)
-      const urls = (signed ?? []).map((s) => s.signedUrl).filter((u): u is string => Boolean(u))
+      const urls = (await store.urls(names.map((n) => `${user.id}/${id}/${n}`), listing.where)).filter(
+        (u) => Boolean(u)
+      )
       return urls.length === names.length ? urls : []
     },
 
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null
       // Parts live in the cloud, or still on this device, or both: stitch them in order.
-      const { data: listing } = await sb.storage
-        .from('recordings')
-        .list(`${user.id}/${id}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+      const listing = await store.list(`${user.id}/${id}`)
       const cloud = new Map<number, string>()
-      for (const f of listing ?? []) {
+      for (const f of listing.objects) {
         const m = /^part-(\d+)\.webm$/.exec(f.name)
         if (m) cloud.set(Number(m[1]), f.name)
       }
@@ -2290,7 +2270,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         for (const n of partNos) {
           const name = cloud.get(n)
           if (name) {
-            const buf = await fetchObject(`${user.id}/${id}/${name}`)
+            const buf = await fetchObject(`${user.id}/${id}/${name}`, listing.where)
             if (buf) {
               buffers.push(buf)
               continue
@@ -2329,7 +2309,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         }
       }
       // Legacy single-file recordings.
-      const whole = await fetchObject(videoPath(id))
+      const whole =
+        (await fetchObject(videoPath(id), 'r2')) ?? (await fetchObject(videoPath(id), 'sb'))
       if (!whole) {
         console.error('Sitka: no recording found for session', id)
         return null
@@ -3159,32 +3140,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         emitSession(d.meta)
         return { enabled: false }
       }
-      const video = await api.readVideo(sessionId, 'video')
-      if (!video || video.byteLength < 5000) {
-        return { error: 'No recording found for this session.' }
-      }
-      // A fresh file needs only the insert policy. Only a republish falls back
-      // to replacing the object, which storage checks against update + select.
-      const kind = mediaType(video.subarray(0, 12))
-      const blob = new Blob([video.slice().buffer], { type: kind })
-      const path = `${evId}.webm`
-      let { error } = await sb.storage
-        .from('replays')
-        .upload(path, blob, { upsert: false, contentType: kind })
-      if (error && /exists|duplicate/i.test(error.message)) {
-        ;({ error } = await sb.storage
-          .from('replays')
-          .update(path, blob, { upsert: true, contentType: kind }))
-      }
-      if (error) {
-        const detail = error.message || 'unknown error'
-        return {
-          error: /row-level security|policy|not found|unauthorized|403/i.test(detail)
-            ? `Upload refused by storage (${detail}). Run supabase/fix-replays.sql in the Supabase SQL editor, then try again.`
-            : /too large|exceeded|413/i.test(detail)
-              ? `Upload failed: the recording is larger than your Supabase plan allows for one file (${detail}).`
-              : 'Upload failed: ' + detail
-        }
+      // Nothing is copied. The recap opens the host's own recording, wherever
+      // it already is, for as long as the replay stays switched on. That keeps
+      // one copy of a lecture instead of two, and makes publishing instant
+      // however long the session ran.
+      const hasVideo = d.meta.whole === true || (await store.list(`${user.id}/${sessionId}`)).objects.length > 0
+      if (!hasVideo) {
+        void consolidateRecording(sessionId)
       }
       await sb
         .from('events')
@@ -3195,7 +3157,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             summary: d.meta.summary ?? '',
             highlights: d.meta.highlights ?? [],
             durationMs: d.meta.durationMs,
-            video: true,
+            video: hasVideo,
             publishedAt: Date.now()
           },
           updated_at: new Date().toISOString()

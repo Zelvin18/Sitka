@@ -80,6 +80,8 @@ export interface SessionMeta {
   whole?: boolean
   /** the recording's container, 'video/mp4' or 'video/webm', from its first bytes */
   mime?: string
+  /** where the recording is kept: 'r2' for Cloudflare, absent for the older Supabase store */
+  store?: 'r2' | 'sb'
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */

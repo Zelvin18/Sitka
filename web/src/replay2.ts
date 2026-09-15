@@ -8,6 +8,7 @@ import { md, parseTs as parseChipTs } from './mdlite'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { installFocusGuard } from '../../src/shared/focusGuard'
 import { playProgressively } from '../../src/shared/progressive'
+import { createStore } from './store'
 
 installFocusGuard()
 
@@ -19,6 +20,9 @@ const el = (id: string): HTMLElement => document.getElementById(id) as HTMLEleme
 // every recap link opens here: /r/<id> as shared everywhere, and /r2/<id>
 const m = /\/r2?\/([^/?#]+)/.exec(location.pathname)
 const pageId = m ? m[1] : ''
+// The watcher is usually not signed in. The store names the session it is
+// asking about, and the server checks that the owner has shared that one.
+const store = createStore(sb, () => pageId)
 
 // ---------- shapes ----------
 interface Line {
@@ -120,8 +124,8 @@ async function loadRecap(): Promise<Loaded | null> {
   let hasParts = Boolean(rc.has_recording && rc.owner)
   if (!hasParts && rc.owner) {
     try {
-      const { data: files } = await sb.storage.from('recordings').list(`${rc.owner}/${pageId}`, { limit: 5 })
-      hasParts = (files ?? []).some((f) => /^part-\d+\.webm$/.test(f.name))
+      const found = await store.media(rc.owner, pageId)
+      hasParts = found.where !== 'none'
     } catch {
       hasParts = false
     }
@@ -201,12 +205,14 @@ function loadMedia(): Promise<boolean> {
       if (data.video === 'public') {
         v.src = `${SUPA_URL}/storage/v1/object/public/replays/${pageId}.webm`
       } else {
-        const dir = `${data.owner}/${data.sessionId}`
+        if (!data.owner || !data.sessionId) throw new Error('no recording')
+        // One question answers all of it: which store holds this recording,
+        // whether it was joined into a single file, and the link to each part.
+        const found = await store.media(data.owner, data.sessionId)
         // One whole file first, when the session has made one: played natively
         // over range requests, which every phone does and which starts fastest.
-        const whole = await sb.storage.from('recordings').createSignedUrl(`${dir}.webm`, 3600)
-        if (whole.data?.signedUrl) {
-          v.src = whole.data.signedUrl
+        if (found.whole) {
+          v.src = found.whole
           v.hidden = false
           mediaReady = true
           el('stage').classList.add('hasvideo')
@@ -215,20 +221,15 @@ function loadMedia(): Promise<boolean> {
           console.info('[recap] whole file')
           return true
         }
-        const { data: files, error } = await sb.storage.from('recordings').list(dir, { limit: 1000 })
-        if (error) throw error
-        const parts = (files ?? [])
-          .map((f) => f.name)
-          .filter((n) => /^part-\d+\.webm$/.test(n))
-          .sort()
-        const paths = parts.length ? parts.map((n) => `${dir}/${n}`) : [`${dir}.webm`]
+        const paths = found.parts
+        if (paths.length === 0) throw new Error('no recording')
         // Streaming first: the first part plays within seconds while the rest
         // arrive. Only when the browser cannot stream this file is the whole
         // thing fetched and stitched as before.
         const fetchPart = async (i: number): Promise<ArrayBuffer> => {
-          const { data: blob, error: e2 } = await sb.storage.from('recordings').download(paths[i])
-          if (e2 || !blob) throw e2 ?? new Error('missing part')
-          return blob.arrayBuffer()
+          const r = await fetch(paths[i])
+          if (!r.ok) throw new Error('missing part')
+          return r.arrayBuffer()
         }
         v.hidden = false
         const streamed = await playProgressively(v, paths.length, fetchPart, {
@@ -250,8 +251,9 @@ function loadMedia(): Promise<boolean> {
         let done = 0
         const blobs = await Promise.all(
           paths.map(async (p) => {
-            const { data: blob, error: e2 } = await sb.storage.from('recordings').download(p)
-            if (e2 || !blob) throw e2 ?? new Error('missing part')
+            const r = await fetch(p)
+            if (!r.ok) throw new Error('missing part')
+            const blob = await r.blob()
             done++
             el('playtext').textContent = `Fetching · ${done} of ${paths.length}`
             return blob
