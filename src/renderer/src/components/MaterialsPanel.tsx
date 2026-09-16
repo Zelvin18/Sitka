@@ -1,8 +1,10 @@
-import React, { useRef, useState } from 'react'
+import React, { useState } from 'react'
 import type { SessionMaterial } from '@shared/types'
 import { sizeLabel } from '@shared/materialsLogic'
 import ConfirmDialog from './ConfirmDialog'
+import FilePick from './FilePick'
 import { IconDoc, IconPlus, IconTrash, Mark } from '../lib/icons'
+import { nameForPaste, readFileToText } from '../lib/readFile'
 
 interface Props {
   materials: SessionMaterial[]
@@ -12,8 +14,6 @@ interface Props {
   /** short form: no explainer, used inside the live page */
   compact?: boolean
 }
-
-const ACCEPT = '.pdf,.txt,.md,.csv,.json,.vtt,.srt'
 
 /**
  * The slides, notes or readings for a session. Sitka reads them so it knows
@@ -25,27 +25,21 @@ export default function MaterialsPanel({
   onRemove,
   compact
 }: Props): React.JSX.Element {
-  const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pasting, setPasting] = useState(false)
-  const [pasteName, setPasteName] = useState('')
   const [pasteText, setPasteText] = useState('')
   const [pendingRemove, setPendingRemove] = useState<SessionMaterial | null>(null)
 
-  const addFiles = async (files: FileList | null): Promise<void> => {
+  const addFiles = async (files: FileList | File[] | null): Promise<void> => {
     if (!files || files.length === 0) return
     setError(null)
     for (const f of Array.from(files)) {
-      setBusy(f.name)
+      setBusy(f.type.startsWith('image/') ? 'the picture' : f.name)
       try {
-        const res = await window.sitka.extractMaterial(f.name, await f.arrayBuffer())
+        const res = await readFileToText(f)
         if ('error' in res) {
           setError(res.error)
-          continue
-        }
-        if (!res.text.trim()) {
-          setError(`${f.name} has no readable text.`)
           continue
         }
         await onAdd(res.name, res.text)
@@ -54,16 +48,15 @@ export default function MaterialsPanel({
       }
     }
     setBusy(null)
-    if (fileRef.current) fileRef.current.value = ''
   }
 
-  const addPaste = async (): Promise<void> => {
-    if (!pasteText.trim()) return
+  // pasted text is simply taken: it names itself from its first line
+  const addPaste = async (text: string): Promise<void> => {
+    if (!text.trim()) return
     setBusy('Pasted text')
     setError(null)
     try {
-      await onAdd(pasteName.trim() || 'Pasted notes', pasteText)
-      setPasteName('')
+      await onAdd(nameForPaste(text), text)
       setPasteText('')
       setPasting(false)
     } catch (err) {
@@ -96,49 +89,47 @@ export default function MaterialsPanel({
           void addFiles(e.dataTransfer.files)
         }}
       >
-        <input
-          ref={fileRef}
-          type="file"
-          accept={ACCEPT}
-          multiple
-          hidden
-          onChange={(e) => void addFiles(e.target.files)}
-        />
         {busy ? (
           <span className="mat-busy">
             <Mark size={15} live /> Reading {busy}…
           </span>
         ) : (
           <>
-            <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>
-              <IconPlus size={13} strokeWidth={2.2} />
-              Add file
-            </button>
+            <FilePick onFiles={addFiles} hint="Sitka reads it and keeps the words.">
+              {(open) => (
+                <button className="btn btn-sm" onClick={open}>
+                  <IconPlus size={13} strokeWidth={2.2} />
+                  Add
+                </button>
+              )}
+            </FilePick>
             <button className="btn btn-ghost btn-sm" onClick={() => setPasting((v) => !v)}>
               Paste text
             </button>
-            <span className="mat-drop-hint">PDF, TXT, MD, CSV, or drop files here</span>
+            <span className="mat-drop-hint">A PDF, a text file, a picture of a page, or drop files here</span>
           </>
         )}
       </div>
 
       {pasting && (
         <div className="mat-paste">
-          <input
-            className="input"
-            placeholder="A name for these notes"
-            value={pasteName}
-            onChange={(e) => setPasteName(e.target.value)}
-          />
           <textarea
             className="input"
             rows={5}
-            placeholder="Paste the notes, outline or agenda…"
+            autoFocus
+            placeholder="Paste here — it is added the moment it lands"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
+            onPaste={(e) => {
+              const text = e.clipboardData.getData('text/plain')
+              if (text.trim().length > 0) {
+                e.preventDefault()
+                void addPaste(text)
+              }
+            }}
           />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => void addPaste()} disabled={!pasteText.trim()}>
+            <button className="btn btn-primary btn-sm" onClick={() => void addPaste(pasteText)} disabled={!pasteText.trim()}>
               Add
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setPasting(false)}>

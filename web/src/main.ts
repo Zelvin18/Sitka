@@ -26,6 +26,10 @@ interface EventRow {
   materials_present: boolean
   live_voice: { enabled: boolean; languages: string[] }
   replay?: { enabled?: boolean; summary?: string; video?: boolean | 'parts' } | null
+  /** the host's heartbeat, touched every few seconds while live */
+  host_seen?: string | null
+  /** a picture shown where the video would be, for a voice-only event */
+  banner?: string | null
 }
 interface SegRow {
   idx: number
@@ -499,6 +503,7 @@ function showStageFrame(b: Blob): void {
   if (prev) window.setTimeout(() => URL.revokeObjectURL(prev), 600)
   stageLastAt = Date.now()
   el('stagecard').classList.remove('paused')
+  el('stagecard').classList.remove('banner')
   if (!stageSeen) {
     stageSeen = true
     el('stagewait').classList.add('hidden')
@@ -533,15 +538,32 @@ function watchStage(): void {
   if (stageSeen) {
     // the host stopped sharing, or their connection hiccuped
     el('stagecard').classList.toggle('paused', now - stageLastAt > 8000)
-  } else if (now - stageStartedAt > 30000) {
+  } else if (now - stageStartedAt > 30000 || bannerShown) {
     // half a minute with nothing: an audio-only talk, most likely
     el('stagewait').classList.add('hidden')
   }
 }
+// The banner: the host's picture where the video would be, until the host
+// shares a screen and real frames take its place.
+let bannerShown = ''
+function showBanner(): void {
+  const url = ev?.banner || ''
+  if (!url || stageSeen || bannerShown === url) return
+  bannerShown = url
+  const img = el('stageimg') as HTMLImageElement
+  img.src = url
+  ;(el('stagefullimg') as HTMLImageElement).src = url
+  el('stagewait').classList.add('hidden')
+  el('stagecard').classList.remove('hidden')
+  el('stagecard').classList.remove('paused')
+  el('stagecard').classList.add('banner')
+  if (!el('stagecard').classList.contains('mini')) el('stagesplit').classList.remove('hidden')
+}
 function startStage(): void {
+  showBanner()
   if (!stageTimer) {
     stageStartedAt = Date.now()
-    if (!stageSeen) el('stagewait').classList.remove('hidden')
+    if (!stageSeen && !bannerShown) el('stagewait').classList.remove('hidden')
     pollStage()
     stageTimer = window.setInterval(pollStage, 1000)
     stageWatch = window.setInterval(watchStage, 2000)
@@ -1132,6 +1154,8 @@ function aiBubble(text: string): HTMLElement {
 }
 
 const pendingAsks = new Map<string, { typing: HTMLElement; onAnswer?: (a: string) => void }>()
+// the conversation so far, so a follow-up question is understood as one
+const askHistory: { role: 'user' | 'assistant'; content: string }[] = []
 function resolveAsk(id: string, status: string, answer: string | null): void {
   const p = pendingAsks.get(id)
   if (!p) return
@@ -1141,8 +1165,11 @@ function resolveAsk(id: string, status: string, answer: string | null): void {
     p.onAnswer(status === 'answered' && answer ? answer : '')
     return
   }
-  if (status === 'answered' && answer) aiBubble(answer)
-  else bubble('notice err', answer || 'Something went wrong — try again.')
+  if (status === 'answered' && answer) {
+    aiBubble(answer)
+    askHistory.push({ role: 'assistant', content: answer })
+    if (askHistory.length > 12) askHistory.splice(0, askHistory.length - 12)
+  } else bubble('notice err', answer || 'Something went wrong — try again.')
 }
 async function submitAsk(
   kind: 'ask' | 'catchup' | 'pack',
@@ -1152,6 +1179,36 @@ async function submitAsk(
 ): Promise<void> {
   const id = crypto.randomUUID()
   pendingAsks.set(id, { typing, onAnswer })
+  // The fast path: the server answers from the event's own row — the host's
+  // materials, the agenda, every caption so far — in a few seconds, whether
+  // or not the host's app is open. Before the event this is the only path
+  // that answers at all.
+  try {
+    const r = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        eventId,
+        attendeeId: attId,
+        kind,
+        question,
+        persona: persona || '',
+        lang: myLang,
+        history: kind === 'ask' ? askHistory.slice(-8) : []
+      }),
+      signal: AbortSignal.timeout(55000)
+    })
+    const j = (await r.json().catch(() => ({}))) as { answer?: string; defer?: boolean; error?: string }
+    if (r.ok && j.answer) {
+      resolveAsk(id, 'answered', j.answer)
+      return
+    }
+  } catch {
+    /* the host's app is the fallback */
+  }
+  if (!pendingAsks.has(id)) return
+  // the older path: the host's app notices the question and answers it
   const { error } = await sb.from('asks').insert({
     id,
     event_id: eventId,
@@ -1185,6 +1242,7 @@ function ask(q: string): void {
   if (busy || !q.trim() || !attId) return
   busy = true
   bubble('bub-u', q)
+  askHistory.push({ role: 'user', content: q.slice(0, 600) })
   const typing = bubble('typing', 'Sitka is thinking…')
   void submitAsk('ask', q.slice(0, 600), typing).finally(() => {
     busy = false
@@ -1528,8 +1586,15 @@ async function join(newJoin: boolean): Promise<void> {
         const before = ev.status
         const hadRecap = Boolean(ev.replay?.enabled)
         ev = fresh as EventRow
+        // A host whose heartbeat has been silent for minutes is gone: the
+        // phone closed, the battery died, the "ended" write never arrived.
+        // The room is shown as over rather than live for ever.
+        if (ev.status === 'live' && ev.host_seen && Date.now() - new Date(ev.host_seen).getTime() > 4 * 60_000) {
+          ev.status = 'ended'
+        }
         if (ev.status !== before) applyEventState()
         else if (ev.status === 'ended' && Boolean(ev.replay?.enabled) !== hadRecap) refreshEndCard()
+        if (ev.status === 'live') showBanner()
       }
       if (ev.status === 'live') {
         const { data: rows } = await sb

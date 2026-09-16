@@ -12,3 +12,13 @@ create policy "spaces deleted by creator or owner" on public.org_spaces
     created_by = auth.uid()
     or exists (select 1 from public.organizations o where o.id = org_id and o.owner = auth.uid())
   );
+
+-- The host's heartbeat. Both apps touch it every few seconds while an event
+-- is live; an attendee's phone that sees it go quiet for minutes knows the
+-- host is gone even when the "ended" write never arrived.
+alter table public.events add column if not exists host_seen timestamptz;
+
+-- The event's banner: a picture the host chooses when setting the event up,
+-- shown on attendees' phones where the video would be when the host presents
+-- by voice alone. A public link into the "stage" bucket.
+alter table public.events add column if not exists banner text;

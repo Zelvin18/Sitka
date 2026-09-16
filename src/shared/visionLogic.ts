@@ -10,6 +10,16 @@ export const DESCRIBE_SCREEN = [
 
 export const DESCRIBE_ASK = 'Describe this screen for the record.'
 
+/** Reading a picture of a document into text: a slide, a page, a whiteboard, a poster. */
+export const READ_PICTURE = [
+  'You are transcribing a picture of a document so its words can be used as written material: a slide, a printed page, handwritten notes, a whiteboard, a poster, a screenshot.',
+  'Write out ALL the text you can read, in reading order, keeping headings, bullet points, numbers, equations (plain notation) and tables (as markdown tables). Do not summarise and do not leave anything out.',
+  'Describe charts, diagrams and pictures briefly in [brackets] where they appear, with any values shown.',
+  'Only what is actually visible; never invent or complete text you cannot read. Mark unreadable parts as [unreadable].',
+  'No introduction, no commentary: only the transcription.'
+].join('\n')
+export const READ_PICTURE_ASK = 'Transcribe this picture.'
+
 /** '' when the model saw nothing worth keeping. */
 export function cleanDescription(out: string): string {
   const text = out.trim()

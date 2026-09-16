@@ -20,10 +20,19 @@ import {
   finishCreation,
   type SessionContext
 } from '../../src/shared/createLogic'
-import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '../../src/shared/visionLogic'
+import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX } from '../../src/shared/types'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
+import {
+  AUDIENCE_QUESTION_SYSTEM,
+  JUDGE_ANSWER_SYSTEM,
+  STUDIO_HINT_SYSTEM,
+  audienceQuestionUser,
+  judgeAnswerUser,
+  parseAudienceQuestion,
+  parseVerdict
+} from '../../src/shared/studioLogic'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
 import { defragmentMp4, isFragmentedMp4 } from '../../src/shared/mp4'
@@ -1389,6 +1398,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   async function confPollStats(): Promise<void> {
     if (!conf) return
     const c = conf
+    // the heartbeat: attendees' phones watch it, and treat a host silent for
+    // minutes as gone
+    void sb.from('events').update({ host_seen: new Date().toISOString() }).eq('id', c.eventId).then(() => undefined, () => undefined)
     const { data: atts } = await sb.from('attendees').select('id,lang').eq('event_id', c.eventId)
     const prev = c.attendeeCount
     c.attendeeCount = atts?.length ?? c.attendeeCount
@@ -1658,6 +1670,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const c = conf
     clearInterval(c.workTimer)
     clearInterval(c.statsTimer)
+    // The word every phone in the room is waiting for goes first, on its own;
+    // the report is bookkeeping and must never stand between the host's tap
+    // and the attendees' screens.
+    await setEventStatus(c.eventId, 'ended')
     const report: EventReport = {
       joined: c.attendeeCount,
       peak: c.attendeeCount,
@@ -1668,8 +1684,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
     const d = cache.get(sessionId)
     if (d) d.report = report
-    await patchSession(sessionId, { report })
-    await setEventStatus(c.eventId, 'ended')
+    await patchSession(sessionId, { report }).catch((err) =>
+      reportError(location.pathname, `event report write failed: ${err instanceof Error ? err.message : String(err)}`)
+    )
     // The room gets its recap link straight away.
     if (d) {
       d.meta.replayUrl = replayUrlFor(c.eventId)
@@ -1691,6 +1708,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     live_voice: { enabled: boolean; languages: string[] }
     session_id: string | null
     updated_at: string
+    banner?: string | null
   }
   function evRowToScheduled(r: EvRow): ScheduledEvent {
     return {
@@ -1702,7 +1720,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       materials: (r.materials || []).map((m) => ({ name: m.name, chars: m.chars })),
       preEventChat: r.pre_event_chat !== false,
       liveVoice: r.live_voice ?? { enabled: true, languages: ALL_LANGS },
-      sessionId: r.session_id ?? undefined
+      sessionId: r.session_id ?? undefined,
+      banner: r.banner ?? undefined
     }
   }
   function eventUrl(id: string): string {
@@ -2131,6 +2150,23 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return { error: `Use a PDF, TXT, MD or CSV file, or paste the text.` }
     },
 
+    readImage: async (dataUrl: string) => {
+      if (!hasChatKey()) return { text: '', error: 'Reading pictures needs an AI key in Settings.' }
+      try {
+        // only a model that can see the picture may write down what it says
+        const out = await aiChatFull(
+          READ_PICTURE,
+          [{ role: 'user', content: [{ type: 'image', dataUrl }, { type: 'text', text: READ_PICTURE_ASK }] }],
+          1500,
+          true
+        )
+        if (!out.vision) return { text: '', error: 'No model that can read pictures is available right now.' }
+        return { text: out.text.trim() }
+      } catch (err) {
+        return { text: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+
     // ---------- visual memory: key frames of the screen ----------
     addSlide: async (sessionId: string, time: number, dataUrl: string) => {
       if (!hasChatKey()) return { text: '' }
@@ -2366,6 +2402,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         void consolidateRecording(id)
         return null
       }
+      // A whole file still in the recorder's fragmented form makes a player
+      // read all of it before the first frame. The parts stream instead: the
+      // first is playing within seconds however long the session ran.
+      if (d.meta.mime === 'video/mp4' && !d.meta.flat) return null
       return store.url(videoPath(id), whereOf(d.meta))
     },
 
@@ -2574,7 +2614,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         audio: Boolean(d.meta.audioOnly),
         captions: d.segments.length
       })
-      await endConf(id)
+      await endConf(id).catch((err) =>
+        reportError(location.pathname, `end of event failed: ${err instanceof Error ? err.message : String(err)}`)
+      )
       if (d.meta.hosted && d.meta.eventId) d.meta.replayUrl = replayUrlFor(d.meta.eventId)
 
       // Flush the tail of the recording and wait for every part to land.
@@ -2607,7 +2649,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return (await loadSession(id))?.meta ?? null
     },
 
-    transcribeChunk: async (id, chunk, offsetSec) => {
+    transcribeChunk: async (id, chunk, offsetSec, mime = 'audio/webm') => {
       if (!hasSttKey()) return { error: 'missing-key' }
       try {
         const bytes = new Uint8Array(chunk)
@@ -2620,7 +2662,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const body = JSON.stringify({
           keys: { openaiApiKey: k.openaiApiKey, groqApiKey: k.groqApiKey },
           audioB64: btoa(bin),
-          mime: 'audio/webm',
+          mime: (mime || 'audio/webm').split(';')[0],
           offsetSec
         })
         // a dropped request is tried again before it counts as a problem
@@ -3150,6 +3192,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         return { error: err instanceof Error ? err.message : String(err) }
       }
     },
+    endEventNow: async (id) => {
+      // the host has tapped End: the room hears it before anything else is
+      // wound down. The room's own state is kept for the report that follows.
+      if (conf && conf.sessionId === id) await setEventStatus(conf.eventId, 'ended')
+    },
     stopConference: async () => {
       if (conf) {
         clearInterval(conf.workTimer)
@@ -3539,6 +3586,28 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('events').delete().eq('id', id)
       if (armedId === id) armedId = null
     },
+    setEventBanner: async (id, dataUrl) => {
+      const eventId = id ?? conf?.eventId ?? armedId
+      if (!eventId) return null
+      let banner: string | null = null
+      if (dataUrl) {
+        const m = /^data:image\/jpeg;base64,(.+)$/.exec(dataUrl)
+        if (!m) return null
+        const bin = atob(m[1])
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        // the same public bucket the live screen goes to; the name keeps it apart
+        const path = `${eventId}-banner.jpg`
+        const { error } = await sb.storage
+          .from('stage')
+          .upload(path, new Blob([bytes], { type: 'image/jpeg' }), { upsert: true, contentType: 'image/jpeg', cacheControl: '60' })
+        if (error) throw new Error(error.message)
+        banner = `${sb.storage.from('stage').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
+      }
+      await sb.from('events').update({ banner, updated_at: new Date().toISOString() }).eq('id', eventId)
+      const { data } = await sb.from('events').select('*').eq('id', eventId).single()
+      return data ? evRowToScheduled(data as EvRow) : null
+    },
     armEvent: async (id: string) => {
       // Online events are always armed — the link works the moment it exists.
       const { data } = await sb.from('events').select('id').eq('id', id).single()
@@ -3767,7 +3836,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         return { error: err instanceof Error ? err.message : String(err) }
       }
     },
-    coachStt: async (chunk, offsetSec) => api.transcribeChunk('__coach__', chunk, offsetSec),
+    coachStt: async (chunk, offsetSec, mime) => api.transcribeChunk('__coach__', chunk, offsetSec, mime),
     coachScore: async (id, segments, durationSec) => {
       if (!hasChatKey()) return { error: 'missing-key' }
       const row = await loadCoach(id)
@@ -3822,8 +3891,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         }
         const system = [
           `You are simulating an audience member (${req.persona}) in a Q&A after this presentation. ${styles[req.difficulty]}`,
-          'When the presenter answers, judge it before your next question, starting a line with exactly one of: "✓ Strong:", "△ Needs work:", "✗ Doesn\'t hold:" followed by one short reason.',
-          'Stay in character. One question at a time. Keep everything tight.',
+          'When the presenter answers, judge it before your next question, starting a line with exactly one of: "✓ Strong:", "△ Needs work:", "✗ Doesn\'t hold:" followed by the reason in one or two sentences: what exactly was missing, vague, wrong, or at odds with their own materials.',
+          'Whenever the verdict is not "Strong", add a line starting with exactly "A strong answer:" and give the answer the presenter should have given, in two or three sentences, drawn from their materials and goal, with the numbers and specifics that were missing. A verdict without the better answer teaches nothing.',
+          'Stay in character. One question at a time. Keep everything tight: the verdict, the strong answer when needed, the next question.',
           coachContext(row.data)
         ].join('\n')
         const history = req.history.slice(-12).map((m) => ({ role: m.role, content: m.content }))
@@ -3838,15 +3908,46 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         })
       }
     },
+    coachAudienceQuestion: async (id, segments, asked) => {
+      if (!hasChatKey()) return { error: 'missing-key' }
+      try {
+        const row = await loadCoach(id)
+        if (!row) return { error: 'Project not found.' }
+        const out = await aiChatFull(
+          AUDIENCE_QUESTION_SYSTEM,
+          [{ role: 'user', content: audienceQuestionUser(coachContext(row.data), segments, asked) }],
+          300,
+          false,
+          true
+        )
+        return parseAudienceQuestion(extractJson(out.text)) ?? {}
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+    coachJudgeAnswer: async (id, persona, question, answer) => {
+      if (!hasChatKey()) return { error: 'missing-key' }
+      try {
+        const row = await loadCoach(id)
+        if (!row) return { error: 'Project not found.' }
+        const out = await aiChatFull(
+          JUDGE_ANSWER_SYSTEM,
+          [{ role: 'user', content: judgeAnswerUser(coachContext(row.data), persona, question, answer) }],
+          600,
+          false,
+          true
+        )
+        return parseVerdict(extractJson(out.text)) ?? {}
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    },
     coachHint: async (id, segments) => {
       if (!hasChatKey() || segments.length < 3) return {}
       try {
         const row = await loadCoach(id)
         if (!row) return {}
-        const system = [
-          'You are a silent presentation coach listening to a live rehearsal. Occasionally whisper ONE short hint (pace, filler words, missing point, energy).',
-          'Return ONLY JSON: {"hint": string | null}. Usually null — only speak when it truly helps. Max 10 words.'
-        ].join('\n')
+        const system = [STUDIO_HINT_SYSTEM, '', `Goal: ${row.data.goal} — audience: ${row.data.audience}.`].join('\n')
         const out = await aiChat(system, [
           { role: 'user', content: transcriptBlock(segments.slice(-20)) }
         ])

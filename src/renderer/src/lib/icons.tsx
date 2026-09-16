@@ -365,3 +365,26 @@ export const IconNotes = (p: IconProps) =>
       <path d="M9 8h6M9 12h6M9 16h4" />
     </>
   )
+
+/** a picture: a frame with a sun and a hill */
+export const IconImage = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="M20.5 15.5 15.5 11l-7 8" />
+    </>
+  )
+
+/** a stills camera */
+export const IconPhoto = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M4 8.5h3l1.5-2.5h7L17 8.5h3v10H4z" />
+      <circle cx="12" cy="13.5" r="3" />
+    </>
+  )

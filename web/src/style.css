@@ -405,3 +405,7 @@ html,body{overscroll-behavior:none}
 .loader-words{font-size:14px;font-weight:500;color:var(--t2);min-height:20px}
 .lw{animation:lw .4s ease}
 @keyframes lw{from{opacity:0;transform:translateY(4px)}}
+
+/* the host's banner where the video would be: the stage tag and the pause label do not apply to a still */
+.stagecard.banner .stagetag,.stagecard.banner .stagepaused{display:none}
+.stagecard.banner img{object-fit:cover}

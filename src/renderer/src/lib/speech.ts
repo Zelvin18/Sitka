@@ -11,6 +11,19 @@
 
 const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
 const CHUNK = 900
+// Where the natural voice comes from: this site on the web; on the desktop
+// the deployed site, when Settings names one, so the same voice speaks there.
+let SPEECH_BASE = IS_WEB ? '' : null
+if (!IS_WEB) {
+  void window.sitka
+    .getSettings()
+    .then((st) => {
+      const base = (st.webAppUrl || '').trim().replace(/\/+$/, '')
+      SPEECH_BASE = /^https?:\/\//.test(base) ? base : null
+    })
+    .catch(() => undefined)
+}
+const hasVoiceServer = (): boolean => SPEECH_BASE !== null
 /** A tenth of a second of silence as a WAV: enough to unlock playback. */
 function silentWav(): string {
   const rate = 8000
@@ -124,8 +137,9 @@ function speakWithBrowser(text: string, lang: string, onEnd: (ok: boolean) => vo
 }
 
 async function fetchSpeech(text: string): Promise<Blob | null> {
+  if (SPEECH_BASE === null) return null
   try {
-    const r = await fetch('/api/speak', {
+    const r = await fetch(`${SPEECH_BASE}/api/speak`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text })
@@ -151,7 +165,7 @@ export function speakText(
   onEnd: (ok: boolean) => void,
   onStart?: () => void
 ): Speaker {
-  if (!IS_WEB) {
+  if (!hasVoiceServer()) {
     onStart?.()
     return speakWithBrowser(text, lang, onEnd)
   }
@@ -234,6 +248,104 @@ export function speakText(
       audio.onerror = null
       audio.removeAttribute('src')
       fallback?.stop()
+    }
+  }
+}
+
+/**
+ * A reading fetched ahead of time, so that when the moment comes it starts at
+ * once. The studio uses it: an audience member's question is prepared the
+ * moment it is written, and plays the instant the presenter takes it.
+ */
+export interface PreparedSpeech {
+  /** play it now; call inside the tap that asked for it */
+  play: (onEnd: (ok: boolean) => void, onStart?: () => void) => Speaker
+  /** true once the natural voice has arrived (false: the browser's voice would be used) */
+  ready: () => boolean
+}
+export function prepareSpeech(text: string, lang: string): PreparedSpeech {
+  const parts = chunks(text)
+  const fetched: Promise<Blob | null>[] = hasVoiceServer() ? parts.map((p) => fetchSpeech(p)) : []
+  let arrived = false
+  if (fetched.length) void fetched[0].then((b) => (arrived = Boolean(b)))
+  return {
+    ready: () => arrived,
+    play: (onEnd, onStart) => {
+      if (fetched.length === 0) {
+        onStart?.()
+        return speakWithBrowser(text, lang, onEnd)
+      }
+      let cancelled = false
+      let fallback: Speaker | null = null
+      let started = false
+      const markStarted = (): void => {
+        if (started) return
+        started = true
+        onStart?.()
+      }
+      if (!SILENT_WAV) SILENT_WAV = silentWav()
+      const audio = new Audio(SILENT_WAV)
+      audio.preload = 'auto'
+      let unlocked = true
+      audio.play().catch(() => {
+        unlocked = false
+      })
+      const playBlob = (blob: Blob): Promise<boolean> =>
+        new Promise<boolean>((resolve) => {
+          const url = URL.createObjectURL(blob)
+          let played = false
+          const finish = (ok: boolean): void => {
+            URL.revokeObjectURL(url)
+            audio.onended = null
+            audio.onerror = null
+            audio.onplaying = null
+            resolve(ok)
+          }
+          audio.onplaying = () => {
+            played = true
+            markStarted()
+          }
+          audio.onended = () => finish(true)
+          audio.onerror = () => finish(played)
+          audio.src = url
+          audio.play().catch(() => finish(false))
+        })
+      const run = async (): Promise<void> => {
+        for (let i = 0; i < fetched.length; i++) {
+          const blob = await fetched[i]
+          if (cancelled) return
+          if (!blob || !unlocked) {
+            if (i === 0) {
+              markStarted()
+              fallback = speakWithBrowser(text, lang, onEnd)
+              return
+            }
+            break
+          }
+          const ok = await playBlob(blob)
+          if (cancelled) return
+          if (!ok) {
+            if (i === 0) {
+              markStarted()
+              fallback = speakWithBrowser(text, lang, onEnd)
+              return
+            }
+            break
+          }
+        }
+        onEnd(true)
+      }
+      void run()
+      return {
+        stop: () => {
+          cancelled = true
+          audio.pause()
+          audio.onended = null
+          audio.onerror = null
+          audio.removeAttribute('src')
+          fallback?.stop()
+        }
+      }
     }
   }
 }

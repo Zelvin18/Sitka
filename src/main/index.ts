@@ -73,15 +73,21 @@ import {
   startCloudWaiting,
   stopCloud,
   syncCloudEvent,
+  cloudEndNow,
+  publishCloudBanner,
   updateCloudFrame
 } from './cloud'
+import { READ_PICTURE, READ_PICTURE_ASK } from '@shared/visionLogic'
 import { randomUUID } from 'crypto'
+import type { TranscriptSegment } from '@shared/types'
 import { extractMaterialFromBuffer, extractMaterialText } from './materials'
 import { joinMaterials } from '@shared/materialsLogic'
 import { foldAttachments } from '@shared/attachLogic'
 import { deleteMemoryObject, loadMemory, rememberSession, updateMemoryObject } from './memory'
 import {
+  audienceQuestion,
   buildBrief,
+  judgeAnswer,
   liveCoachHint,
   practiceContext,
   scoreRehearsal,
@@ -310,6 +316,7 @@ function registerIpc(): void {
   ipcMain.handle('org:create', () => ONLINE_ONLY)
   ipcMain.handle('org:join', () => ONLINE_ONLY)
   ipcMain.handle('org:leave', () => undefined)
+  ipcMain.handle('conference:end-now', (_e, id: string) => cloudEndNow(id))
   ipcMain.handle('org:delete', () => ({ error: 'Organisations are managed on the website.' }))
   ipcMain.handle('org:members', () => [])
   ipcMain.handle('org:spaces', () => [])
@@ -574,13 +581,13 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('coach:stt', async (_e, chunk: ArrayBuffer, offsetSec: number) => {
+  ipcMain.handle('coach:stt', async (_e, chunk: ArrayBuffer, offsetSec: number, mime?: string) => {
     const { openaiApiKey, groqApiKey } = store.getSettings()
     const provider = openaiApiKey ? ('openai' as const) : ('groq' as const)
     const key = openaiApiKey || groqApiKey
     if (!key) return { error: 'missing-key' }
     try {
-      const segments = await transcribeChunk(provider, key, Buffer.from(chunk), offsetSec)
+      const segments = await transcribeChunk(provider, key, Buffer.from(chunk), offsetSec, mime)
       return { segments }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
@@ -654,6 +661,29 @@ function registerIpc(): void {
       }
     }
   )
+
+  ipcMain.handle('coach:audienceQuestion', async (_e, id: string, segments: TranscriptSegment[], asked: string[]) => {
+    if (!hasAiKey()) return { error: 'missing-key' }
+    const project = store.getCoachProject(id)
+    if (!project) return { error: 'Project not found.' }
+    try {
+      const q = await audienceQuestion(aiKeys(), project, segments, asked)
+      return q ?? {}
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('coach:judgeAnswer', async (_e, id: string, persona: string, question: string, answer: string) => {
+    if (!hasAiKey()) return { error: 'missing-key' }
+    const project = store.getCoachProject(id)
+    if (!project) return { error: 'Project not found.' }
+    try {
+      const v = await judgeAnswer(aiKeys(), project, persona, question, answer)
+      return v ?? {}
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  })
 
   ipcMain.handle(
     'coach:hint',
@@ -866,6 +896,17 @@ function registerIpc(): void {
 
   // ---------- visual memory: what was on screen, read by a vision model ----------
 
+  ipcMain.handle('ai:readImage', async (_e, dataUrl: string) => {
+    const keys = aiKeys()
+    if (!keys.anthropicApiKey && !keys.groqApiKey) return { text: '', error: 'Reading pictures needs an AI key in Settings.' }
+    try {
+      const text = await describeImage(keys, dataUrl, READ_PICTURE, READ_PICTURE_ASK, 1500)
+      return { text }
+    } catch (err) {
+      return { text: '', error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('slides:add', async (_e, sessionId: string, time: number, dataUrl: string) => {
     const keys = aiKeys()
     if (!keys.anthropicApiKey && !keys.groqApiKey) return { text: '' }
@@ -1034,6 +1075,19 @@ function registerIpc(): void {
       return event
     }
   )
+
+  ipcMain.handle('events:banner', async (_e, id: string | null, dataUrl: string | null) => {
+    const eventId = id ?? cloudStatus().eventId ?? null
+    if (!eventId) return null
+    const event = store.getEvent(eventId)
+    if (!event) return null
+    if (dataUrl && dataUrl.length < 600_000) event.banner = dataUrl
+    else delete event.banner
+    delete event.bannerUrl
+    store.saveEvent(event)
+    await publishCloudBanner(eventId)
+    return store.getEvent(eventId) ?? event
+  })
 
   ipcMain.handle('events:delete', async (_e, id: string) => {
     const status = conferenceStatus()
@@ -1206,13 +1260,13 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'transcribe:chunk',
-    async (_e, id: string, chunk: ArrayBuffer, offsetSec: number) => {
+    async (_e, id: string, chunk: ArrayBuffer, offsetSec: number, mime?: string) => {
       const { openaiApiKey, groqApiKey } = store.getSettings()
       const provider = openaiApiKey ? ('openai' as const) : ('groq' as const)
       const key = openaiApiKey || groqApiKey
       if (!key) return { error: 'missing-key' }
       try {
-        const segments = await transcribeChunk(provider, key, Buffer.from(chunk), offsetSec)
+        const segments = await transcribeChunk(provider, key, Buffer.from(chunk), offsetSec, mime)
         if (segments.length > 0) {
           store.appendTranscript(id, segments)
           notifySegments(id)

@@ -1,3 +1,4 @@
+import FilePick from './FilePick'
 import React, {
   forwardRef,
   useCallback,
@@ -8,7 +9,7 @@ import React, {
 } from 'react'
 import type { AiStreamEvent, ChatMessage } from '@shared/types'
 import AiText from './AiText'
-import { ATTACH_ACCEPT, MAX_ATTACHMENTS, attachedLine, foldAttachments } from '@shared/attachLogic'
+import { MAX_ATTACHMENTS, attachedLine, foldAttachments } from '@shared/attachLogic'
 import type { ChatAttachment } from '@shared/types'
 import { fileToAttachment, frameToDataUrl } from '../lib/attach'
 import { looksBack, mmss, needsScreen, pickFrames } from '@shared/askLogic'
@@ -97,7 +98,6 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   /** files added with + for the next question */
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [attachBusy, setAttachBusy] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
   const speakerRef = useRef<Speaker | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -220,7 +220,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     [sessionId, live, streaming, getFrame, brain, host, askOverride, attachments]
   )
 
-  const addFiles = useCallback(async (files: FileList | null): Promise<void> => {
+  const addFiles = useCallback(async (files: FileList | File[] | null): Promise<void> => {
     if (!files || files.length === 0) return
     setError(null)
     for (const f of Array.from(files)) {
@@ -237,7 +237,6 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
       }
     }
     setAttachBusy(null)
-    if (fileRef.current) fileRef.current.value = ''
     // on a phone the keyboard waits for a tap on the box
     if (window.innerWidth >= 860) inputRef.current?.focus()
   }, [attachments.length])
@@ -517,24 +516,20 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
           </div>
         )}
         <div className="chat-input-box">
-          <input
-            ref={fileRef}
-            type="file"
-            accept={ATTACH_ACCEPT}
-            multiple
-            hidden
-            onChange={(e) => void addFiles(e.target.files)}
-          />
-          <button
-            type="button"
-            className="attach-btn"
-            title="Add a picture or a document to your question"
-            aria-label="Attach a file"
-            disabled={streaming || Boolean(attachBusy)}
-            onClick={() => fileRef.current?.click()}
-          >
-            <IconAttach size={16} strokeWidth={2.2} />
-          </button>
+          <FilePick onFiles={(files) => void addFiles(files)} hint="It travels with your question.">
+            {(open) => (
+              <button
+                type="button"
+                className="attach-btn"
+                title="Add a picture or a document to your question"
+                aria-label="Attach a file"
+                disabled={streaming || Boolean(attachBusy)}
+                onClick={open}
+              >
+                <IconAttach size={16} strokeWidth={2.2} />
+              </button>
+            )}
+          </FilePick>
           <textarea
             ref={inputRef}
             className="chat-input"

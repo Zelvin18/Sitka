@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import type { ScheduledEvent } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
+import FilePick from './FilePick'
+import { nameForPaste, readFileToText } from '../lib/readFile'
+import { shrinkImageFile } from '../lib/attach'
 import { IconBroadcast, IconCalendar, IconNotes, IconPlus } from '../lib/icons'
 
 
@@ -66,7 +69,8 @@ export default function EventsView({
   const [qr, setQr] = useState<{ url: string; data: string | null } | null>(null)
   const [inlineQr, setInlineQr] = useState<string | null>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteName, setPasteName] = useState('')
+  const [readingFile, setReadingFile] = useState<string | null>(null)
+  const [bannerBusy, setBannerBusy] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [pendingDelete, setPendingDelete] = useState<ScheduledEvent | null>(null)
   const [agendaDraft, setAgendaDraft] = useState('')
@@ -261,24 +265,34 @@ export default function EventsView({
                     <button
                       className="btn btn-ghost btn-sm"
                       onClick={() => {
-                        setPasteName('')
                         setPasteText('')
                         setPasteOpen(true)
                       }}
                     >
                       Paste
                     </button>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() =>
-                        void window.sitka.addMaterialFile(selected.id).then((r) => {
-                          if (r.error) setError(r.error)
-                          else void refresh()
-                        })
-                      }
+                    <FilePick
+                      hint="Slides, an agenda, bios, a photo of a page — every attendee's companion reads it."
+                      onFiles={async (files) => {
+                        for (const f of files) {
+                          setReadingFile(f.type.startsWith('image/') ? 'the picture' : f.name)
+                          const res = await readFileToText(f)
+                          if ('error' in res) setError(res.error)
+                          else {
+                            const r = await window.sitka.addMaterialText(selected.id, res.name, res.text)
+                            if (r.error) setError(r.error)
+                          }
+                        }
+                        setReadingFile(null)
+                        void refresh()
+                      }}
                     >
-                      <IconPlus size={12} strokeWidth={2.4} /> Add file
-                    </button>
+                      {(open) => (
+                        <button className="btn btn-sm" onClick={open} disabled={Boolean(readingFile)}>
+                          <IconPlus size={12} strokeWidth={2.4} /> {readingFile ? `Reading ${readingFile}…` : 'Add'}
+                        </button>
+                      )}
+                    </FilePick>
                   </div>
                 </div>
                 <p className="field-hint" style={{ marginBottom: materials.length > 0 ? 10 : 0 }}>
@@ -305,6 +319,50 @@ export default function EventsView({
                     </button>
                   </div>
                 ))}
+              </div>
+
+              <div className="evd-card">
+                <div className="evd-card-head">
+                  <span>Banner</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {selected.banner && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void window.sitka.setEventBanner(selected.id, null).then(() => refresh())}
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <FilePick
+                      documents={false}
+                      multiple={false}
+                      onFiles={(files) => {
+                        const f = files[0]
+                        if (!f) return
+                        setBannerBusy(true)
+                        void shrinkImageFile(f, 1280, 0.8)
+                          .then((url) => window.sitka.setEventBanner(selected.id, url))
+                          .then(() => refresh())
+                          .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+                          .finally(() => setBannerBusy(false))
+                      }}
+                    >
+                      {(open) => (
+                        <button className="btn btn-sm" onClick={open} disabled={bannerBusy}>
+                          <IconPlus size={12} strokeWidth={2.4} /> {bannerBusy ? 'Saving…' : selected.banner ? 'Change' : 'Add'}
+                        </button>
+                      )}
+                    </FilePick>
+                  </div>
+                </div>
+                {selected.banner ? (
+                  <img src={selected.banner} alt="" className="evd-banner" />
+                ) : (
+                  <p className="field-hint" style={{ margin: 0 }}>
+                    Presenting by voice alone? A poster, a logo or a photo of the speaker, shown on every
+                    attendee's phone where the video would be. Shared screens take over the moment you share one.
+                  </p>
+                )}
               </div>
 
               <div className="evd-card">
@@ -542,23 +600,27 @@ export default function EventsView({
           <div className="dialog-overlay" onMouseDown={() => setPasteOpen(false)}>
             <div className="dialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title">Paste event material</div>
-              <div className="field">
-                <label className="field-label">Name</label>
-                <input
-                  className="input"
-                  value={pasteName}
-                  placeholder="A name for this material"
-                  onChange={(e) => setPasteName(e.target.value)}
-                />
+              <div className="dialog-message" style={{ marginBottom: 10 }}>
+                It is added the moment it lands, named from its first line.
               </div>
               <div className="field">
-                <label className="field-label">Content</label>
                 <textarea
                   className="textarea"
                   rows={8}
+                  autoFocus
                   value={pasteText}
-                  placeholder="Paste slides text, agenda, brief…"
+                  placeholder="Paste here — slides text, an agenda, a brief"
                   onChange={(e) => setPasteText(e.target.value)}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text/plain')
+                    if (!text.trim()) return
+                    e.preventDefault()
+                    void window.sitka.addMaterialText(selected.id, nameForPaste(text), text).then((r) => {
+                      if (r.error) setError(r.error)
+                      setPasteOpen(false)
+                      void refresh()
+                    })
+                  }}
                 />
               </div>
               <div className="dialog-actions">
@@ -570,7 +632,7 @@ export default function EventsView({
                   disabled={!pasteText.trim()}
                   onClick={() =>
                     void window.sitka
-                      .addMaterialText(selected.id, pasteName, pasteText)
+                      .addMaterialText(selected.id, nameForPaste(pasteText), pasteText)
                       .then((r) => {
                         if (r.error) setError(r.error)
                         setPasteOpen(false)

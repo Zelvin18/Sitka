@@ -2,6 +2,7 @@ import { IconMic } from '../lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { RoomMessage, SessionData, SessionMaterial, SessionMeta, Slide } from '@shared/types'
 import MaterialsPanel from './MaterialsPanel'
+import FilePick from './FilePick'
 import ChatPane from './ChatPane'
 import TranscriptPane from './TranscriptPane'
 import NotesPane from './NotesPane'
@@ -687,23 +688,24 @@ export default function SessionView({
                     </>
                   )}
                   {!meta.readOnly && (
-                    <label className="banner-set" title="A picture shown here instead of video">
-                      {meta.banner ? 'Change banner' : 'Add banner'}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={(e) => {
-                          const f = e.target.files?.[0]
-                          e.target.value = ''
-                          if (!f) return
-                          void shrinkImageFile(f, 1280, 0.8).then(async (url) => {
-                            const m = await window.sitka.setSessionBanner(meta.id, url)
-                            if (m) setData((d) => (d ? { ...d, meta: m } : d))
-                          })
-                        }}
-                      />
-                    </label>
+                    <FilePick
+                      documents={false}
+                      multiple={false}
+                      onFiles={(files) => {
+                        const f = files[0]
+                        if (!f) return
+                        void shrinkImageFile(f, 1280, 0.8).then(async (url) => {
+                          const m = await window.sitka.setSessionBanner(meta.id, url)
+                          if (m) setData((d) => (d ? { ...d, meta: m } : d))
+                        })
+                      }}
+                    >
+                      {(open) => (
+                        <button type="button" className="banner-set" title="A picture shown here instead of video" onClick={open}>
+                          {meta.banner ? 'Change banner' : 'Add banner'}
+                        </button>
+                      )}
+                    </FilePick>
                   )}
                   {!meta.readOnly && meta.banner && (
                     <button

@@ -7,7 +7,8 @@ import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { installFocusGuard } from '../../src/shared/focusGuard'
-import { playProgressively } from '../../src/shared/progressive'
+import { canStream, mediaType, playProgressively, sniffWebmMime } from '../../src/shared/progressive'
+import { isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore } from './store'
 
 installFocusGuard()
@@ -285,6 +286,56 @@ async function preview(): Promise<void> {
     previewing = false
   }
 }
+/** one range of a file; the server must honour it, which both stores do */
+async function fetchRange(url: string, from: number, to: number): Promise<ArrayBuffer> {
+  const r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` } })
+  if (r.status !== 206) throw new Error(`range refused (${r.status})`)
+  return r.arrayBuffer()
+}
+/** the size of a file the store did not report, from a HEAD */
+async function sizeOf(url: string): Promise<number | null> {
+  try {
+    const r = await fetch(url, { method: 'HEAD' })
+    const n = Number(r.headers.get('content-length'))
+    return r.ok && Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+const SLICE = 8 * 1024 * 1024
+/**
+ * A whole file in the recorder's fragmented form, streamed in slices. False
+ * when the file is better played natively (its index is already first), when
+ * this browser cannot stream, or when the store refuses ranges; nothing has
+ * been attached to the element then.
+ */
+async function streamWhole(v: HTMLVideoElement, url: string, knownSize?: number): Promise<boolean> {
+  try {
+    const size = knownSize ?? (await sizeOf(url))
+    if (!size || size < 2 * 1024 * 1024) return false
+    const head = new Uint8Array(await fetchRange(url, 0, 262143))
+    const kind = mediaType(head)
+    // a plain MP4 (index first) starts and seeks fastest on its own
+    const fragmented = kind === 'video/mp4' ? isFragmentedMp4(head) : kind === 'video/webm'
+    if (!fragmented) return false
+    const mime = sniffWebmMime(head)
+    if (!mime || !canStream(mime)) return false
+    const slices = Math.ceil(size / SLICE)
+    const fetchSlice = (i: number): Promise<ArrayBuffer> => fetchRange(url, i * SLICE, Math.min(size, (i + 1) * SLICE) - 1)
+    const ok = await playProgressively(v, slices, fetchSlice, {
+      durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
+      lookahead: 3,
+      onProgress: (n, total) => {
+        if (n < total) el('playsub').textContent = `Ready · ${Math.round((n / total) * 100)}% in`
+        else el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+      }
+    })
+    return ok
+  } catch (err) {
+    console.warn('[recap] could not stream the whole file in slices', err)
+    return false
+  }
+}
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
 let candidateAt = 0
@@ -318,16 +369,25 @@ function loadMedia(): Promise<boolean> {
         // One question answers all of it: which store holds this recording,
         // whether it was joined into a single file, and the link to each part.
         const found = await store.media(data.owner, data.sessionId)
-        // One whole file first, when the session has made one: played natively
-        // over range requests, which every phone does and which starts fastest.
+        // One whole file first, when the session has made one.
+        //
+        // The recorder writes its file in fragments with an empty index, and
+        // a player handed such a file whole has to read all of it before it
+        // shows a frame: an hour of talk was a minute and a half of waiting.
+        // So a fragmented file is not handed over whole. It is read in slices
+        // of eight megabytes through the same streaming engine the parts use,
+        // and the first slice is playing within seconds however long the
+        // event ran; the rest arrive behind it. Only a file already rewritten
+        // with its index first (which seeks best) is played natively.
         if (found.whole) {
-          v.src = found.whole
+          const streamed = await streamWhole(v, found.whole, found.wholeSize)
+          if (!streamed) v.src = found.whole
           v.hidden = false
           mediaReady = true
           el('stage').classList.add('hasvideo')
           el('playtext').textContent = 'Play'
-          el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
-          console.info('[recap] whole file')
+          if (!streamed) el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+          console.info('[recap] whole file', streamed ? 'streamed in slices' : 'played natively')
           void preview()
           return true
         }

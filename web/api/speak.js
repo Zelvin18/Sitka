@@ -234,6 +234,14 @@ async function synthesize(text) {
 }
 
 export default async function handler(req, res) {
+  // the desktop app asks for the same voice from its own window
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
   // GET /api/speak — a check you can open in a browser: which voice answers.
   if (req.method === 'GET') {
     const out = await synthesize('Sitka is ready.')

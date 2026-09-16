@@ -8,6 +8,17 @@ import type {
 } from '@shared/types'
 import * as store from './store'
 import { completeText, extractJson, transcriptBlock, type AiKeys } from './ai'
+import {
+  AUDIENCE_QUESTION_SYSTEM,
+  JUDGE_ANSWER_SYSTEM,
+  STUDIO_HINT_SYSTEM,
+  audienceQuestionUser,
+  judgeAnswerUser,
+  parseAudienceQuestion,
+  parseVerdict,
+  type AnswerVerdict,
+  type AudienceQuestion
+} from '@shared/studioLogic'
 
 function projectContext(project: CoachProject): string {
   const materials = store.getCoachMaterialsText(project.id)
@@ -122,8 +133,9 @@ export function simSystemPrompt(
     DIFFICULTY_STYLE[difficulty],
     'Rules:',
     '- Ask ONE question at a time, grounded in the presenter\'s materials and goal. Prefer the questions that would genuinely be asked by this persona — including the uncomfortable ones.',
-    '- After each of the presenter\'s answers: give a one-line verdict — start it with exactly "✓ Strong:", "△ Needs work:" or "✗ Doesn\'t hold:" — plus one short reason. Then either follow up (if the answer was weak) or move to the next question.',
-    '- Keep every message short: the verdict line and the next question. No lectures, no summaries unless asked.',
+    '- After each of the presenter\'s answers: give a verdict, starting with exactly "✓ Strong:", "△ Needs work:" or "✗ Doesn\'t hold:", plus the reason in one or two sentences: what exactly was missing, vague, wrong, or at odds with their own materials.',
+    '- Whenever the verdict is not "Strong", add a line starting with exactly "A strong answer:" and give the answer the presenter should have given, in two or three sentences, drawn from their materials and goal, with the numbers and specifics that were missing. A verdict without the better answer teaches nothing. Then either follow up (if the answer was weak) or move to the next question.',
+    '- Keep every message short: the verdict, the strong answer when needed, and the next question. No lectures, no summaries unless asked.',
     '- If the presenter says something factually at odds with their own materials, catch it.',
     '- When the presenter says they want to stop or asks how they did, break character once and give a 3-line debrief: strongest answer, weakest answer, and the one thing to prepare better.',
     '',
@@ -145,12 +157,7 @@ export async function liveCoachHint(
   if (segments.length < 4) return null
   const lastStart = segments[segments.length - 1].start
   const recent = segments.filter((s) => s.start >= lastStart - 150)
-  const system = [
-    'You are silently observing a LIVE practice presentation. You may send the presenter ONE short coaching whisper — or stay silent.',
-    'Whisper ONLY if clearly useful right now: pacing (rushing or dragging), filler words piling up, rambling away from the planned structure, skipping or overrunning a planned section, or burying the key message.',
-    'One short imperative sentence, glanceable mid-presentation. Most checks should return null — silence is the default.',
-    'Return ONLY JSON: {"hint": string | null}'
-  ].join('\n')
+  const system = STUDIO_HINT_SYSTEM
   const user = [
     `Goal: ${project.goal} — audience: ${project.audience}.`,
     project.brief
@@ -166,6 +173,29 @@ export async function liveCoachHint(
   const parsed = extractJson<{ hint?: string | null }>(text)
   const hint = parsed?.hint
   return typeof hint === 'string' && hint.trim().length > 0 ? hint.trim() : null
+}
+
+/** The studio's audience: someone raises a hand with a question about what was just said. */
+export async function audienceQuestion(
+  keys: AiKeys,
+  project: CoachProject,
+  segments: TranscriptSegment[],
+  asked: string[]
+): Promise<AudienceQuestion | null> {
+  const text = await completeText(keys, AUDIENCE_QUESTION_SYSTEM, audienceQuestionUser(projectContext(project), segments, asked))
+  return parseAudienceQuestion(extractJson(text))
+}
+
+/** The studio's audience judges the spoken answer and says what a strong one would have been. */
+export async function judgeAnswer(
+  keys: AiKeys,
+  project: CoachProject,
+  persona: string,
+  question: string,
+  answer: string
+): Promise<AnswerVerdict | null> {
+  const text = await completeText(keys, JUDGE_ANSWER_SYSTEM, judgeAnswerUser(projectContext(project), persona, question, answer))
+  return parseVerdict(extractJson(text))
 }
 
 /** Compact practice memory for the live Co-Pilot when a project is linked to an event. */

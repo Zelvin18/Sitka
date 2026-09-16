@@ -162,11 +162,14 @@ const api = {
   transcribeChunk: (
     id: string,
     chunk: ArrayBuffer,
-    offsetSec: number
+    offsetSec: number,
+    mime?: string
   ): Promise<TranscribeResult> =>
-    ipcRenderer.invoke('transcribe:chunk', id, chunk, offsetSec),
+    ipcRenderer.invoke('transcribe:chunk', id, chunk, offsetSec, mime),
 
   askAi: (req: AskRequest): Promise<void> => ipcRenderer.invoke('ai:ask', req),
+  /** a picture of a document (slide, page, whiteboard) read into text by the vision model */
+  readImage: (dataUrl: string): Promise<{ text: string; error?: string }> => ipcRenderer.invoke('ai:readImage', dataUrl),
 
   // ---------- session materials: slides, notes, readings ----------
   listSessionMaterials: (sessionId: string): Promise<SessionMaterial[]> =>
@@ -223,6 +226,8 @@ const api = {
   startConference: (sessionId: string): Promise<{ url?: string; error?: string }> =>
     ipcRenderer.invoke('conference:start', sessionId),
   stopConference: (): Promise<void> => ipcRenderer.invoke('conference:stop'),
+  /** hosted sessions: the room is told the event is over at once, before the recording is wound down */
+  endEventNow: (id: string): Promise<void> => ipcRenderer.invoke('conference:end-now', id),
   /** live video to attendees — served by the web app; the desktop host uses stage frames */
   startVideoBroadcast: async (_stream: unknown): Promise<void> => undefined,
   stopVideoBroadcast: async (): Promise<void> => undefined,
@@ -311,8 +316,8 @@ const api = {
     ipcRenderer.invoke('coach:removeMaterial', id, index),
   coachBrief: (id: string): Promise<{ project?: CoachProject; error?: string }> =>
     ipcRenderer.invoke('coach:brief', id),
-  coachStt: (chunk: ArrayBuffer, offsetSec: number): Promise<TranscribeResult> =>
-    ipcRenderer.invoke('coach:stt', chunk, offsetSec),
+  coachStt: (chunk: ArrayBuffer, offsetSec: number, mime?: string): Promise<TranscribeResult> =>
+    ipcRenderer.invoke('coach:stt', chunk, offsetSec, mime),
   coachScore: (
     id: string,
     segments: TranscriptSegment[],
@@ -329,6 +334,17 @@ const api = {
   }): Promise<void> => ipcRenderer.invoke('coach:simAsk', req),
   coachHint: (id: string, segments: TranscriptSegment[]): Promise<{ hint?: string }> =>
     ipcRenderer.invoke('coach:hint', id, segments),
+  /** the studio's audience: someone raises a hand with a question about what was just said */
+  coachAudienceQuestion: (id: string, segments: TranscriptSegment[], asked: string[]): Promise<{ persona?: string; question?: string; error?: string }> =>
+    ipcRenderer.invoke('coach:audienceQuestion', id, segments, asked),
+  /** the studio's audience judges the spoken answer and says what a strong one would have been */
+  coachJudgeAnswer: (
+    id: string,
+    persona: string,
+    question: string,
+    answer: string
+  ): Promise<{ verdict?: 'strong' | 'needs-work' | 'weak'; reason?: string; strongAnswer?: string; spoken?: string; error?: string }> =>
+    ipcRenderer.invoke('coach:judgeAnswer', id, persona, question, answer),
   coachGetSim: (id: string): Promise<ChatMessage[]> => ipcRenderer.invoke('coach:getSim', id),
   coachSaveSim: (id: string, chat: ChatMessage[]): Promise<void> =>
     ipcRenderer.invoke('coach:saveSim', id, chat),
@@ -354,6 +370,9 @@ const api = {
     }
   ): Promise<ScheduledEvent | null> => ipcRenderer.invoke('events:update', id, patch),
   deleteEvent: (id: string): Promise<void> => ipcRenderer.invoke('events:delete', id),
+  /** the event's banner (a JPEG data URL, or null to remove); id null = the event being hosted right now */
+  setEventBanner: (id: string | null, dataUrl: string | null): Promise<ScheduledEvent | null> =>
+    ipcRenderer.invoke('events:banner', id, dataUrl),
   armEvent: (id: string): Promise<{ url?: string; error?: string }> =>
     ipcRenderer.invoke('events:arm', id),
   addMaterialFile: (

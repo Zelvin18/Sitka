@@ -90,10 +90,44 @@ function eventRow(event: ScheduledEvent, status: string, sessionId: string | nul
     agenda: event.agenda ?? [],
     pre_event_chat: event.preEventChat !== false,
     materials_present: store.getMaterialsText(event.id) !== null,
+    // the words themselves as well: attendees' questions are answered on the
+    // server from them, before the event and whenever this app is away
+    materials_text: store.getMaterialsText(event.id),
     live_voice: event.liveVoice ?? { enabled: true, languages: LIVE_VOICE_LANGUAGES },
     session_id: sessionId,
+    banner: event.bannerUrl ?? null,
     updated_at: new Date().toISOString()
   }
+}
+
+/**
+ * The event's banner, published where attendees' phones can show it. Done
+ * when the host chooses one and again when the event is armed, so a banner
+ * chosen before the cloud was reachable still gets there.
+ */
+export async function publishCloudBanner(eventId: string): Promise<void> {
+  if (!cloud || cloud.eventId !== eventId) return
+  const event = store.getEvent(eventId)
+  if (!event) return
+  const client = cloud.client
+  const path = `${eventId}-banner.jpg`
+  if (event.banner && !event.bannerUrl) {
+    const m = /^data:image\/jpeg;base64,(.+)$/.exec(event.banner)
+    if (m) {
+      const { error } = await client.storage
+        .from('stage')
+        .upload(path, Buffer.from(m[1], 'base64'), { upsert: true, contentType: 'image/jpeg', cacheControl: '60' })
+      if (!error) {
+        event.bannerUrl = `${client.storage.from('stage').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
+        store.saveEvent(event)
+      }
+    }
+  }
+  await client
+    .from('events')
+    .update({ banner: event.bannerUrl ?? null, updated_at: new Date().toISOString() })
+    .eq('id', eventId)
+    .then(() => undefined, () => undefined)
 }
 
 /** Publish (or re-publish) an event as waiting — the QR/link is live from now on. */
@@ -162,6 +196,7 @@ export function syncCloudEvent(eventId: string): void {
     .from('events')
     .upsert(eventRow(event, cloud.sessionId ? 'live' : 'waiting', cloud.sessionId))
     .then(() => undefined, () => undefined)
+    .then(() => (event.banner && !event.bannerUrl ? publishCloudBanner(eventId) : undefined))
 }
 
 // ---------- live push ----------
@@ -412,9 +447,29 @@ async function reviewCloudQuestion(row: QuestionRow): Promise<void> {
 
 // ---------- the poll loop (asks, questions, stats) ----------
 
+/** The host has tapped End: the room hears it at once, before the recording is wound down. */
+export async function cloudEndNow(sessionId: string): Promise<void> {
+  if (!cloud || cloud.sessionId !== sessionId) return
+  await cloud.client
+    .from('events')
+    .update({ status: 'ended', updated_at: new Date().toISOString() })
+    .eq('id', cloud.eventId)
+    .then(() => undefined, () => undefined)
+}
+
+let heartbeatTicks = 0
 async function pollCloud(): Promise<void> {
   if (!cloud) return
   const state = cloud
+  // the heartbeat, every fifth poll: attendees' phones watch it and treat a
+  // host silent for minutes as gone
+  if (heartbeatTicks++ % 5 === 0) {
+    void state.client
+      .from('events')
+      .update({ host_seen: new Date().toISOString() })
+      .eq('id', state.eventId)
+      .then(() => undefined, () => undefined)
+  }
   try {
     // pending work
     const [{ data: asks }, { data: qs }] = await Promise.all([

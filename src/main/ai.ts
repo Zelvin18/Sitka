@@ -521,7 +521,13 @@ export async function completeText(keys: AiKeys, system: string, user: string): 
  * Read a screen frame with a vision model. Returns '' when nothing informative
  * is on screen or when no vision-capable model is available.
  */
-export async function describeImage(keys: AiKeys, dataUrl: string): Promise<string> {
+export async function describeImage(
+  keys: AiKeys,
+  dataUrl: string,
+  system: string = DESCRIBE_SCREEN,
+  ask: string = DESCRIBE_ASK,
+  maxTokens = 600
+): Promise<string> {
   const frame = parseDataUrl(dataUrl)
   if (!frame) return ''
   let out = ''
@@ -529,8 +535,8 @@ export async function describeImage(keys: AiKeys, dataUrl: string): Promise<stri
     const client = new Anthropic({ apiKey: keys.anthropicApiKey })
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 600,
-      system: DESCRIBE_SCREEN,
+      max_tokens: maxTokens,
+      system,
       messages: [
         {
           role: 'user',
@@ -543,7 +549,7 @@ export async function describeImage(keys: AiKeys, dataUrl: string): Promise<stri
                 data: frame.data
               }
             },
-            { type: 'text', text: DESCRIBE_ASK }
+            { type: 'text', text: ask }
           ]
         }
       ]
@@ -558,12 +564,12 @@ export async function describeImage(keys: AiKeys, dataUrl: string): Promise<stri
     out = await groqChat(
       keys.groqApiKey,
       [
-        { role: 'system', content: DESCRIBE_SCREEN },
+        { role: 'system', content: system },
         {
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: dataUrl } },
-            { type: 'text', text: DESCRIBE_ASK }
+            { type: 'text', text: ask }
           ]
         }
       ],
@@ -849,13 +855,16 @@ export async function transcribeChunk(
   provider: SttProvider,
   apiKey: string,
   audio: Buffer,
-  offsetSec: number
+  offsetSec: number,
+  mime = 'audio/webm'
 ): Promise<TranscriptSegment[]> {
+  // the service reads the container from the file name
+  const ext = /mp4|m4a|aac/i.test(mime) ? 'mp4' : /ogg/i.test(mime) ? 'ogg' : /wav/i.test(mime) ? 'wav' : 'webm'
   const form = new FormData()
   form.append(
     'file',
-    new Blob([new Uint8Array(audio)], { type: 'audio/webm' }),
-    'chunk.webm'
+    new Blob([new Uint8Array(audio)], { type: mime.split(';')[0] }),
+    `chunk.${ext}`
   )
   form.append('model', provider === 'groq' ? GROQ_STT_MODEL : 'whisper-1')
   form.append('response_format', 'verbose_json')

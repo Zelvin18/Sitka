@@ -40,6 +40,8 @@ import {
   Mark
 } from '../lib/icons'
 import { formatTime } from '../lib/format'
+import { pickAudioMimeType } from '../lib/audio'
+import FilePick from './FilePick'
 import {
   clamp,
   readSession,
@@ -169,10 +171,6 @@ function pickMimeType(): string {
     'video/webm;codecs=vp8,opus',
     'video/webm'
   ]
-  return candidates.find((c) => MediaRecorder.isTypeSupported(c)) ?? ''
-}
-function pickAudioMimeType(): string {
-  const candidates = ['audio/mp4;codecs="mp4a.40.2"', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
   return candidates.find((c) => MediaRecorder.isTypeSupported(c)) ?? ''
 }
 
@@ -1082,7 +1080,7 @@ export default function LiveSession({
     const id = sessionIdRef.current
     if (!id || blob.size < MIN_AUDIO_BYTES) return
     const buf = await blob.arrayBuffer()
-    const result = await window.sitka.transcribeChunk(id, buf, offsetSec)
+    const result = await window.sitka.transcribeChunk(id, buf, offsetSec, blob.type || 'audio/webm')
     if (result.error) {
       if (result.error !== 'missing-key') setSttError(result.error)
       return
@@ -1098,7 +1096,11 @@ export default function LiveSession({
   const startSttRecorder = useCallback((): void => {
     const stream = sttStreamRef.current
     if (!stream || stream.getAudioTracks().length === 0) return
-    const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+    // whichever container this browser can write: Opus in WebM on most, AAC
+    // in MP4 on iPhones and iPads, which cannot write WebM at all
+    const mime = pickAudioMimeType()
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+    const container = (rec.mimeType || mime || 'audio/webm').split(';')[0]
     const chunkStart = Date.now()
     sttChunkStartRef.current = chunkStart
     // The recorder's own timeslice drives the rotation. A JavaScript timer is
@@ -1124,7 +1126,7 @@ export default function LiveSession({
       silentChunksRef.current = 0
       setNoSound('')
       void transcribeBlob(
-        new Blob(parts, { type: 'audio/webm' }),
+        new Blob(parts, { type: container }),
         (chunkStart - sessionStartRef.current) / 1000
       )
     }
@@ -1292,29 +1294,56 @@ export default function LiveSession({
       setAudioOnlyRec(captureMode === 'audio')
 
       // Mix desktop audio + mic into one track.
+      //
+      // A phone's browser starts an AudioContext silent when it was not made
+      // inside a tap, and the microphone permission prompt sits between the tap
+      // and this point. Sound routed through a silent context is silence: the
+      // recording had nothing in it and nothing reached the captions. So when
+      // there is a single source of sound (a microphone session, a camera
+      // session) its track is used as it is, and the context only listens for
+      // the level meter. Mixing happens only when a screen's sound and the
+      // microphone both exist.
       const audioCtx = new AudioContext()
       audioCtxRef.current = audioCtx
+      const keepAwake = (): void => {
+        if (audioCtx.state !== 'running' && audioCtx.state !== 'closed') void audioCtx.resume().catch(() => undefined)
+      }
+      keepAwake()
+      audioCtx.onstatechange = keepAwake
       const dest = audioCtx.createMediaStreamDestination()
       destRef.current = dest
+      const audioSources = [desktopStream, micStream].filter(
+        (st): st is MediaStream => !!st && st.getAudioTracks().length > 0
+      )
       let audioInputs = 0
-      for (const s of [desktopStream, micStream]) {
-        if (s && s.getAudioTracks().length > 0) {
-          audioCtx.createMediaStreamSource(new MediaStream(s.getAudioTracks())).connect(dest)
-          audioInputs++
-        }
+      for (const st of audioSources) {
+        audioCtx.createMediaStreamSource(new MediaStream(st.getAudioTracks())).connect(dest)
+        audioInputs++
       }
+      const soundStream: MediaStream | null =
+        audioSources.length === 1 && captureMode !== 'screen'
+          ? new MediaStream(audioSources[0].getAudioTracks())
+          : audioInputs > 0
+            ? dest.stream
+            : null
       // The level meter: the loudest moment of each caption chunk is kept, so
       // a chunk with nothing in it is never sent to be transcribed.
       chunkPeakRef.current = 0
       silentChunksRef.current = 0
       setNoSound(audioInputs === 0 ? 'none' : '')
-      if (audioInputs > 0) {
+      if (soundStream) {
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 2048
-        audioCtx.createMediaStreamSource(dest.stream).connect(analyser)
+        audioCtx.createMediaStreamSource(soundStream).connect(analyser)
         const buf = new Float32Array(analyser.fftSize)
         if (levelTimerRef.current) clearInterval(levelTimerRef.current)
         levelTimerRef.current = window.setInterval(() => {
+          // a context that is not running hears nothing: the gate stays open
+          // rather than throwing away speech it could not measure
+          if (audioCtx.state !== 'running') {
+            chunkPeakRef.current = 1
+            return
+          }
           analyser.getFloatTimeDomainData(buf)
           let sum = 0
           for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
@@ -1324,7 +1353,7 @@ export default function LiveSession({
       }
 
       const recordTracks: MediaStreamTrack[] = [...(desktopStream?.getVideoTracks() ?? [])]
-      if (audioInputs > 0) recordTracks.push(...dest.stream.getAudioTracks())
+      if (soundStream) recordTracks.push(...soundStream.getAudioTracks())
       const recordStream = new MediaStream(recordTracks)
 
       // The preview <video> only mounts once phase becomes 'recording'; stash
@@ -1352,8 +1381,8 @@ export default function LiveSession({
       recorder.start(VIDEO_CHUNK_MS)
       recorderRef.current = recorder
 
-      if (audioInputs > 0 && hasSttKey) {
-        sttStreamRef.current = dest.stream
+      if (soundStream && hasSttKey) {
+        sttStreamRef.current = soundStream
         startSttRecorder()
       }
 
@@ -1373,6 +1402,8 @@ export default function LiveSession({
       onSessionCreated(meta)
       if (captureMode === 'audio' && bannerRef.current) {
         void window.sitka.setSessionBanner(meta.id, bannerRef.current)
+        // the room sees it too, where the video would be
+        if (hosting) void window.sitka.setEventBanner(null, bannerRef.current).catch(() => undefined)
       }
 
       // Hosted events broadcast immediately — the QR is the first thing shown.
@@ -1414,6 +1445,8 @@ export default function LiveSession({
     stoppingRef.current = true
     setPhase('stopping')
     void window.sitka.setRecordingState(null)
+    // the room is told first: attendees' phones must not wait on the recording
+    if (hosting) void window.sitka.endEventNow(id).catch(() => undefined)
 
     if (sttTimerRef.current) clearInterval(sttTimerRef.current)
     if (clockTimerRef.current) clearInterval(clockTimerRef.current)
@@ -1464,7 +1497,7 @@ export default function LiveSession({
       report?.(location.pathname, 'finalize failed: ' + (err instanceof Error ? err.message : String(err)))
     }
     onFinished(id)
-  }, [onFinished])
+  }, [onFinished, hosting])
 
   const seekTranscript = useCallback((seconds: number): void => {
     const rows = document.querySelectorAll<HTMLElement>('[data-seg-start]')
@@ -2142,20 +2175,20 @@ export default function LiveSession({
                           <div className="banner-pick-title">Banner for a listen-only session</div>
                           <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be.</div>
                         </div>
-                        <label className="btn btn-ghost btn-sm">
-                          Add picture
-                          <input
-                            type="file"
-                            accept="image/*"
-                            hidden
-                            onChange={(e) => {
-                              const f = e.target.files?.[0]
-                              if (!f) return
-                              void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
-                              e.target.value = ''
-                            }}
-                          />
-                        </label>
+                        <FilePick
+                          documents={false}
+                          multiple={false}
+                          onFiles={(files) => {
+                            const f = files[0]
+                            if (f) void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
+                          }}
+                        >
+                          {(open) => (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={open}>
+                              Add picture
+                            </button>
+                          )}
+                        </FilePick>
                       </>
                     )}
                   </div>

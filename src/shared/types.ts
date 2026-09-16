@@ -262,6 +262,10 @@ export interface ScheduledEvent {
   liveVoice?: { enabled: boolean; languages: string[] }
   /** session recorded for this event (set when it goes live) */
   sessionId?: string
+  /** a picture shown on attendees' phones where the video would be, for a voice-only event (a link, or a data URL on the desktop) */
+  banner?: string
+  /** desktop only: where the banner was published for attendees */
+  bannerUrl?: string
 }
 
 // ---------- Coach (prepare → rehearse → simulate) ----------

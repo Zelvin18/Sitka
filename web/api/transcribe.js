@@ -40,7 +40,9 @@ export default async function handler(req, res) {
     let lastError = 'Transcription error'
     for (const t of tries) {
       const form = new FormData()
-      form.append('file', new Blob([buf], { type: mime }), 'chunk.webm')
+      // the service reads the container from the file name: iPhones record AAC in MP4
+      const ext = /mp4|m4a|aac/i.test(mime) ? 'mp4' : /ogg/i.test(mime) ? 'ogg' : /wav/i.test(mime) ? 'wav' : 'webm'
+      form.append('file', new Blob([buf], { type: mime }), `chunk.${ext}`)
       form.append('model', t.model)
       form.append('response_format', 'verbose_json')
       let r

@@ -10,6 +10,9 @@ import type {
 } from '@shared/types'
 import ChatPane, { type ChatPaneHandle } from './ChatPane'
 import ConfirmDialog from './ConfirmDialog'
+import FilePick from './FilePick'
+import PracticeStudio from './PracticeStudio'
+import { nameForPaste, readFileToText } from '../lib/readFile'
 import Loading, { LOADING_WORDS } from './Loading'
 import {
   IconBroadcast,
@@ -24,6 +27,7 @@ import {
   IconStop
 } from '../lib/icons'
 import { formatTime } from '../lib/format'
+import { pickAudioMimeType } from '../lib/audio'
 
 
 interface Props {
@@ -88,7 +92,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
   const [error, setError] = useState<string | null>(null)
   const [briefBusy, setBriefBusy] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteName, setPasteName] = useState('')
+  const [readingFile, setReadingFile] = useState<string | null>(null)
   const [pasteText, setPasteText] = useState('')
   const [pendingDelete, setPendingDelete] = useState<CoachProject | null>(null)
   const [simChat, setSimChat] = useState<ChatMessage[] | null>(null)
@@ -107,6 +111,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
     { id: string; name: string; thumbnail: string }[]
   >([])
   const [hint, setHint] = useState<string | null>(null)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const camStreamRef = useRef<MediaStream | null>(null)
   const shareStreamRef = useRef<MediaStream | null>(null)
@@ -153,6 +158,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
     recRef.current = null
     setSharing(false)
     setHint(null)
+    setMicStream(null)
   }, [])
 
   useEffect(() => cleanupRecording, [cleanupRecording])
@@ -160,7 +166,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
   const sttBlob = useCallback(async (blob: Blob, offsetSec: number): Promise<void> => {
     if (blob.size < 3000) return
     const buf = await blob.arrayBuffer()
-    const res = await window.sitka.coachStt(buf, offsetSec)
+    const res = await window.sitka.coachStt(buf, offsetSec, blob.type || 'audio/webm')
     if (res.segments && res.segments.length > 0) {
       setSegments((prev) => {
         const next = [...prev, ...res.segments!].sort((a, b) => a.start - b.start)
@@ -173,7 +179,8 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
   const startChunk = useCallback((): void => {
     const stream = streamRef.current
     if (!stream) return
-    const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+    const mime = pickAudioMimeType()
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
     const chunkStart = Date.now()
     chunkStartRef.current = chunkStart
     rec.ondataavailable = (e) => {
@@ -204,6 +211,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
         }
         camStreamRef.current = cam
         streamRef.current = new MediaStream(cam.getAudioTracks())
+        setMicStream(streamRef.current)
         setCamOn(true)
         startRef.current = Date.now()
         stoppingRef.current = false
@@ -221,7 +229,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
               }
               rec.stop()
             }
-          }, 15000),
+          }, 6000),
           setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000),
           setInterval(() => {
             if (hintBusyRef.current || segLiveRef.current.length < 4) return
@@ -238,7 +246,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
               .finally(() => {
                 hintBusyRef.current = false
               })
-          }, 75000)
+          }, 45000)
         )
         setMode({ kind: 'rehearse', id })
       } catch {
@@ -264,6 +272,27 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
       void shareVideoRef.current.play().catch(() => undefined)
     }
   }, [mode, sharing])
+
+  // the words in the recorder right now go for transcription at once
+  const flushChunk = useCallback((): void => {
+    const rec = recRef.current
+    if (rec && rec.state !== 'inactive') {
+      rec.onstop = () => {
+        if (!stoppingRef.current) startChunk()
+      }
+      rec.stop()
+    }
+  }, [startChunk])
+
+  // something the studio wants in the record (a question asked, a verdict), timed to now
+  const recordLine = useCallback((text: string): void => {
+    const at = (Date.now() - startRef.current) / 1000
+    setSegments((prev) => {
+      const next = [...prev, { start: at, end: at + 0.5, text }].sort((a, b) => a.start - b.start)
+      segLiveRef.current = next
+      return next
+    })
+  }, [])
 
   const toggleCam = useCallback((): void => {
     const track = camStreamRef.current?.getVideoTracks()[0]
@@ -616,84 +645,27 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
 
   // ============ live studio ============
   if (mode.kind === 'rehearse') {
-    const lastLine = segments[segments.length - 1]?.text
     return (
-      <div className="studio">
-        <div className="studio-top">
-          <span className="live-badge">● LIVE PRACTICE</span>
-          <span className="studio-title">{project.title}</span>
-          <span className="timer" style={{ marginLeft: 'auto', color: '#d5d5da' }}>
-            {formatTime(elapsed)}
-          </span>
-        </div>
-
-        <div className="studio-stage">
-          <div className="studio-frame">
-          <div className="studio-main">
-            {sharing ? (
-              <video ref={shareVideoRef} autoPlay muted playsInline className="studio-share" />
-            ) : hasCam ? (
-              <video ref={camVideoRef} autoPlay muted playsInline className="studio-cam-main" />
-            ) : (
-              <div className="studio-novideo">
-                <div className="rehearse-mic" style={{ width: 72, height: 72 }}>
-                  <IconMic size={24} strokeWidth={1.6} />
-                </div>
-              </div>
-            )}
-            {sharing && hasCam && (
-              <video ref={camVideoRef} autoPlay muted playsInline className="studio-selfview" />
-            )}
-            {hint && (
-              <div className="studio-hint fade-in">
-                <span className="nudge-label" style={{ color: '#9a9aa2' }}>
-                  Coach
-                </span>
-                {hint}
-              </div>
-            )}
-            {lastLine && <div className="studio-caption">{lastLine}</div>}
-          </div>
-
-          <div className="studio-audience">
-            {[project.audience || 'Audience', 'Guest 2', 'Guest 3'].map((name, i) => (
-              <div key={i} className="studio-tile">
-                <span className="studio-avatar" />
-                <span className="studio-tile-name">{name}</span>
-                <span className="studio-tile-muted">muted</span>
-              </div>
-            ))}
-          </div>
-          </div>
-        </div>
-
-        <div className="studio-controls">
-          <div className="studio-dock">
-            {hasCam && (
-              <button className={`studio-btn${camOn ? '' : ' off'}`} onClick={toggleCam} title="Toggle camera">
-                <IconCamera size={15} strokeWidth={1.9} />
-                {camOn ? 'Camera' : 'Camera off'}
-              </button>
-            )}
-            {sharing ? (
-              <button className="studio-btn off" onClick={stopShare}>
-                <IconScreen size={15} strokeWidth={1.9} />
-                Stop sharing
-              </button>
-            ) : (
-              <button className="studio-btn" onClick={() => void openSharePicker()}>
-                <IconScreen size={15} strokeWidth={1.9} />
-                Present slides
-              </button>
-            )}
-            <span className="studio-dock-sep" />
-            <button className="btn btn-danger" style={{ borderRadius: 20 }} onClick={() => void finishRehearsal(project.id)}>
-              <IconStop size={14} strokeWidth={2.4} />
-              End & get scored
-            </button>
-          </div>
-        </div>
-
+      <>
+        <PracticeStudio
+          project={project}
+          segments={segments}
+          elapsed={elapsed}
+          hasCam={hasCam}
+          camOn={camOn}
+          sharing={sharing}
+          camVideoRef={camVideoRef}
+          shareVideoRef={shareVideoRef}
+          micStream={micStream}
+          hint={hint}
+          hasChatKey={hasChatKey}
+          onToggleCam={toggleCam}
+          onPresent={() => void openSharePicker()}
+          onStopShare={stopShare}
+          onFinish={() => void finishRehearsal(project.id)}
+          onRecord={recordLine}
+          onFlush={flushChunk}
+        />
         {sharePickerOpen && (
           <div className="dialog-overlay" onMouseDown={() => setSharePickerOpen(false)}>
             <div className="dialog" style={{ width: 560 }} onMouseDown={(e) => e.stopPropagation()}>
@@ -714,7 +686,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
             </div>
           </div>
         )}
-      </div>
+      </>
     )
   }
 
@@ -911,24 +883,34 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => {
-                      setPasteName('')
                       setPasteText('')
                       setPasteOpen(true)
                     }}
                   >
                     Paste
                   </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() =>
-                      void window.sitka.coachAddMaterialFile(project.id).then((r) => {
-                        if (r.error) setError(r.error)
-                        else void refresh()
-                      })
-                    }
+                  <FilePick
+                    hint="Slides, a plan, notes, a photo of a page — the coach reads it all."
+                    onFiles={async (files) => {
+                      for (const f of files) {
+                        setReadingFile(f.type.startsWith('image/') ? 'the picture' : f.name)
+                        const res = await readFileToText(f)
+                        if ('error' in res) setError(res.error)
+                        else {
+                          const r = await window.sitka.coachAddMaterialText(project.id, res.name, res.text)
+                          if (r.error) setError(r.error)
+                        }
+                      }
+                      setReadingFile(null)
+                      void refresh()
+                    }}
                   >
-                    <IconPlus size={12} strokeWidth={2.4} /> Add file
-                  </button>
+                    {(open) => (
+                      <button className="btn btn-sm" onClick={open} disabled={Boolean(readingFile)}>
+                        <IconPlus size={12} strokeWidth={2.4} /> {readingFile ? `Reading ${readingFile}…` : 'Add'}
+                      </button>
+                    )}
+                  </FilePick>
                 </div>
               </div>
               {materials.length === 0 && (
@@ -1175,13 +1157,28 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
           <div className="dialog-overlay" onMouseDown={() => setPasteOpen(false)}>
             <div className="dialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title">Paste material</div>
-              <div className="field">
-                <label className="field-label">Name</label>
-                <input className="input" value={pasteName} placeholder="A name for these notes" onChange={(e) => setPasteName(e.target.value)} />
+              <div className="dialog-message" style={{ marginBottom: 10 }}>
+                It is added the moment it lands, named from its first line.
               </div>
               <div className="field">
-                <label className="field-label">Content</label>
-                <textarea className="textarea" rows={8} value={pasteText} onChange={(e) => setPasteText(e.target.value)} />
+                <textarea
+                  className="textarea"
+                  rows={8}
+                  autoFocus
+                  placeholder="Paste here"
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text/plain')
+                    if (!text.trim()) return
+                    e.preventDefault()
+                    void window.sitka.coachAddMaterialText(project.id, nameForPaste(text), text).then((r) => {
+                      if (r.error) setError(r.error)
+                      setPasteOpen(false)
+                      void refresh()
+                    })
+                  }}
+                />
               </div>
               <div className="dialog-actions">
                 <button className="btn" onClick={() => setPasteOpen(false)}>
@@ -1191,7 +1188,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                   className="btn btn-primary"
                   disabled={!pasteText.trim()}
                   onClick={() =>
-                    void window.sitka.coachAddMaterialText(project.id, pasteName, pasteText).then((r) => {
+                    void window.sitka.coachAddMaterialText(project.id, nameForPaste(pasteText), pasteText).then((r) => {
                       if (r.error) setError(r.error)
                       setPasteOpen(false)
                       void refresh()
