@@ -91,6 +91,8 @@ export default function OrgView({
   const [deleteOrgError, setDeleteOrgError] = useState<string | null>(null)
   const [confirmDeleteSpace, setConfirmDeleteSpace] = useState<OrgSpace | null>(null)
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<SessionMeta | null>(null)
+  const [confirmUnfile, setConfirmUnfile] = useState<SessionMeta | null>(null)
+  const [unfileError, setUnfileError] = useState('')
   const mine = new Set(mySessions.map((s) => s.id))
   /** the space goes, for everyone; the list and the counts follow */
   const removeSpace = (s: OrgSpace): void => {
@@ -111,6 +113,26 @@ export default function OrgView({
     await refresh()
     onChanged()
   }
+  const unfile = async (s: SessionMeta): Promise<void> => {
+    setConfirmUnfile(null)
+    try {
+      await window.sitka.unfileSpaceSession(s.id)
+      setSessions((cur) => cur.filter((x) => x.id !== s.id))
+      await refresh()
+      onChanged()
+    } catch (err) {
+      setUnfileError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  const unfileDialog = confirmUnfile && (
+    <ConfirmDialog
+      title={`Remove “${confirmUnfile.title}” from here?`}
+      message="It leaves this space for everyone. The session itself is not deleted; it stays with the person who recorded it."
+      confirmLabel="Remove"
+      onConfirm={() => void unfile(confirmUnfile)}
+      onCancel={() => setConfirmUnfile(null)}
+    />
+  )
   const sessionDialog = confirmDeleteSession && (
     <ConfirmDialog
       title={`Delete “${confirmDeleteSession.title}”?`}
@@ -726,11 +748,15 @@ export default function OrgView({
                         {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
                       </span>
                     </button>
-                    {mine.has(s.id) && (
+                    {mine.has(s.id) ? (
                       <button type="button" className="row-delete" title="Delete this session" onClick={() => setConfirmDeleteSession(s)}>
                         <IconTrash size={13} />
                       </button>
-                    )}
+                    ) : lead ? (
+                      <button type="button" className="row-delete" title={`Remove from this ${noun}`} onClick={() => setConfirmUnfile(s)}>
+                        <IconTrash size={13} />
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -867,6 +893,12 @@ export default function OrgView({
 
       {spaceDialog}
       {sessionDialog}
+      {unfileDialog}
+      {unfileError && (
+        <div className="notice notice-error" style={{ margin: '12px 0 0' }}>
+          {unfileError}
+        </div>
+      )}
     </div>
   )
 }

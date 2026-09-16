@@ -12035,8 +12035,8 @@ video {
 .deck-card.d-bold.first .deck-card-head {
   width: 45%;
   color: #fff;
-  min-height: 70%;
-  justify-content: flex-end;
+  min-height: 78%;
+  justify-content: center;
   padding-right: 14px;
 }
 .deck-card.d-bold.first .deck-card-sub {
@@ -12050,9 +12050,9 @@ video {
   width: 45%;
   margin-left: -9vw;
   padding: 0 4vw 0 9vw;
-  min-height: 60vh;
+  min-height: 82vh;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   color: #fff;
 }
 .present-slide.d-bold.title .present-sub {

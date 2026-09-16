@@ -324,6 +324,7 @@ function registerIpc(): void {
   ipcMain.handle('org:spaces', () => [])
   ipcMain.handle('org:createSpace', () => ONLINE_ONLY)
   ipcMain.handle('org:deleteSpace', () => undefined)
+  ipcMain.handle('space:unfile', () => undefined)
   ipcMain.handle('org:materials', () => [])
   ipcMain.handle('org:addMaterial', () => [])
   ipcMain.handle('org:removeMaterial', () => [])

@@ -1236,7 +1236,8 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
         const panelW = W * 0.45
         const size = s.title.length > 40 ? 34 : 44
         const ls = wrap(words([{ text: s.title, bold: true }], size, serif), panelW - margin * 1.4)
-        let y = H * 0.18 + 40 + ls.length * size * 1.1
+        // in the middle of the panel above the foot
+        let y = H * 0.18 + (H * 0.82) / 2 + (ls.length * size * 1.1) / 2 - size * 0.25
         for (const ln of ls) {
           y -= size * 1.1
           p.line(ln, margin * 0.7, size, [1, 1, 1], y)

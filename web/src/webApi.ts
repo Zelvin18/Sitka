@@ -313,6 +313,51 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return store.download(path, where)
   }
 
+  // ---------- a session's banner: a small file with a link ----------
+  // A picture kept inside the session row would travel with every listing
+  // of the library; the file lives in the public picture bucket (with the
+  // live-screen frames and event banners) and the row keeps only its link.
+  const bannerPath = (id: string): string => `session-${id}-banner.jpg`
+  async function storeBanner(id: string, dataUrl: string): Promise<string | null> {
+    const m = /^data:image\/jpeg;base64,(.+)$/.exec(dataUrl)
+    if (!m) return null
+    const bin = atob(m[1])
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const path = bannerPath(id)
+    const { error } = await sb.storage
+      .from('stage')
+      .upload(path, new Blob([bytes], { type: 'image/jpeg' }), { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' })
+    if (error) {
+      reportError(location.pathname, 'banner upload failed: ' + error.message)
+      return null
+    }
+    return `${sb.storage.from('stage').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
+  }
+  // Banners saved the old way (the picture inside the row) move out one at a
+  // time, as the library sees them; the row is the lighter for it.
+  const movingBanner = new Set<string>()
+  function moveBannerOut(meta: SessionMeta): void {
+    const b = meta.banner
+    if (!b || !b.startsWith('data:') || movingBanner.has(meta.id) || meta.readOnly || meta.sample) return
+    movingBanner.add(meta.id)
+    void (async () => {
+      try {
+        const url = await storeBanner(meta.id, b)
+        if (!url) return
+        const d = cache.get(meta.id) ?? (await loadSession(meta.id))
+        if (!d) return
+        d.meta.banner = url
+        await patchSession(meta.id, { meta: d.meta })
+        emitSession(d.meta)
+      } catch {
+        /* next time */
+      } finally {
+        movingBanner.delete(meta.id)
+      }
+    })()
+  }
+
   // ---------- one whole file per recording ----------
   // Parts are what the recorder uploads while it runs. Once a session is over
   // and every part is in the cloud, they are joined into one file with its
@@ -2075,6 +2120,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const rows = ((data as { id: string; meta: SessionMeta }[]) || []).map((r) => r.meta)
       const have = new Set(rows.map((m) => m.id))
       for (const b of readBackups()) if (!have.has(b.id)) rows.push(b.meta)
+      // one old-style banner moves out per listing; the rest follow on later listings
+      const old = rows.find((m) => m.banner && m.banner.startsWith('data:'))
+      if (old) moveBannerOut(old)
       return rows
     },
 
@@ -2119,6 +2167,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
       await forgetSession(id)
+      await sb.storage.from('stage').remove([bannerPath(id)]).catch(() => undefined)
       // A session started before the move to Cloudflare can have left files in
       // both stores. Clear both, so nothing survives its session and keeps
       // costing: the parts, the whole file, and the frames read off the screen.
@@ -2600,8 +2649,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     setSessionBanner: async (id, banner) => {
       const d = await loadSession(id)
       if (!d) return null
-      if (banner && banner.length < 600_000) d.meta.banner = banner
-      else delete d.meta.banner
+      if (banner) {
+        const url = await storeBanner(id, banner)
+        if (!url) return null
+        d.meta.banner = url
+      } else {
+        delete d.meta.banner
+        await sb.storage.from('stage').remove([bannerPath(id)]).catch(() => undefined)
+      }
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
       return d.meta
@@ -3661,6 +3716,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     deleteEvent: async (id: string) => {
       await sb.from('events').delete().eq('id', id)
       if (armedId === id) armedId = null
+    },
+    unfileSpaceSession: async (id: string) => {
+      const { error } = await sb.rpc('sitka_unfile_session', { p_id: id })
+      if (error) throw new Error(error.message)
+      const d = cache.get(id)
+      if (d) {
+        delete d.meta.spaceId
+        emitSession(d.meta)
+      }
     },
     setEventBanner: async (id, dataUrl) => {
       const eventId = id ?? conf?.eventId ?? armedId

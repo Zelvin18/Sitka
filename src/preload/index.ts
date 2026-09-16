@@ -141,6 +141,8 @@ const api = {
   renameSession: (id: string, title: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:rename', id, title),
   /** the picture shown in place of video for an audio session (a JPEG data URL), or null to clear it */
+  /** a lead takes someone else's session out of a space (the session itself stays with its owner) */
+  unfileSpaceSession: (id: string): Promise<void> => ipcRenderer.invoke('space:unfile', id),
   setSessionBanner: (id: string, banner: string | null): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:banner', id, banner),
   exportSession: (

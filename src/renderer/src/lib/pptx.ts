@@ -125,7 +125,7 @@ function slideXml(t: DeckTemplate, s: PdfSlide, index: number, total: number, su
     if (t.id === 'bold') {
       // the title on the panel, the subtitle beside it
       const panelW = SW * 0.45
-      shapes.push(textBox(id++, 'Title', 0.6 * IN, 0.8 * IN, panelW - 1.2 * IN, SH * 0.82 - 1.4 * IN, [{ text: s.title, size: s.title.length > 40 ? 34 : 44, bold: true, color: 'FFFFFF', font }], 'b'))
+      shapes.push(textBox(id++, 'Title', 0.6 * IN, 0.8 * IN, panelW - 1.2 * IN, SH * 0.82 - 1.4 * IN, [{ text: s.title, size: s.title.length > 40 ? 34 : 44, bold: true, color: 'FFFFFF', font }], 'ctr'))
       shapes.push(textBox(id++, 'Foot', 0.6 * IN, SH * 0.84, panelW - 1.2 * IN, SH * 0.12, [{ text: (deckTitle ?? s.title).toUpperCase(), size: 11, bold: true, color: 'FFFFFF', font }], 'ctr'))
       if (sub) shapes.push(textBox(id++, 'Subtitle', panelW + 0.7 * IN, SH * 0.36, SW - panelW - 1.4 * IN, SH * 0.3, [{ text: sub, size: 20, color: clr(t.ink), font }], 'ctr'))
     } else {
