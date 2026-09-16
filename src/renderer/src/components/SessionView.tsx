@@ -80,6 +80,7 @@ export default function SessionView({
   const [playing, setPlaying] = useState(false)
   const [mediaDuration, setMediaDuration] = useState(0)
   const [rate, setRate] = useState(1)
+  const userPausedRef = useRef(false)
   // On the website the recording is fetched from the cloud, which can be a
   // long download on a phone: it waits for a tap (or a jump to a moment).
   // On the desktop it is a local file and loads at once.
@@ -715,7 +716,16 @@ export default function SessionView({
                 playsInline
                 preload={meta.audioOnly ? 'auto' : 'metadata'}
                 onLoadedMetadata={(e) => {
-                  setMediaDuration(e.currentTarget.duration)
+                  const el = e.currentTarget
+                  setMediaDuration(el.duration)
+                  // a length of nothing is a file the browser could not read:
+                  // it would "play" to its end at once. The next way is tried.
+                  const expected = (meta.durationMs || 0) / 1000
+                  if (el.duration === 0 || Number.isNaN(el.duration) || (expected > 5 && el.duration < 1)) {
+                    streamPartsRef.current = []
+                    void advance(loadGenRef.current, `${diagRef.current} read as ${Number.isNaN(el.duration) ? 'unreadable' : `${el.duration.toFixed(2)} s long`} for a session of ${Math.round(expected)} s`)
+                    return
+                  }
                   onLoadedMetadata()
                 }}
                 onDurationChange={(e) => setMediaDuration(e.currentTarget.duration)}
@@ -781,11 +791,36 @@ export default function SessionView({
                         const v = videoRef.current
                         if (!v) return
                         if (!v.paused) {
+                          userPausedRef.current = true
                           v.pause()
                           return
                         }
+                        userPausedRef.current = false
                         if (v.readyState === 0 && videoSrc !== 'progressive') v.load()
-                        void v.play().catch(() => undefined)
+                        const gen = loadGenRef.current
+                        const from = v.currentTime
+                        const stalled = (why: string): void => {
+                          if (gen !== loadGenRef.current) return
+                          const d = `${diagRef.current}: ${why} (length ${v.duration}, ready ${v.readyState}, network ${v.networkState}${v.error ? `, error ${v.error.code}` : ''})`
+                          streamPartsRef.current = []
+                          pendingSeekRef.current = Math.max(0, from) // the next way starts playing on its own
+                          void advance(gen, d)
+                        }
+                        v.play()
+                          .then(() => {
+                            // playing, but not moving: five seconds without the clock advancing
+                            window.setTimeout(() => {
+                              if (gen !== loadGenRef.current || userPausedRef.current) return
+                              const expected = (meta.durationMs || 0) / 1000
+                              if (v.currentTime - from < 0.25) stalled('play did not move')
+                              else if (v.ended && v.currentTime < 1 && expected > 5) stalled('it ended at once')
+                            }, 5000)
+                          })
+                          .catch((err) => {
+                            const name = err instanceof Error ? err.name : String(err)
+                            if (name === 'AbortError') return // a pause before it started, not a fault
+                            stalled(`play was refused (${name})`)
+                          })
                       }}
                     >
                       {playing ? <IconPause size={16} strokeWidth={2.6} /> : <IconPlay size={16} strokeWidth={2.2} />}
