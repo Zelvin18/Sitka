@@ -50,12 +50,14 @@ function toWinAnsi(s: string): number[] {
   return out
 }
 
+// the widths of the marks beyond ASCII that the writing uses: dashes, quotes, the ellipsis
+const HIGH: Record<number, number> = { 0x97: 1000, 0x96: 500, 0x95: 350, 0x91: 333, 0x92: 333, 0x93: 444, 0x94: 444, 0x85: 1000, 0x9b: 333, 0x8b: 333, 0xa0: 250, 0xb7: 250 }
 function width(s: string, size: number, face: Face): number {
   const table = WIDTHS[face]
   let w = 0
   for (const b of toWinAnsi(s)) {
     if (!table) w += 600
-    else w += b >= 32 && b <= 126 ? table[b - 32] : 556
+    else w += b >= 32 && b <= 126 ? table[b - 32] : (HIGH[b] ?? 556)
   }
   return (w / 1000) * size
 }
@@ -537,106 +539,12 @@ export interface DocMeta {
   byline?: string
 }
 
-/** A document PDF from Markdown, A4, in one of the five styles, with a cover. */
-export function markdownToPdf(title: string, md: string, templateId?: string | null, meta: DocMeta = {}): Uint8Array {
-  const t = docTemplate(templateId)
-  const W = 595.28
-  const H = 841.89
-  const margin = t.id === 'editorial' ? 68 : 56
-  const p = new Pdf(W, H, margin, t.band ? 84 : margin)
+/** the markdown, laid out in the style, onto the pages after the cover */
+function renderBody(p: Pdf, t: DocTemplate, md: string): void {
+  const W = p.pageW
   const serif = t.serif
   const heavy: Face = serif ? 'serifBold' : 'sansBold'
   const light: Face = serif ? 'serif' : 'sans'
-
-  // every page: the paper and the running band
-  p.onPage = (n) => {
-    if (t.page) p.rect(0, 0, W, H, t.page)
-    if (n === 0) return
-    if (t.band) {
-      p.rect(0, H - 40, W, 40, t.accent)
-      p.text(title.length > 70 ? title.slice(0, 67) + '…' : title, margin, H - 25, 9, 'sansBold', [1, 1, 1])
-    } else if (t.id === 'signal') {
-      p.rect(margin, H - 30, 26, 4, t.accent)
-    } else if (t.id === 'studio') {
-      p.rect(0, H - 6, W, 6, t.accent)
-    }
-  }
-  p.onFinish = (n, total) => footerOps(p, t, title, n, total, 1)
-
-  // ---- the cover ----
-  p.newPage()
-  const cover = (): void => {
-    const titleSize = title.length > 48 ? 30 : 38
-    const titleLines = wrap(words([{ text: title, bold: true }], titleSize, serif), t.cover === 'block' ? W * 0.52 : p.usableW)
-    const drawTitle = (x: number, yTop: number, color: RGB, maxW?: number): number => {
-      let y = yTop
-      const ls = maxW ? wrap(words([{ text: title, bold: true }], titleSize, serif), maxW) : titleLines
-      for (const ln of ls) {
-        y -= titleSize * 1.12
-        p.line(ln, x, titleSize, color, y)
-      }
-      return y
-    }
-    const sub = meta.subtitle ?? ''
-    switch (t.cover) {
-      case 'editorial': {
-        p.hline(margin, W - margin, H - 150, t.ink, 1.2)
-        let y = drawTitle(margin, H - 170, t.ink)
-        if (sub) {
-          y -= 30
-          p.text(sub, margin, y, 12.5, 'serif', t.muted)
-        }
-        p.hline(margin, W - margin, y - 26, t.rule, 0.6)
-        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'serif', t.muted)
-        break
-      }
-      case 'block': {
-        p.rect(0, 0, W * 0.36, H, t.accent)
-        let y = drawTitle(W * 0.36 + 34, H * 0.62, t.ink, W * 0.64 - 34 - margin)
-        if (sub) {
-          y -= 28
-          p.text(sub, W * 0.36 + 34, y, 12.5, 'sans', t.muted)
-        }
-        if (meta.byline) p.text(meta.byline, W * 0.36 + 34, margin + 8, 9.5, 'sans', t.muted)
-        break
-      }
-      case 'band': {
-        p.rect(0, H * 0.42, W, H * 0.58, t.accent)
-        let y = drawTitle(margin, H * 0.42 + H * 0.58 * 0.62, [1, 1, 1])
-        if (sub) {
-          y -= 28
-          p.text(sub, margin, y, 12.5, 'sans', [0.86, 0.9, 0.96])
-        }
-        p.rect(margin, H * 0.42 - 22, 46, 5, t.accent)
-        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'sans', t.muted)
-        break
-      }
-      case 'paper': {
-        p.rect(margin, H - 140, 54, 3, t.accent)
-        let y = drawTitle(margin, H - 160, t.ink)
-        if (sub) {
-          y -= 30
-          p.text(sub, margin, y, 12.5, 'serif', t.accent)
-        }
-        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'serif', t.muted)
-        break
-      }
-      case 'dark': {
-        p.rect(0, 0, W, H, t.ink)
-        p.rect(margin, H - 120, 14, 14, t.accent)
-        let y = drawTitle(margin, H - 150, [1, 1, 1])
-        if (sub) {
-          y -= 30
-          p.text(sub, margin, y, 12.5, 'sans', [0.68, 0.68, 0.72])
-        }
-        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'sans', [0.55, 0.55, 0.6])
-        break
-      }
-    }
-  }
-  cover()
-  p.newPage()
-
   // ---- the body ----
   const body = serif ? 11 : 10.5
   const lines = md.replace(/\r\n/g, '\n').split('\n')
@@ -789,7 +697,7 @@ export function markdownToPdf(title: string, md: string, templateId?: string | n
       const top = p.y - body * 0.45
       p.paragraph(quote[1], body, { indent: 16, color: t.muted, serif, lineHeight: 1.5 })
       p.rect(p.margin, p.y - 3, 2.5, top - p.y + 3, t.accent)
-      p.space(4)
+      p.space(10)
       continue
     }
     if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
@@ -805,6 +713,257 @@ export function markdownToPdf(title: string, md: string, templateId?: string | n
   flushPara()
   if (inCode) flushCode()
   flushTable()
+}
+
+/** A document PDF from Markdown, A4, in one of the five styles, with a cover. */
+export function markdownToPdf(title: string, md: string, templateId?: string | null, meta: DocMeta = {}): Uint8Array {
+  const t = docTemplate(templateId)
+  const W = 595.28
+  const H = 841.89
+  const margin = t.id === 'editorial' ? 68 : 56
+  const p = new Pdf(W, H, margin, t.band ? 84 : margin)
+  const serif = t.serif
+  const heavy: Face = serif ? 'serifBold' : 'sansBold'
+  const light: Face = serif ? 'serif' : 'sans'
+
+  // every page: the paper and the running band
+  p.onPage = (n) => {
+    if (t.page) p.rect(0, 0, W, H, t.page)
+    if (n === 0) return
+    if (t.band) {
+      p.rect(0, H - 40, W, 40, t.accent)
+      p.text(title.length > 70 ? title.slice(0, 67) + '…' : title, margin, H - 25, 9, 'sansBold', [1, 1, 1])
+    } else if (t.id === 'signal') {
+      p.rect(margin, H - 30, 26, 4, t.accent)
+    } else if (t.id === 'studio') {
+      p.rect(0, H - 6, W, 6, t.accent)
+    }
+  }
+  p.onFinish = (n, total) => footerOps(p, t, title, n, total, 1)
+
+  // ---- the cover ----
+  p.newPage()
+  const cover = (): void => {
+    const titleSize = title.length > 48 ? 30 : 38
+    const titleLines = wrap(words([{ text: title, bold: true }], titleSize, serif), t.cover === 'block' ? W * 0.52 : p.usableW)
+    const drawTitle = (x: number, yTop: number, color: RGB, maxW?: number): number => {
+      let y = yTop
+      const ls = maxW ? wrap(words([{ text: title, bold: true }], titleSize, serif), maxW) : titleLines
+      for (const ln of ls) {
+        y -= titleSize * 1.12
+        p.line(ln, x, titleSize, color, y)
+      }
+      return y
+    }
+    const sub = meta.subtitle ?? ''
+    switch (t.cover) {
+      case 'editorial': {
+        p.hline(margin, W - margin, H - 150, t.ink, 1.2)
+        let y = drawTitle(margin, H - 170, t.ink)
+        if (sub) {
+          y -= 30
+          p.text(sub, margin, y, 12.5, 'serif', t.muted)
+        }
+        p.hline(margin, W - margin, y - 26, t.rule, 0.6)
+        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'serif', t.muted)
+        break
+      }
+      case 'block': {
+        p.rect(0, 0, W * 0.36, H, t.accent)
+        let y = drawTitle(W * 0.36 + 34, H * 0.62, t.ink, W * 0.64 - 34 - margin)
+        if (sub) {
+          y -= 28
+          p.text(sub, W * 0.36 + 34, y, 12.5, 'sans', t.muted)
+        }
+        if (meta.byline) p.text(meta.byline, W * 0.36 + 34, margin + 8, 9.5, 'sans', t.muted)
+        break
+      }
+      case 'band': {
+        p.rect(0, H * 0.42, W, H * 0.58, t.accent)
+        let y = drawTitle(margin, H * 0.42 + H * 0.58 * 0.62, [1, 1, 1])
+        if (sub) {
+          y -= 28
+          p.text(sub, margin, y, 12.5, 'sans', [0.86, 0.9, 0.96])
+        }
+        p.rect(margin, H * 0.42 - 22, 46, 5, t.accent)
+        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'sans', t.muted)
+        break
+      }
+      case 'paper': {
+        p.rect(margin, H - 140, 54, 3, t.accent)
+        let y = drawTitle(margin, H - 160, t.ink)
+        if (sub) {
+          y -= 30
+          p.text(sub, margin, y, 12.5, 'serif', t.accent)
+        }
+        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'serif', t.muted)
+        break
+      }
+      case 'dark': {
+        p.rect(0, 0, W, H, t.ink)
+        p.rect(margin, H - 120, 14, 14, t.accent)
+        let y = drawTitle(margin, H - 150, [1, 1, 1])
+        if (sub) {
+          y -= 30
+          p.text(sub, margin, y, 12.5, 'sans', [0.68, 0.68, 0.72])
+        }
+        if (meta.byline) p.text(meta.byline, margin, margin + 8, 9.5, 'sans', [0.55, 0.55, 0.6])
+        break
+      }
+    }
+  }
+  cover()
+  p.newPage()
+
+  renderBody(p, t, md)
+  return p.build()
+}
+
+// ---------- session notes and event briefs ----------
+
+export interface BriefFacts {
+  /** "16 September 2026" */
+  date?: string
+  /** "1 hr 12 min" */
+  length?: string
+  /** "Lecture", "Live event", "Meeting" */
+  kind?: string
+  /** "Prof. A. Moyo" or the host's name */
+  by?: string
+}
+
+export interface BriefDoc {
+  title: string
+  /** what this is: "Session notes", "Your brief", "Event recap" */
+  label: string
+  facts: BriefFacts
+  summary?: string
+  /** the moments, in order, without their times */
+  moments?: string[]
+  /** the notes or the brief, as markdown */
+  body?: string
+  bodyLabel?: string
+  /** a closing line on the last page */
+  closing?: string
+}
+
+/**
+ * The notes of a session or the brief of an event, as a document worth
+ * forwarding: a cover that says what it is and when; the summary set large
+ * in a quiet panel; the moments as a numbered list; the notes in full.
+ */
+export function briefToPdf(doc: BriefDoc): Uint8Array {
+  const t = docTemplate('editorial')
+  const W = 595.28
+  const H = 841.89
+  const margin = 64
+  const p = new Pdf(W, H, margin, margin)
+  const ink = t.ink
+  const muted = t.muted
+  const rule = t.rule
+  const panel: RGB = [0.965, 0.965, 0.955]
+  const accent: RGB = [0.08, 0.08, 0.09]
+
+  p.onPage = (n) => {
+    if (n === 0) return
+    // a running line at the head of every page
+    p.text(doc.label.toUpperCase(), margin, H - 34, 7.5, 'sansBold', muted)
+    const right = doc.title.length > 60 ? doc.title.slice(0, 57) + '…' : doc.title
+    p.text(right, W - margin - width(right, 7.5, 'sans'), H - 34, 7.5, 'sans', muted)
+    p.hline(margin, W - margin, H - 44, rule, 0.5)
+  }
+  p.onFinish = (n, total) => footerOps(p, { muted, serif: true }, 'Kept with Sitka', n, total, 1)
+
+  // ---- the cover ----
+  p.newPage()
+  p.text(doc.label.toUpperCase(), margin, H - 120, 9, 'sansBold', muted)
+  p.rect(margin, H - 134, 28, 2, accent)
+  const titleSize = doc.title.length > 70 ? 28 : doc.title.length > 40 ? 34 : 42
+  const titleLines = wrap(words([{ text: doc.title, bold: true }], titleSize, true), p.usableW)
+  let y = H - 168
+  for (const ln of titleLines) {
+    y -= titleSize * 1.1
+    p.line(ln, margin, titleSize, ink, y)
+  }
+  y -= 26
+  // the facts, as small labelled columns
+  const facts: [string, string][] = []
+  if (doc.facts.date) facts.push(['Date', doc.facts.date])
+  if (doc.facts.length) facts.push(['Length', doc.facts.length])
+  if (doc.facts.kind) facts.push(['Kind', doc.facts.kind])
+  if (doc.facts.by) facts.push(['With', doc.facts.by])
+  if (facts.length) {
+    p.hline(margin, W - margin, y, rule, 0.6)
+    y -= 20
+    const colW = p.usableW / Math.min(4, Math.max(2, facts.length))
+    facts.forEach(([k, v], i) => {
+      const x = margin + i * colW
+      p.text(k.toUpperCase(), x, y, 7.5, 'sansBold', muted)
+      p.text(v.length > 34 ? v.slice(0, 31) + '…' : v, x, y - 16, 11.5, 'serif', ink)
+    })
+    y -= 34
+    p.hline(margin, W - margin, y, rule, 0.6)
+  }
+  // the summary opens the cover, when there is one
+  if (doc.summary?.trim()) {
+    y -= 36
+    p.y = y
+    p.paragraph(doc.summary.trim(), 13, { serif: true, color: ink, lineHeight: 1.55 })
+  }
+  // and the mark at the foot
+  p.text('Sitka', margin, margin + 6, 9.5, 'sansBold', ink)
+  p.text('Every word, kept.', margin + 34, margin + 6, 9, 'serif', muted)
+
+  // ---- inside ----
+  p.newPage()
+  const sectionLabel = (label: string): void => {
+    p.ensure(60)
+    p.space(10)
+    p.paragraph(label.toUpperCase(), 9, { face: 'sansBold', color: muted, lineHeight: 1.6 })
+    p.y -= 3
+    p.hline(margin, margin + 28, p.y, accent, 1.2)
+    p.space(12)
+  }
+  if (doc.summary?.trim()) {
+    sectionLabel('Summary')
+    // a quiet panel behind the summary
+    const h = p.measure(doc.summary.trim(), 11.5, { serif: true, lineHeight: 1.55 }) + 34
+    p.ensure(Math.min(h, 500))
+    const top = p.y
+    p.rect(margin, top - h, p.usableW, h, panel)
+    p.y -= 17
+    const inner = margin + 18
+    const lines = wrap(words(runs(doc.summary.trim()), 11.5, true), p.usableW - 36)
+    for (const ln of lines) {
+      p.y -= 11.5 * 1.55
+      p.line(ln, inner, 11.5, ink)
+    }
+    p.y = top - h - 18
+  }
+  if (doc.moments && doc.moments.length) {
+    sectionLabel('Key moments')
+    doc.moments.forEach((m, i) => {
+      const num = String(i + 1).padStart(2, '0')
+      p.ensure(30)
+      const before = p.y
+      p.paragraph(m, 11, { serif: true, color: ink, indent: 34, lineHeight: 1.5 })
+      p.text(num, margin, before - 11 * 1.5, 11, 'sansBold', accent)
+      p.y -= 6
+      p.hline(margin + 34, W - margin, p.y, rule, 0.4)
+      p.y -= 6
+    })
+    p.space(8)
+  }
+  if (doc.body?.trim()) {
+    sectionLabel(doc.bodyLabel ?? 'Notes')
+    renderBody(p, t, doc.body.trim())
+  }
+  if (doc.closing) {
+    p.space(18)
+    p.hline(margin, W - margin, p.y, rule, 0.6)
+    p.space(16)
+    p.paragraph(doc.closing, 10, { serif: true, color: muted, lineHeight: 1.5 })
+  }
   return p.build()
 }
 

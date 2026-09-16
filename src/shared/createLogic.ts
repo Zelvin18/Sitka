@@ -14,7 +14,7 @@ function fmt(sec: number): string {
 }
 
 /** Session material, trimmed so several sessions still fit a single request. */
-export function contextBlock(contexts: SessionContext[], maxChars = 60000): string {
+export function contextBlock(contexts: SessionContext[], maxChars = 42000): string {
   if (contexts.length === 0) return ''
   const per = Math.floor(maxChars / contexts.length)
   return contexts

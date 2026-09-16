@@ -4,7 +4,7 @@
  * its second so it can be jumped to; on paper a time means nothing, so the
  * words are kept and the clock is left out.
  */
-import { markdownToPdf } from '../../src/renderer/src/lib/pdf'
+import { briefToPdf } from '../../src/renderer/src/lib/pdf'
 
 /** the clock references Sitka's writing carries, removed */
 export function withoutTimes(md: string): string {
@@ -23,6 +23,13 @@ export interface NotesParts {
   title: string
   /** a date, a duration: the line under the title */
   subtitle?: string
+  /** what the document is: "Session notes", "Your brief" */
+  label?: string
+  /** the facts on the cover */
+  date?: string
+  length?: string
+  kind?: string
+  by?: string
   summary?: string
   moments?: string[]
   notes?: string
@@ -41,9 +48,27 @@ export function notesMarkdown(p: NotesParts): string {
   return parts.join('\n\n')
 }
 
-/** the PDF bytes */
+/** the PDF bytes: the title exactly as the session has it, the summary set large, the moments numbered, the notes in full */
 export function notesPdf(p: NotesParts): Uint8Array {
-  return markdownToPdf(p.title, notesMarkdown(p), 'editorial', { subtitle: p.subtitle, byline: 'Kept with Sitka' })
+  const NL = String.fromCharCode(10)
+  const body = [p.notes?.trim() ? withoutTimes(p.notes.trim()) : '', ...(p.extra ?? []).filter((e) => e.text.trim()).map((e) => `## ${e.label}${NL}${NL}${withoutTimes(e.text.trim())}`)]
+    .filter(Boolean)
+    .join(NL + NL)
+  return briefToPdf({
+    title: p.title,
+    label: p.label ?? 'Session notes',
+    facts: { date: p.date, length: p.length, kind: p.kind, by: p.by },
+    summary: p.summary ? withoutTimes(p.summary) : undefined,
+    moments: p.moments?.map(withoutTimes),
+    body,
+    bodyLabel: p.notesLabel ?? 'Notes',
+    closing: 'Written by Sitka from what was said and shown. Nothing here was invented; where something was not covered, it says so.'
+  })
+}
+
+/** the same as markdown, for a plain-text copy */
+export function notesText(p: NotesParts): string {
+  return `# ${p.title}${String.fromCharCode(10)}${String.fromCharCode(10)}${notesMarkdown(p)}`
 }
 
 /** hand the file to the browser to save */

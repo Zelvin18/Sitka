@@ -1774,9 +1774,12 @@ function renderBrief(brief: string, proxyId: string): void {
       fileName((ev?.title || 'Event') + ' brief'),
       notesPdf({
         title: ev?.title || 'Event brief',
-        subtitle: ev?.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
+        label: 'Your brief',
+        date: ev?.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
+        kind: 'Live event',
+        by: 'Sitka attended for you',
         notes: brief,
-        notesLabel: 'Your brief'
+        notesLabel: 'What happened'
       })
     )
   // and Sitka, who sat through it, to ask

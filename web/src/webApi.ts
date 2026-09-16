@@ -492,6 +492,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (r.ok) return { text: j.text || '', vision: Boolean(j.vision) }
       lastError = j.error || `AI error (HTTP ${r.status})`
       if (r.status === 400 || r.status === 401 || r.status === 403) break // nothing a retry can fix
+      // A gateway timeout: the model was still writing when the server's
+      // minute ran out. The same again would end the same way, so the second
+      // try asks for less and of a quicker model.
+      if (r.status === 504 || r.status === 502) {
+        maxTokens = Math.max(1200, Math.floor(maxTokens * 0.6))
+        fast = true
+        lastError = 'That was a big one and the AI ran out of time. Try again with fewer sessions, or a shorter ask.'
+      }
     }
     throw new Error(lastError)
   }
@@ -2304,10 +2312,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const d = await loadSession(id)
           if (d) contexts.push({ title: d.meta.title, segments: d.segments })
         }
+        // a long piece, but not so long that the server's minute runs out
+        // on a big model: about four thousand words is the ceiling
         const raw = await aiChat(
           createSystemPrompt(req.kind),
           [{ role: 'user', content: createUserPrompt(req, contexts) }],
-          8000
+          req.kind === 'code' ? 6000 : 5000
         )
         let existing: Creation | undefined
         if (req.previous) {

@@ -16,6 +16,7 @@ import { deckPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
 import { deckToPdf, deckTemplate, docTemplate, markdownToPdf, toHex } from '../lib/pdf'
 import { deckToPptx } from '../lib/pptx'
 import StylePicker from './StylePicker'
+import Designing from './Designing'
 import { highlight } from '../lib/highlight'
 import {
   IconCode,
@@ -195,12 +196,17 @@ export default function CreateView({
     [sessions]
   )
 
+  // the making page: shown in place of the form (or the result) while
+  // something is made, and until the maker opens or downloads it
+  const [designing, setDesigning] = useState<{ kind: CreationKind; made: Creation | null } | null>(null)
   const run = async (req: CreateRequest): Promise<void> => {
     setGenerating(true)
     setError(null)
+    setDesigning({ kind: req.kind, made: null })
     try {
       const res = await window.sitka.generateCreation(req)
       if (res.error) {
+        setDesigning(null)
         setError(
           res.error === 'missing-key'
             ? 'Add an AI key in Settings to let Sitka create things.'
@@ -212,13 +218,27 @@ export default function CreateView({
         const style = req.previous ? selected?.template : req.kind === 'document' ? docStyle : req.kind === 'presentation' ? deckStyle : undefined
         const made = style ? { ...res.creation, template: style } : res.creation
         if (style) await window.sitka.saveCreation(made)
-        setSelected(made)
         setRefine('')
         await refresh()
-      }
+        setDesigning({ kind: req.kind, made })
+      } else setDesigning(null)
+    } catch (err) {
+      setDesigning(null)
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setGenerating(false)
     }
+  }
+  const openMade = (): void => {
+    if (designing?.made) setSelected(designing.made)
+    setDesigning(null)
+  }
+  const downloadMade = (): void => {
+    if (designing?.made) {
+      setSelected(designing.made)
+      setSaving(true)
+    }
+    setDesigning(null)
   }
 
   const generate = (): void => {
@@ -360,7 +380,15 @@ export default function CreateView({
       )}
 
       <div className="create-main">
-        {!selected ? (
+        {designing ? (
+          <Designing
+            kind={designing.kind}
+            made={designing.made}
+            code={designing.kind === 'code' && designing.made ? parseCode(designing.made.content).files : undefined}
+            onOpen={openMade}
+            onDownload={downloadMade}
+          />
+        ) : !selected ? (
           <div className="content-inner" style={{ maxWidth: 760 }}>
             <h1 className="page-title">Create</h1>
             <p className="page-subtitle">

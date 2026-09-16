@@ -165,6 +165,12 @@ let mediaReady = false
 let pendingSeek: number | null = null
 /** the stage is on screen: the person is watching, so the words must not pull the page away */
 let stageVisible = true
+/** the words themselves are on screen */
+let storyVisible = false
+/** when the reader last moved the page by hand; the page is theirs for a while after */
+let userScrolledAt = 0
+/** a scroll of our own, not to be mistaken for the reader's */
+let autoScrollUntil = 0
 
 /** The conversation sheet, and the dock with it: on a phone the dock is a round
  * button until the sheet opens, then the full box, sitting above it. */
@@ -695,11 +701,16 @@ function onTime(): void {
     best?.classList.add('now')
     lastLine = best
     if (best && (el('follow') as HTMLInputElement).checked && !unfoldedByUser()) revealAround(best)
-    // the words follow the voice only when the reader is down among them;
-    // while the stage is on screen the page stays exactly where it is
-    if (best && (el('follow') as HTMLInputElement).checked && !stageVisible) {
+    // The words follow the voice only when the reader is down among them and
+    // has not just moved the page themselves. Reading the notes, the moments,
+    // or anything else above the words is never interrupted; and a reader who
+    // scrolls away from the spoken line is left where they went.
+    if (best && (el('follow') as HTMLInputElement).checked && !stageVisible && storyVisible && Date.now() - userScrolledAt > 6000) {
       const r = best.getBoundingClientRect()
-      if (r.top < 120 || r.bottom > window.innerHeight - 140) best.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (r.top < 120 || r.bottom > window.innerHeight - 140) {
+        autoScrollUntil = Date.now() + 1200
+        best.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
     }
   }
   // chapters
@@ -1152,6 +1163,25 @@ function wireHeader(): void {
     { threshold: 0.15 }
   )
   io.observe(el('stage'))
+  const storyIo = new IntersectionObserver(
+    (entries) => {
+      storyVisible = entries[0]?.isIntersecting ?? false
+    },
+    { threshold: 0.05 }
+  )
+  storyIo.observe(el('story'))
+  // the reader's own hand on the page: a wheel, a finger, the keys
+  const touched = (): void => {
+    if (Date.now() > autoScrollUntil) userScrolledAt = Date.now()
+  }
+  window.addEventListener('wheel', touched, { passive: true })
+  window.addEventListener('touchmove', touched, { passive: true })
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) touched()
+  })
+  window.addEventListener('scroll', () => {
+    if (Date.now() > autoScrollUntil) userScrolledAt = Date.now()
+  }, { passive: true })
 }
 
 // ---------- boot ----------
@@ -1196,6 +1226,10 @@ async function boot(): Promise<void> {
         notesPdf({
           title: d.title,
           subtitle: bits.join(' · '),
+          label: d.kindWord === 'live event' ? 'Event recap' : 'Session notes',
+          date: d.dateIso ? fmtDate(d.dateIso) : undefined,
+          length: d.durationMs ? fmtLen(d.durationMs) : undefined,
+          kind: d.kindWord === 'live event' ? 'Live event' : 'Session',
           summary: d.summary,
           moments: d.highlights.map((h) => h.label),
           notes: d.notes
