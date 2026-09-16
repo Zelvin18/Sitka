@@ -625,7 +625,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     /load failed|failed to fetch|network|timed? ?out|ECONN|ENOTFOUND|aborted/i.test(msg)
   const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
+  const dropAllCache = (): void => {
+    allCache = null
+  }
   async function patchSession(id: string, patch: Record<string, unknown>): Promise<void> {
+    dropAllCache()
     const delays = [0, 1200, 3000, 7000]
     let lastError = ''
     for (const d of delays) {
@@ -1777,10 +1781,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   function tokenize(q: string): string[] {
     return q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
   }
+  // Everything the library's mind needs, kept for a minute: the same rows
+  // are asked for by a search, then a question, then the stats, one after
+  // another, and each is a heavy read (every transcript). The pictures are
+  // left out: nothing here looks at them.
+  let allCache: { at: number; rows: Row[] } | null = null
   async function allSessions(): Promise<Row[]> {
+    if (allCache && Date.now() - allCache.at < 60_000) return allCache.rows
     const { data, error } = await sb
       .from('sessions')
-      .select('id,meta,transcript,chat,notes,study,marks,report,thumb')
+      .select('id,meta,transcript,chat,notes,study,marks,report')
       .order('created_at', { ascending: false })
     if (error) storageProblem(error.message)
     const rows = ((data as Row[]) || []).slice()
@@ -1797,6 +1807,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         rows.push(b)
       }
     }
+    allCache = { at: Date.now(), rows }
     return rows
   }
   function rankHits(rows: Row[], query: string, limit: number): BrainSearchHit[] {

@@ -100,7 +100,56 @@ function extractJson(text) {
   }
 }
 
+/**
+ * GET: one of the page's own rows, by its unguessable id. The rows are no
+ * longer readable with the anonymous key, so the page asks here and the
+ * server reads with its own key. ?ask=<id> · ?question=<id> · ?proxy=<attendeeId>
+ */
+async function readOwn(req, res) {
+  const q = req.query || {}
+  const pick = (v) => (typeof v === 'string' && ID.test(v) ? v : '')
+  const ask = pick(q.ask)
+  const question = pick(q.question)
+  const proxy = pick(q.proxy)
+  const attendee = pick(q.attendee)
+  if (!ask && !question && !proxy && !attendee) {
+    res.status(400).json({ error: 'bad-request' })
+    return
+  }
+  res.setHeader('Cache-Control', 'no-store')
+  const path = ask
+    ? `asks?id=eq.${ask}&select=status,answer`
+    : question
+      ? `speaker_questions?id=eq.${question}&select=id,status,refined,answered_at_label,answer,text`
+      : proxy
+        ? `proxies?attendee_id=eq.${proxy}&select=status,brief`
+        : `asks?attendee_id=eq.${attendee}&kind=eq.ask&status=eq.answered&select=kind,question,answer,status&order=created_at.asc`
+  const r = await rest(path, { service: true })
+  if (!r.ok) {
+    res.status(502).json({ error: 'not-readable' })
+    return
+  }
+  const rows = await r.json()
+  if (attendee) {
+    res.status(200).json({ rows: Array.isArray(rows) ? rows : [] })
+    return
+  }
+  res.status(200).json({ row: Array.isArray(rows) && rows.length ? rows[0] : null })
+}
+
 export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    try {
+      if (!SUPA_URL || !(SUPA_SERVICE || SUPA_ANON)) {
+        res.status(503).json({ error: 'not-configured' })
+        return
+      }
+      await readOwn(req, res)
+    } catch (err) {
+      res.status(500).json({ error: String((err && err.message) || err) })
+    }
+    return
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
     return

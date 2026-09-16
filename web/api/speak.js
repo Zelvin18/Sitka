@@ -8,6 +8,8 @@
 // "not found", "decommissioned" or "requires terms acceptance" is skipped for
 // a while.
 
+import { overLimit } from './_limit.js'
+
 const KNOWN_GEMINI = [
   'gemini-2.5-flash-preview-tts',
   'gemini-2.5-flash-tts',
@@ -255,6 +257,11 @@ export default async function handler(req, res) {
   }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
+    return
+  }
+  // a voice costs money each time: a flood from one address is refused
+  if (overLimit(req, 40, 400)) {
+    res.status(429).json({ error: 'Slow down a little.' })
     return
   }
   const text = String((req.body || {}).text || '')

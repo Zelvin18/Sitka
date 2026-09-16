@@ -1153,6 +1153,28 @@ function aiBubble(text: string): HTMLElement {
   return d
 }
 
+/** one of this page's own rows, read through the site's server (the rows are private in the database) */
+async function readOwn<T>(query: string): Promise<T | null> {
+  try {
+    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store' })
+    if (!r.ok) return null
+    const j = (await r.json()) as { row?: T | null }
+    return j.row ?? null
+  } catch {
+    return null
+  }
+}
+async function readOwnRows<T>(query: string): Promise<T[]> {
+  try {
+    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store' })
+    if (!r.ok) return []
+    const j = (await r.json()) as { rows?: T[] }
+    return j.rows ?? []
+  } catch {
+    return []
+  }
+}
+
 const pendingAsks = new Map<string, { typing: HTMLElement; onAnswer?: (a: string) => void }>()
 // the conversation so far, so a follow-up question is understood as one
 const askHistory: { role: 'user' | 'assistant'; content: string }[] = []
@@ -1229,7 +1251,7 @@ async function submitAsk(
       if (pendingAsks.has(id)) resolveAsk(id, 'error', 'No answer arrived — is the host app running?')
       return
     }
-    const { data } = await sb.from('asks').select('status,answer').eq('id', id).single()
+    const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}`)
     if (data && data.status !== 'pending') {
       clearInterval(poll)
       resolveAsk(id, data.status, data.answer)
@@ -1364,7 +1386,7 @@ function submitQuestion(text: string, force: boolean): void {
           }
           return
         }
-        const { data } = await sb.from('speaker_questions').select('*').eq('id', id).single()
+        const data = await readOwn<Parameters<typeof renderQuestionResult>[0]>(`question=${id}`)
         if (data && data.status !== 'checking') {
           clearInterval(poll)
           renderQuestionResult(data)
@@ -1469,13 +1491,8 @@ async function join(newJoin: boolean): Promise<void> {
   applyEventState()
 
   // history: restore my previous Q&A after a refresh
-  const { data: prevAsks } = await sb
-    .from('asks')
-    .select('kind,question,answer,status')
-    .eq('attendee_id', attId)
-    .eq('kind', 'ask')
-    .order('created_at', { ascending: true })
-  for (const a of prevAsks ?? []) {
+  const prevAsks = await readOwnRows<{ kind: string; question: string; answer: string | null; status: string }>(`attendee=${attId}`)
+  for (const a of prevAsks) {
     if (a.status !== 'answered' || !a.answer) continue
     bubble('bub-u', a.question)
     aiBubble(a.answer)
@@ -1852,8 +1869,8 @@ function showProxyStatus(proxyId: string): void {
   const check = async (): Promise<boolean> => {
     // the event itself is asked as well, so the page knows when it starts
     // and when it ends without anyone refreshing it
-    const [{ data }, { data: fresh }] = await Promise.all([
-      sb.from('proxies').select('status,brief').eq('attendee_id', proxyId).single(),
+    const [data, { data: fresh }] = await Promise.all([
+      readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}`),
       sb.from('events').select('*').eq('id', eventId).single()
     ])
     if (fresh) {

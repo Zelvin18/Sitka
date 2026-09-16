@@ -1,6 +1,8 @@
 // Whisper proxy: audio chunk (base64) in, timestamped segments out.
 // OpenAI preferred when its key is present, otherwise Groq's free Whisper.
 
+import { overLimit } from './_limit.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
@@ -8,6 +10,11 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = req.body || {}
+    // a session sends a piece every few seconds; a flood from one address is something else
+    if (!(keys.openaiApiKey || keys.groqApiKey) && overLimit(req, 60, 1500)) {
+      res.status(429).json({ error: 'Slow down a little.' })
+      return
+    }
     const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
     const openaiKey = clean(keys.openaiApiKey) || clean(process.env.OPENAI_API_KEY)
     // Every Groq key the deployment has, the same set the chat route rotates

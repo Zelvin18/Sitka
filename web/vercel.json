@@ -1,22 +1,91 @@
 {
   "trailingSlash": false,
-  "functions": { "api/*.js": { "maxDuration": 60 } },
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/(.*)\\.(webp|jpg|jpeg|png)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()"
+        }
+      ]
     }
   ],
   "rewrites": [
-    { "source": "/app", "destination": "/app.html" },
-    { "source": "/legal", "destination": "/legal.html" },
-    { "source": "/host", "destination": "/host.html" },
-    { "source": "/host/:path*", "destination": "/host.html" },
-    { "source": "/e/:id", "destination": "/api/page?kind=event&id=:id" },
-    { "source": "/r/:id", "destination": "/api/page?kind=recap&id=:id" },
-    { "source": "/r2/:id", "destination": "/api/page?kind=recap&id=:id" },
-    { "source": "/r1/:id", "destination": "/api/page?kind=recap1&id=:id" },
-    { "source": "/s/:id", "destination": "/stage.html" },
-    { "source": "/admin", "destination": "/admin.html" }
+    {
+      "source": "/app",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/legal",
+      "destination": "/legal.html"
+    },
+    {
+      "source": "/host",
+      "destination": "/host.html"
+    },
+    {
+      "source": "/host/:path*",
+      "destination": "/host.html"
+    },
+    {
+      "source": "/e/:id",
+      "destination": "/api/page?kind=event&id=:id"
+    },
+    {
+      "source": "/r/:id",
+      "destination": "/api/page?kind=recap&id=:id"
+    },
+    {
+      "source": "/r2/:id",
+      "destination": "/api/page?kind=recap&id=:id"
+    },
+    {
+      "source": "/r1/:id",
+      "destination": "/api/page?kind=recap1&id=:id"
+    },
+    {
+      "source": "/s/:id",
+      "destination": "/stage.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    }
   ]
 }
