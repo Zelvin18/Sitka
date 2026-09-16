@@ -518,6 +518,7 @@ export default function App(): React.JSX.Element {
         {view.name === 'homepage' && (
           <HomeView
             sessions={sessions.filter((s) => !s.space)}
+            allSessions={sessions}
             onNewSession={() => setView({ name: 'live' })}
             onGoEvents={() => setView({ name: 'events' })}
             onGoOverview={() => setView({ name: 'brain' })}

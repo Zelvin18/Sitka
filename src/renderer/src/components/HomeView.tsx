@@ -30,7 +30,10 @@ function markTourSeen(): void {
 }
 
 interface Props {
+  /** sessions of the general space (the home page's own) */
   sessions: SessionMeta[]
+  /** every session, whichever space it is in: the latest three are picked up here */
+  allSessions: SessionMeta[]
   onNewSession: () => void
   onGoEvents: () => void
   onGoOverview: () => void
@@ -50,6 +53,7 @@ function greeting(): string {
 
 export default function HomeView({
   sessions,
+  allSessions,
   onNewSession,
   onGoEvents,
   onGoOverview,
@@ -62,7 +66,11 @@ export default function HomeView({
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [retryTick, setRetryTick] = useState(0)
   const requestedRef = useRef<Set<string>>(new Set())
-  const recent = sessions.filter((s) => s.status === 'complete').slice(0, 3)
+  // the three most recent, wherever they were filed: newest first, never mixed
+  const recent = [...allSessions]
+    .filter((s) => s.status === 'complete')
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 3)
   const upcomingEvents = events.filter((e) => !e.sessionId).slice(0, 2)
   const firstRun = !sessions.some((s) => !s.sample)
   // The walkthrough opens by itself the first time someone arrives, once.
@@ -81,7 +89,8 @@ export default function HomeView({
     let cancelled = false
     void (async () => {
       for (const s of recent) {
-        if (requestedRef.current.has(s.id)) continue
+        // sound alone has no picture to thumbnail; its card is the voice card
+        if (s.audioOnly || requestedRef.current.has(s.id)) continue
         requestedRef.current.add(s.id)
         const t = await window.sitka.getThumb(s.id)
         if (cancelled) return
@@ -96,7 +105,7 @@ export default function HomeView({
 
   // Retry gently while a recent session still lacks its thumbnail.
   useEffect(() => {
-    const missing = recent.some((s) => !thumbs[s.id])
+    const missing = recent.some((s) => !s.audioOnly && !thumbs[s.id])
     if (!missing) return undefined
     const t = setTimeout(() => setRetryTick((n) => n + 1), 7000)
     return () => clearTimeout(t)
@@ -214,7 +223,24 @@ export default function HomeView({
               {recent.map((s) => (
                 <div key={s.id} className="lib-card" onClick={() => onOpenSession(s.id)}>
                   <div className="lib-thumb-wrap">
-                    {thumbs[s.id] ? (
+                    {s.banner ? (
+                      <img className="lib-thumb" src={s.banner} alt="" />
+                    ) : s.audioOnly ? (
+                      <div className="lib-thumb-voice">
+                        <span className="voice-bars" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="lib-thumb-voice-text">
+                          <IconMic size={12} strokeWidth={2} /> Voice
+                        </span>
+                      </div>
+                    ) : thumbs[s.id] ? (
                       <img className="lib-thumb" src={thumbs[s.id]} alt="" />
                     ) : (
                       <div className="lib-thumb-empty">
