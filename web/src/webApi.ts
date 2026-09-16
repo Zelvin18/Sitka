@@ -21,7 +21,7 @@ import {
   type SessionContext
 } from '../../src/shared/createLogic'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
-import { ON_SCREEN_PREFIX } from '../../src/shared/types'
+import { ON_SCREEN_PREFIX, REWRITE_VERSION } from '../../src/shared/types'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import {
@@ -347,6 +347,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       d.meta.store = where
       d.meta.whole = true
       d.meta.flat = kind !== 'video/mp4' || Boolean(flat)
+      d.meta.rewrite = REWRITE_VERSION
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
     } catch (err) {
@@ -425,6 +426,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const flatBytes = flatten(new Uint8Array(await whole.arrayBuffer()))
       if (flatBytes && (await playable(flatBytes, 'video/mp4'))) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
+      d.meta.rewrite = REWRITE_VERSION
       const { error } = await store.upload(videoPath(id), whole, 'video/mp4')
       if (error) return { ok: false, error: 'Could not store the prepared file: ' + error }
       d.meta.store = where
@@ -2432,6 +2434,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // read all of it before the first frame. The parts stream instead: the
       // first is playing within seconds however long the session ran.
       if (d.meta.mime === 'video/mp4' && !d.meta.flat) return null
+      // A whole file made by an older rewriter (an iPhone's edit list left
+      // at nothing, which players read as no sound at all) is made again in
+      // the background from the parts; until then the parts play.
+      if (d.meta.mime === 'video/mp4' && (d.meta.rewrite ?? 0) < REWRITE_VERSION && !d.meta.readOnly && !d.meta.sample) {
+        d.meta.whole = false
+        void consolidateRecording(id)
+        return null
+      }
       return store.url(videoPath(id), whereOf(d.meta))
     },
 
@@ -4149,6 +4159,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const { error } = await store.upload(videoPath(id), new Blob([flat.buffer as ArrayBuffer], { type: 'video/mp4' }), 'video/mp4')
     if (error) return false
     d.meta.flat = true
+    d.meta.rewrite = REWRITE_VERSION
     await patchSession(id, { meta: d.meta })
     emitSession(d.meta)
     track('recording_flattened', { session: id, mb: Math.round(flat.byteLength / 1e6) })

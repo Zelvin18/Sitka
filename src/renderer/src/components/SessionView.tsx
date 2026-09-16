@@ -12,7 +12,7 @@ import Splitter from './Splitter'
 import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
-import { IconPause, IconPlay } from '../lib/icons'
+import { IconPause, IconPlay, IconSpeaker } from '../lib/icons'
 import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
 
 /** MediaSource, or Safari's managed one on iPhone */
@@ -81,6 +81,45 @@ export default function SessionView({
   const [mediaDuration, setMediaDuration] = useState(0)
   const [rate, setRate] = useState(1)
   const userPausedRef = useRef(false)
+  // Loudness, 0 to 3: up to 1 is the element's own volume; past 1 the sound
+  // is routed through a gain node, for a recording made too quietly.
+  const [loud, setLoud] = usePersistedNumber('sitka.voiceLoud', 1)
+  const gainRef = useRef<{ ctx: AudioContext; gain: GainNode; el: HTMLMediaElement } | null>(null)
+  const applyLoud = useCallback((v: HTMLVideoElement, value: number): void => {
+    v.volume = Math.min(1, Math.max(0, value))
+    // an element can be given to a gain node once: a new element gets a new node
+    if (gainRef.current && gainRef.current.el !== v) {
+      void gainRef.current.ctx.close().catch(() => undefined)
+      gainRef.current = null
+    }
+    if (value > 1 && !gainRef.current) {
+      try {
+        const ctx = new AudioContext()
+        const gain = ctx.createGain()
+        ctx.createMediaElementSource(v).connect(gain)
+        gain.connect(ctx.destination)
+        gainRef.current = { ctx, gain, el: v }
+      } catch {
+        /* no boost on this browser: the element's volume is the ceiling */
+      }
+    }
+    const g = gainRef.current
+    if (g) {
+      if (g.ctx.state !== 'running') void g.ctx.resume().catch(() => undefined)
+      g.gain.gain.value = value > 1 ? value : 1
+    }
+  }, [])
+  useEffect(() => {
+    const v = videoRef.current
+    if (v) applyLoud(v, loud)
+  }, [loud, videoSrc, applyLoud])
+  useEffect(
+    () => () => {
+      void gainRef.current?.ctx.close().catch(() => undefined)
+      gainRef.current = null
+    },
+    []
+  )
   // On the website the recording is fetched from the cloud, which can be a
   // long download on a phone: it waits for a tap (or a jump to a moment).
   // On the desktop it is a local file and loads at once.
@@ -713,6 +752,7 @@ export default function SessionView({
                 src={videoSrc === 'progressive' ? undefined : videoSrc}
                 poster={poster ?? undefined}
                 controls={!meta.audioOnly}
+                crossOrigin={meta.audioOnly ? 'anonymous' : undefined}
                 playsInline
                 preload={meta.audioOnly ? 'auto' : 'metadata'}
                 onLoadedMetadata={(e) => {
@@ -852,6 +892,19 @@ export default function SessionView({
                         </>
                       )
                     })()}
+                    <label className="voice-loud" title={`Loudness ${Math.round(loud * 100)}%`}>
+                      <IconSpeaker size={14} strokeWidth={1.9} />
+                      <input
+                        type="range"
+                        min={0}
+                        max={3}
+                        step={0.1}
+                        value={loud}
+                        onChange={(e) => setLoud(Number(e.currentTarget.value))}
+                        aria-label="Loudness"
+                      />
+                      {loud > 1 && <span className="voice-loud-x">{loud.toFixed(1)}×</span>}
+                    </label>
                     <button
                       type="button"
                       className="voice-rate"

@@ -84,6 +84,8 @@ export interface SessionMeta {
   store?: 'r2' | 'sb'
   /** the whole file has been rewritten as a plain MP4 (index first), so any player starts at once */
   flat?: boolean
+  /** which rewriter made the whole file; older than REWRITE_VERSION is made again */
+  rewrite?: number
   /** why the title/summary could not be generated (cleared on success) */
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */
@@ -504,3 +506,6 @@ export interface CreateRequest {
   /** refine an existing creation instead of starting fresh */
   previous?: { id: string; content: string; instruction: string }
 }
+
+/** The rewriter's version: 2 gives an iPhone's edit list its real length. A whole file made by an older one is made again. */
+export const REWRITE_VERSION = 2

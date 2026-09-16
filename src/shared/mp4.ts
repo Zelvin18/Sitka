@@ -273,6 +273,12 @@ function convert(b: Uint8Array): Uint8Array | null {
           for (const c of boxes(b, t.trak.start + t.trak.head, t.trak.start + t.trak.size)) {
             if (c.type === 'tkhd') {
               m.raw(patchDuration(b.subarray(c.start, c.start + c.size), Math.round((durations.get(t)! / t.timescale) * movieTimescale), 'tkhd'))
+            } else if (c.type === 'edts') {
+              // An iPhone writes an edit list whose length is 0, which in a
+              // recording of unknown length means "to the end". Once the
+              // length is known, a 0 here reads as an empty edit: the player
+              // sees no sound and no end. The edit gets its real length.
+              m.raw(patchEditList(b.subarray(c.start, c.start + c.size), durations.get(t)!, t.timescale, movieTimescale))
             } else if (c.type === 'mdia') {
               m.box('mdia', () => {
                 for (const d of boxes(b, c.start + c.head, c.start + c.size)) {
@@ -409,6 +415,32 @@ function writeTables(m: Writer, t: Track, chunkOffsets: number[], wide: boolean)
 }
 
 /** a copy of a header box with its duration field set */
+/**
+ * An edts box with each elst entry of length 0 given the track's real
+ * length (less the part the entry skips), in the movie's timescale.
+ */
+function patchEditList(edts: Uint8Array, mediaDuration: number, mediaTimescale: number, movieTimescale: number): Uint8Array {
+  const out = edts.slice()
+  const elst = boxes(out, 8, out.length).find((x) => x.type === 'elst')
+  if (!elst) return out
+  const ver = out[elst.start + elst.head]
+  let p = elst.start + elst.head + 4
+  const n = u32(out, p)
+  p += 4
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength)
+  for (let i = 0; i < n; i++) {
+    const segment = ver === 1 ? Number(view.getBigUint64(p)) : u32(out, p)
+    const mediaTime = ver === 1 ? Number(view.getBigInt64(p + 8)) : i32(out, p + 4)
+    if (segment === 0 && mediaTime >= 0) {
+      const length = Math.max(0, Math.round(((mediaDuration - mediaTime) / mediaTimescale) * movieTimescale))
+      if (ver === 1) view.setBigUint64(p, BigInt(length))
+      else view.setUint32(p, length)
+    }
+    p += ver === 1 ? 20 : 12
+  }
+  return out
+}
+
 function patchDuration(src: Uint8Array, duration: number, kind: 'mvhd' | 'tkhd' | 'mdhd'): Uint8Array {
   const out = src.slice()
   const head = u32(out, 0) === 1 ? 16 : 8
