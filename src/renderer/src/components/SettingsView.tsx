@@ -429,7 +429,11 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
 
         <div className="section-title">Get in touch</div>
         <div className="card">
-          <Row title="Talk to us" desc="A question, a problem, an idea for what Sitka should do next. A person reads every message.">
+          <div className="set-row contact-row">
+            <div className="set-text">
+              <div className="set-title">Talk to us</div>
+              <div className="set-desc">A question, a problem, an idea for what Sitka should do next. A person reads every message.</div>
+            </div>
             <div className="contact-ways">
               <a className="btn btn-ghost btn-sm" href="mailto:magumisekelvin8@gmail.com">
                 magumisekelvin8@gmail.com
@@ -441,7 +445,7 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
                 WhatsApp
               </a>
             </div>
-          </Row>
+          </div>
         </div>
       </div>
     </div>

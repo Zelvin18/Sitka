@@ -132,6 +132,8 @@ export function installBrowserMockIfNeeded(): void {
     coachAudienceQuestion: async () => ({}),
     coachJudgeAnswer: async () => ({}),
     coachGetSim: async () => [],
+    getSpaceChat: async () => [],
+    saveSpaceChat: async () => undefined,
     coachSaveSim: async () => undefined,
     listEvents: async () => ({ events: [], status: { running: false } }),
     createEvent: async () => ({ error: 'unavailable in browser preview' }),

@@ -700,6 +700,8 @@ function registerIpc(): void {
     }
   )
 
+  ipcMain.handle('space:getChat', (_e, id: string) => store.getCoachSim(`space-${id}`))
+  ipcMain.handle('space:saveChat', (_e, id: string, chat: ChatMessage[]) => store.saveCoachSim(`space-${id}`, chat))
   ipcMain.handle('coach:getSim', (_e, id: string) => store.getCoachSim(id))
   ipcMain.handle('coach:saveSim', (_e, id: string, chat: ChatMessage[]) =>
     store.saveCoachSim(id, chat)

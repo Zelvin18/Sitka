@@ -35,7 +35,7 @@ type View =
   | { name: 'settings' }
   | { name: 'business' }
   | { name: 'education' }
-  | { name: 'org'; id: string }
+  | { name: 'org'; id: string; spaceId?: string }
   | {
       name: 'live'
       eventId?: string
@@ -81,15 +81,29 @@ export default function App(): React.JSX.Element {
   // "you", even after a detour through Business.
   const spaceRef = useRef<Space | undefined>(undefined)
   const spaceHistoryRef = useRef<(Space | undefined)[]>([])
+  /** the same page again — a session jumped to another moment, a page re-set to itself — is not a step in the history */
+  const samePage = (a: View, b: View): boolean => {
+    if (a.name !== b.name) return false
+    if (a.name === 'session' && b.name === 'session') return a.id === b.id
+    if (a.name === 'org' && b.name === 'org') return a.id === b.id && a.spaceId === b.spaceId
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
   const setView = useCallback((next: View | ((v: View) => View)): void => {
     const resolved = typeof next === 'function' ? next(viewRef.current) : next
-    if (resolved.name !== viewRef.current.name || JSON.stringify(resolved) !== JSON.stringify(viewRef.current)) {
+    if (!samePage(resolved, viewRef.current)) {
       historyRef.current = [...historyRef.current.slice(-40), viewRef.current]
       spaceHistoryRef.current = [...spaceHistoryRef.current.slice(-40), spaceRef.current]
       setCanBack(true)
     }
     viewRef.current = resolved
     setViewRaw(resolved)
+    rememberView()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  /** the page in place of this one, with no step added: a recording that became its session */
+  const replaceView = useCallback((next: View): void => {
+    viewRef.current = next
+    setViewRaw(next)
     rememberView()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -554,6 +568,8 @@ export default function App(): React.JSX.Element {
                   void refreshOrgs()
                   void refreshSessions()
                 }}
+                spaceId={view.name === 'org' ? view.spaceId : undefined}
+                onSpace={(spaceId) => setView({ name: 'org', id: org.id, spaceId: spaceId ?? undefined })}
               />
             )
           })()}
@@ -641,7 +657,8 @@ export default function App(): React.JSX.Element {
                 setRecordingSessionId(undefined)
                 setRecordingStartedAt(undefined)
                 void refreshSessions()
-                setView({ name: 'session', id })
+                // the session takes the recorder's place: Back goes to where the recording was started from
+                replaceView({ name: 'session', id })
               }}
               onCancel={goBack}
               onOpenSettings={() => setView({ name: 'settings' })}

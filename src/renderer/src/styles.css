@@ -10651,13 +10651,14 @@ video {
   margin-top: -4px;
 }
 .sp.compact {
-  margin: 0 0 14px;
+  margin: 12px 0 16px;
 }
 .sp.compact .sp-row {
   display: flex;
   gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
+  padding: 3px 3px 5px;
 }
 .sp.compact .sp-card {
   flex: 0 0 auto;
@@ -10968,19 +10969,356 @@ video {
   margin-right: 4px;
 }
 
-/* the ways to reach us, at the foot of Settings */
+/* the ways to reach us, at the foot of Settings: the words, then three quiet cards beneath */
+.contact-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
 .contact-ways {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
 }
 .contact-ways .btn {
   text-decoration: none;
+  justify-content: center;
+  padding: 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  text-align: center;
+  font-size: 13px;
 }
 @media (max-width: 720px) {
   .contact-ways {
-    justify-content: flex-start;
-    width: 100%;
+    grid-template-columns: 1fr;
+  }
+  .contact-ways .btn {
+    text-align: left;
+    padding: 12px 14px;
+  }
+}
+
+/* ============ the document preview, in its layout ============ */
+.doc-page.lay-magazine h2 {
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--doc-muted);
+  margin-top: 28px;
+  padding-bottom: 6px;
+  position: relative;
+}
+.doc-page.lay-magazine h2::after {
+  content: '';
+  display: block;
+  width: 28px;
+  height: 2px;
+  background: var(--doc-accent);
+  margin-top: 6px;
+}
+.doc-page.lay-magazine h1 + p {
+  font-size: 1.22em;
+  line-height: 1.5;
+  color: var(--doc-muted);
+}
+.doc-page.lay-magazine h2 + p::first-letter {
+  float: left;
+  font-size: 3.4em;
+  line-height: 0.82;
+  font-weight: 700;
+  padding: 6px 8px 0 0;
+  color: var(--doc-accent);
+}
+.doc-page.lay-magazine h2 + p::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+.doc-page.lay-magazine blockquote {
+  border: none;
+  margin: 22px 8%;
+  padding: 18px 0 16px;
+  text-align: center;
+  font-size: 1.15em;
+  line-height: 1.45;
+  color: var(--doc-ink);
+  border-top: 1px solid var(--doc-rule);
+  border-bottom: 1px solid var(--doc-rule);
+  position: relative;
+}
+.doc-page.lay-magazine blockquote::before {
+  content: '\201C';
+  position: absolute;
+  left: -14px;
+  top: 10px;
+  font-size: 2.4em;
+  color: var(--doc-accent);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.doc-page.lay-sidebar {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  column-gap: 22px;
+  align-items: start;
+}
+.doc-page.lay-sidebar > * {
+  grid-column: 2;
+  min-width: 0;
+}
+.doc-page.lay-sidebar > h1 {
+  grid-column: 1 / 3;
+}
+.doc-page.lay-sidebar > h2 {
+  grid-column: 1;
+  margin: 26px 0 0;
+  font-size: 13px;
+  color: var(--doc-accent);
+  line-height: 1.3;
+  padding-top: 8px;
+  border-top: 2.5px solid var(--doc-accent);
+}
+.doc-page.lay-sidebar > h2 + * {
+  margin-top: 26px;
+}
+
+.doc-page.lay-report {
+  counter-reset: section;
+}
+.doc-page.lay-report h2 {
+  counter-increment: section;
+  background: color-mix(in srgb, var(--doc-accent) 10%, transparent);
+  color: var(--doc-accent);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 26px;
+}
+.doc-page.lay-report h2::before {
+  content: counter(section, decimal-leading-zero) '  ';
+  font-weight: 800;
+}
+.doc-page.lay-report tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--doc-accent) 4%, transparent);
+}
+
+.doc-page.lay-notebook {
+  box-shadow:
+    inset 0 0 0 14px var(--doc-paper, #fbf7ef),
+    inset 0 0 0 15px var(--doc-rule);
+}
+.doc-page.lay-notebook h2 {
+  padding-left: 16px;
+  position: relative;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--doc-rule);
+}
+.doc-page.lay-notebook h2::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 7px;
+  height: 7px;
+  background: var(--doc-accent);
+}
+
+.doc-page.lay-sections {
+  counter-reset: section;
+  padding-top: 0;
+}
+.doc-page.lay-sections h2 {
+  counter-increment: section;
+  background: var(--doc-ink);
+  color: #fff;
+  margin: 28px -40px 18px;
+  padding: 22px 40px 22px 110px;
+  position: relative;
+  font-size: 18px;
+}
+.doc-page.lay-sections h2::before {
+  content: counter(section, decimal-leading-zero);
+  position: absolute;
+  left: 40px;
+  top: 12px;
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--doc-accent);
+  letter-spacing: -0.03em;
+}
+
+/* ============ the slide cards and the presenting screen, in their layouts ============ */
+.deck-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.deck-card-big {
+  position: absolute;
+  right: 12px;
+  top: 4px;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+.deck-card.lay-split {
+  flex-direction: row;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
+}
+.deck-card .deck-card-bullets {
+  color: var(--deck-muted, #c9c9d0);
+}
+.deck-card.lay-split .deck-card-head {
+  flex: 0 0 38%;
+  background: var(--deck-accent);
+  color: #fff;
+  padding: 16px 14px;
+  justify-content: center;
+}
+.deck-card.lay-split .deck-card-bullets {
+  padding: 16px 16px 16px 30px;
+  align-self: center;
+}
+.deck-card.lay-cards .deck-card-bullets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+}
+.deck-card.lay-cards .deck-card-bullets li {
+  background: rgba(11, 61, 110, 0.08);
+  border-left: 3px solid var(--deck-accent);
+  border-radius: 5px;
+  padding: 5px 7px;
+}
+.deck-card.lay-centered {
+  align-items: center;
+  text-align: center;
+}
+.deck-card.lay-centered .deck-card-bullets {
+  list-style: none;
+  padding: 0;
+  text-align: center;
+}
+.deck-card.lay-centered .deck-card-title::after {
+  content: '';
+  display: block;
+  width: 26px;
+  height: 2px;
+  background: var(--deck-accent);
+  margin: 6px auto 0;
+}
+.deck-card.lay-left .deck-card-title::after {
+  content: '';
+  display: block;
+  width: 26px;
+  height: 2px;
+  background: var(--deck-accent);
+  margin: 6px 0 0;
+}
+
+.present-big {
+  position: absolute;
+  right: 6vw;
+  top: 4vh;
+  font-size: clamp(120px, 26vw, 360px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+.present-slide {
+  position: relative;
+}
+.present-slide.lay-split {
+  flex-direction: row;
+  padding: 0;
+  align-items: stretch;
+}
+.present-slide.lay-split h1 {
+  flex: 0 0 36%;
+  background: var(--pr-accent);
+  color: #fff;
+  margin: 0;
+  padding: 7vh 4vw;
+  display: flex;
+  align-items: center;
+  font-size: clamp(26px, 3.6vw, 48px);
+}
+.present-slide.lay-split ul {
+  flex: 1;
+  align-self: center;
+  padding: 6vh 6vw 6vh 8vw;
+}
+.present-slide.lay-cards ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.4vw;
+  padding: 0;
+  list-style: none;
+}
+.present-slide.lay-cards li {
+  background: rgba(11, 61, 110, 0.08);
+  border-left: 6px solid var(--pr-accent);
+  border-radius: 14px;
+  padding: 2.2vh 2vw;
+  margin: 0;
+}
+.present-slide.lay-centered {
+  align-items: center;
+  text-align: center;
+}
+.present-slide.lay-centered ul {
+  list-style: none;
+  padding: 0;
+  max-width: 70vw;
+}
+.present-slide.lay-centered h1::after,
+.present-slide.lay-left h1::after {
+  content: '';
+  display: block;
+  width: 64px;
+  height: 4px;
+  background: var(--pr-accent);
+  margin: 2vh auto 0;
+}
+.present-slide.lay-left h1::after {
+  margin-left: 0;
+}
+@media (max-width: 720px) {
+  .deck-card.lay-split {
+    flex-direction: column;
+  }
+  .deck-card.lay-split .deck-card-head {
+    flex: none;
+  }
+  .present-slide.lay-split {
+    flex-direction: column;
+  }
+  .present-slide.lay-split h1 {
+    flex: none;
+  }
+  .present-slide.lay-cards ul {
+    grid-template-columns: 1fr;
   }
 }

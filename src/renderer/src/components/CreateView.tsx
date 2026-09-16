@@ -148,7 +148,7 @@ function deckCardStyle(id: string | undefined, title: boolean): React.CSSPropert
     color: toHex(title ? t.titleInk : t.ink),
     fontFamily: t.serif ? 'Georgia, "Times New Roman", serif' : undefined,
     ['--deck-accent' as string]: toHex(t.accent),
-    ['--deck-muted' as string]: toHex(title ? t.titleInk : t.muted),
+    ['--deck-muted' as string]: title ? toHex(t.titleInk) : t.id === 'midnight' ? '#c9c9d0' : toHex(t.ink),
     borderLeft: !title && t.bar === 'left' ? `5px solid ${toHex(t.accent)}` : undefined,
     borderTop: !title && t.bar === 'top' ? `5px solid ${toHex(t.accent)}` : undefined
   }
@@ -560,7 +560,7 @@ export default function CreateView({
 
             <div className="create-body">
               {selected.kind === 'document' && (
-                <div className="doc-page" style={docPageStyle(selected.template)}>
+                <div className={`doc-page lay-${docTemplate(selected.template).layout}`} style={docPageStyle(selected.template)}>
                   <AiText text={selected.content} onSeek={seekFor} />
                 </div>
               )}
@@ -569,12 +569,18 @@ export default function CreateView({
                 (deck ? (
                   <div className="deck-grid">
                     {deck.slides.map((s, i) => (
-                      <button key={i} className="deck-card" style={deckCardStyle(selected.template, i === 0)} onClick={() => setPresentAt(i)}>
+                      <button
+                        key={i}
+                        className={`deck-card${i === 0 ? ' first' : ` lay-${deckTemplate(selected.template).slide}`}`}
+                        style={deckCardStyle(selected.template, i === 0)}
+                        onClick={() => setPresentAt(i)}
+                      >
                         <span className="deck-card-n">{i + 1}</span>
-                        <span className="deck-card-title">{s.title}</span>
-                        {i === 0 && deck.subtitle && (
-                          <span className="deck-card-sub">{deck.subtitle}</span>
-                        )}
+                        {i > 0 && deckTemplate(selected.template).slide === 'number' && <span className="deck-card-big">{String(i).padStart(2, '0')}</span>}
+                        <span className="deck-card-head">
+                          <span className="deck-card-title">{s.title}</span>
+                          {i === 0 && deck.subtitle && <span className="deck-card-sub">{deck.subtitle}</span>}
+                        </span>
                         {s.bullets.length > 0 && (
                           <ul className="deck-card-bullets">
                             {s.bullets.slice(0, 4).map((b, j) => (
@@ -663,7 +669,8 @@ export default function CreateView({
             return x > window.innerWidth / 2 ? Math.min(deck.slides.length - 1, n + 1) : Math.max(0, n - 1)
           })
         }}>
-          <div className={`present-slide${presentAt === 0 ? ' title' : ''}`}>
+          <div className={`present-slide${presentAt === 0 ? ' title' : ` lay-${deckTemplate(selected?.template).slide}`}`}>
+            {presentAt > 0 && deckTemplate(selected?.template).slide === 'number' && <div className="present-big">{String(presentAt).padStart(2, '0')}</div>}
             <h1>{deck.slides[presentAt].title}</h1>
             {presentAt === 0 && deck.subtitle && <p className="present-sub">{deck.subtitle}</p>}
             {deck.slides[presentAt].bullets.length > 0 && (

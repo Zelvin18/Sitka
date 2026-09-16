@@ -56,7 +56,9 @@ export function createSystemPrompt(kind: CreationKind): string {
       '- 6 to 14 slides. The first slide is the title slide (its bullets may be empty). End with a summary or next-steps slide.',
       '- Each slide: a crisp title (max 8 words) and 2-5 bullets of at most 12 words each. Bullets are statements, not fragments of the title.',
       '- "notes" is what the presenter says for that slide: 2-4 sentences, natural spoken language.',
-      '- One idea per slide. No slide should repeat another.'
+      '- One idea per slide. No slide should repeat another.',
+      '- Every bullet is real content: a fact, a number, a claim, a step. Never a placeholder ("Topic 1", "to be confirmed", "add details here", "TBD"). If no sessions were provided, write the substance from what the request says and from what you know of the subject, as a knowledgeable author would.',
+      '- Never cite moments or clock times ([[12:34]], (0:15)); the deck is shown to people who were not there.'
     ].join('\n')
   }
   return [

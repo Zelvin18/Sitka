@@ -2999,7 +2999,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // the database allows this only for the space's creator or the organisation's owner
       const { error, count } = await sb.from('org_spaces').delete({ count: 'exact' }).eq('id', spaceId)
       if (error) throw new Error(error.message)
-      if (!count) throw new Error('Only the person who created it, or the owner of the organisation, can delete this.')
+      if (!count) throw new Error('Only the owner of the organisation and its leads can delete this.')
     },
     listSpaceMaterials: async (spaceId: string): Promise<SpaceMaterial[]> => {
       const { data } = await sb
@@ -3982,6 +3982,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
     },
     coachGetSim: async (id: string) => (await loadCoach(id))?.sim ?? [],
+    getSpaceChat: async (spaceId: string) => {
+      // the database first; a browser without the table yet keeps it locally
+      const { data, error } = await sb.from('space_chats').select('messages').eq('space_id', spaceId).eq('user_id', user.id).maybeSingle()
+      if (!error && data?.messages) return data.messages as ChatMessage[]
+      try {
+        return JSON.parse(localStorage.getItem(`sitka-space-chat-${spaceId}`) || '[]') as ChatMessage[]
+      } catch {
+        return []
+      }
+    },
+    saveSpaceChat: async (spaceId: string, chat: ChatMessage[]) => {
+      try {
+        localStorage.setItem(`sitka-space-chat-${spaceId}`, JSON.stringify(chat.slice(-60)))
+      } catch {
+        /* full or private */
+      }
+      await sb
+        .from('space_chats')
+        .upsert({ space_id: spaceId, user_id: user.id, messages: chat.slice(-60), updated_at: new Date().toISOString() })
+        .then(() => undefined, () => undefined)
+    },
     coachSaveSim: async (id, chat) => {
       const row = await loadCoach(id)
       if (!row) return

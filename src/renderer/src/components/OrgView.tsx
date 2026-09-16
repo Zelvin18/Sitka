@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
+  ChatMessage,
   OrgMember,
   OrgSpace,
   OrgSpaceKind,
@@ -39,6 +40,9 @@ interface Props {
   onOpenSettings: () => void
   onLeft: () => void
   onChanged: () => void
+  /** the space open in this organisation, part of the app's own history so Back returns to it */
+  spaceId?: string
+  onSpace: (spaceId: string | null) => void
 }
 
 type Tab = 'ask' | 'sessions' | 'materials' | 'understanding' | 'people'
@@ -58,13 +62,20 @@ export default function OrgView({
   onOpenSession,
   onOpenSettings,
   onLeft,
-  onChanged
+  onChanged,
+  spaceId,
+  onSpace
 }: Props): React.JSX.Element {
   const education = org.kind === 'education'
   const lead = org.role === 'owner' || org.role === 'lead'
   const [spaces, setSpaces] = useState<OrgSpace[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [members, setMembers] = useState<OrgMember[]>([])
-  const [active, setActive] = useState<OrgSpace | null>(null)
+  const active = useMemo(() => spaces.find((x) => x.id === spaceId) ?? null, [spaces, spaceId])
+  const setActive = useCallback((next: OrgSpace | null | ((a: OrgSpace | null) => OrgSpace | null)): void => {
+    const resolved = typeof next === 'function' ? next(spaces.find((x) => x.id === spaceId) ?? null) : next
+    onSpace(resolved?.id ?? null)
+  }, [onSpace, spaces, spaceId])
   const [tab, setTab] = useState<Tab>('ask')
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -82,13 +93,29 @@ export default function OrgView({
   const [materials, setMaterials] = useState<SpaceMaterial[]>([])
   const [insights, setInsights] = useState<SpaceInsight[] | null>(null)
   const [chatKey, setChatKey] = useState(0)
+  // the conversation with this space, as it was left
+  const [spaceChat, setSpaceChat] = useState<ChatMessage[] | null>(null)
+  useEffect(() => {
+    setSpaceChat(null)
+    if (!active) return
+    let gone = false
+    void window.sitka.getSpaceChat(active.id).then((c) => {
+      if (!gone) {
+        setSpaceChat(c)
+        setChatKey((k) => k + 1)
+      }
+    })
+    return () => {
+      gone = true
+    }
+  }, [active?.id])
   const [fileId, setFileId] = useState('')
 
   const refresh = useCallback(async (): Promise<void> => {
     const [s, m] = await Promise.all([window.sitka.listSpaces(org.id), window.sitka.listOrgMembers(org.id)])
     setSpaces(s)
     setMembers(m)
-    setActive((a) => (a ? (s.find((x) => x.id === a.id) ?? null) : a))
+    setLoaded(true)
   }, [org.id])
   useEffect(() => {
     void refresh()
@@ -198,6 +225,8 @@ export default function OrgView({
     `Join ${org.name} on Sitka\n\n1. Open ${location.origin}/app and sign in (it's free).\n2. Go to ${education ? 'Education' : 'Business'} at the top right.\n3. Choose "Join with a code" and enter ${code}.\n\nYou'll join as ${who}.`
 
   // ---------------- organisation home ----------------
+  // a space asked for by the app's history, not yet listed: nothing flashes
+  if (!active && spaceId && !loaded) return <div className="content" />
   if (!active) {
     return (
       <div className="content">
@@ -554,7 +583,8 @@ export default function OrgView({
               sessionId={`__space__${active.id}`}
               brain
               live={false}
-              initialChat={[]}
+              initialChat={spaceChat ?? []}
+              onPersist={(messages) => void window.sitka.saveSpaceChat(active.id, messages)}
               hasChatKey={hasChatKey}
               hasTranscript
               headerTitle={active.kind === 'course' ? `Ask the course` : `Ask ${active.name}`}
@@ -648,7 +678,7 @@ export default function OrgView({
                   onAdd={async (name, text) => setMaterials(await window.sitka.addSpaceMaterial(active.id, name, text))}
                   onRemove={async (id) => setMaterials(await window.sitka.removeSpaceMaterial(active.id, id))}
                 />
-                {(active.mine || org.role === 'owner') && (
+                {lead && (
                   <div className="org-danger">
                     <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
                       <IconTrash size={13} />
@@ -754,7 +784,7 @@ export default function OrgView({
                 </div>
               ))}
             </div>
-            {(active.mine || org.role === 'owner') && (
+            {lead && (
               <div className="org-danger">
                 <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
                   <IconTrash size={13} />

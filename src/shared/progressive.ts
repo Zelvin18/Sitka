@@ -378,7 +378,6 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   let seeking = false
   let fills = 0
   const loop = async (): Promise<void> => {
-    await appendWithRoom(head).catch(() => undefined)
     cursor = head.byteLength
     opts.onProgress?.(cursor / size)
     while (alive) {
@@ -465,6 +464,32 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   video.addEventListener('waiting', () => void onSeek())
   video.addEventListener('seeking', () => void onSeek())
 
+  // The head is appended before anything is promised: a file the engine
+  // cannot parse (a container it does not know, a header it cannot read) is
+  // found out here, the element is left clean, and the caller plays it
+  // another way.
+  try {
+    await appendWithRoom(head)
+  } catch (err) {
+    console.warn('[stream] this file cannot be streamed here', err)
+    alive = false
+    try {
+      if (ms.readyState === 'open') ms.endOfStream()
+    } catch {
+      /* already closed */
+    }
+    video.removeAttribute('src')
+    video.load()
+    URL.revokeObjectURL(url)
+    return false
+  }
+  if (video.error) {
+    alive = false
+    video.removeAttribute('src')
+    video.load()
+    URL.revokeObjectURL(url)
+    return false
+  }
   void loop()
   return true
 }

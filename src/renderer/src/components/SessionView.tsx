@@ -307,6 +307,19 @@ export default function SessionView({
           },
           { durationSec, lookahead: 3 }
         )
+    // twenty seconds without a first frame is a stream that will not come
+    const watchdog = window.setTimeout(() => {
+      if (cancelled || !videoRef.current || videoRef.current.readyState >= 1) return
+      cancelled = true
+      streamPartsRef.current = []
+      void window.sitka.readVideo(sessionId).then((bytes) => {
+        if (!bytes || bytes.byteLength === 0) {
+          setVideoError(true)
+          return
+        }
+        setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
+      })
+    }, 20000)
     void run.then((ok) => {
       if (cancelled) return
       if (!ok) {
@@ -323,6 +336,7 @@ export default function SessionView({
     })
     return () => {
       cancelled = true
+      clearTimeout(watchdog)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoSrc, sessionId])
@@ -657,8 +671,20 @@ export default function SessionView({
                 onError={() => {
                   // The link did not open: expired, gone, or refused. Never a
                   // spinner for good: fall back to the parts, then to the file.
-                  if (videoSrc === 'progressive' || videoSrc?.startsWith('blob:')) {
+                  if (videoSrc?.startsWith('blob:')) {
                     setVideoError(true)
+                    return
+                  }
+                  if (videoSrc === 'progressive') {
+                    // the stream broke: the whole file, read into memory, plays anything
+                    streamPartsRef.current = []
+                    void window.sitka.readVideo(sessionId).then((bytes) => {
+                      if (!bytes || bytes.byteLength === 0) {
+                        setVideoError(true)
+                        return
+                      }
+                      setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
+                    })
                     return
                   }
                   void (async () => {

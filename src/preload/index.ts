@@ -348,6 +348,9 @@ const api = {
   ): Promise<{ verdict?: 'strong' | 'needs-work' | 'weak'; reason?: string; strongAnswer?: string; spoken?: string; error?: string }> =>
     ipcRenderer.invoke('coach:judgeAnswer', id, persona, question, answer),
   coachGetSim: (id: string): Promise<ChatMessage[]> => ipcRenderer.invoke('coach:getSim', id),
+  /** one's own conversation with a course or space, kept between visits */
+  getSpaceChat: (spaceId: string): Promise<ChatMessage[]> => ipcRenderer.invoke('space:getChat', spaceId),
+  saveSpaceChat: (spaceId: string, chat: ChatMessage[]): Promise<void> => ipcRenderer.invoke('space:saveChat', spaceId, chat),
   coachSaveSim: (id: string, chat: ChatMessage[]): Promise<void> =>
     ipcRenderer.invoke('coach:saveSim', id, chat),
 
