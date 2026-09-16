@@ -164,10 +164,10 @@ export function deckPage(title: string, subtitle: string | undefined, slides: De
   const font = t.serif ? 'Georgia,"Times New Roman",serif' : "Inter,-apple-system,'Segoe UI',sans-serif"
   const slideHtml = slides
     .map(
-      (s, i) => `<section class="slide${i === 0 ? ' title' : ''}">
+      (s, i) => `<section class="slide${i === 0 ? ' title' : ` lay-${t.slide}`}">
   <div class="n">${i + 1} / ${slides.length}</div>
-  <h1>${esc(s.title)}</h1>
-  ${i === 0 && subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}
+  ${i > 0 && t.slide === 'number' ? `<div class="big">${String(i).padStart(2, '0')}</div>` : ''}
+  <div class="head"><h1>${esc(s.title)}</h1>${i === 0 && subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}</div>
   ${s.bullets.length ? `<ul>${s.bullets.map((b) => `<li>${inline(b)}</li>`).join('')}</ul>` : ''}
   ${s.notes ? `<aside class="notes">${esc(s.notes)}</aside>` : ''}
 </section>`
@@ -186,6 +186,20 @@ ${t.bar === 'under' ? `.slide:not(.title) h1::after{content:'';display:block;wid
 .sub{font-size:clamp(16px,2.2vw,28px);color:${t.id === 'midnight' ? toHex(t.muted) : 'inherit'};opacity:.85;margin:0}
 ul{margin:0;padding-left:1.2em;font-size:clamp(17px,2.4vw,32px);line-height:1.45;list-style:none}li{margin:.35em 0;position:relative}li::before{content:'${t.bullet}';position:absolute;left:-1.2em;color:${toHex(t.accent)}}
 .n{position:absolute;right:3vw;bottom:3vh;font-size:14px;color:${toHex(t.muted)}}
+/* the layouts */
+.lay-split{flex-direction:row;padding:0;align-items:stretch}
+.lay-split .head{flex:0 0 36%;background:${toHex(t.accent)};color:#fff;display:flex;align-items:center;padding:6vh 4vw}
+.lay-split .head h1{color:#fff;margin:0;font-size:clamp(26px,3.6vw,48px)}
+.lay-split ul{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6vh 6vw 6vh 8vw;margin:0}
+.lay-number .big{position:absolute;right:4vw;top:2vh;font-size:clamp(120px,24vw,340px);font-weight:800;line-height:1;color:rgba(255,255,255,.07);letter-spacing:-.04em;pointer-events:none}
+.lay-cards ul{display:grid;grid-template-columns:1fr 1fr;gap:1.6vw;padding:0;font-size:clamp(15px,1.9vw,24px)}
+.lay-cards li{margin:0;padding:2.4vh 2vw 2.4vh 2.6vw;background:rgba(11,61,110,.07);border-radius:14px;border-left:6px solid ${toHex(t.accent)}}
+.lay-cards li::before{content:none}
+.lay-centered{align-items:center;text-align:center}
+.lay-centered h1{text-align:center}
+.lay-centered h1::after{margin:2vh auto 0}
+.lay-centered ul{padding:0;max-width:70vw}
+.lay-centered li{padding:0}.lay-centered li::before{content:none}
 .notes{display:none}
 .brand{position:absolute;left:3vw;bottom:3vh;font-size:13px;color:#6e6e76;letter-spacing:.12em;text-transform:uppercase}
 @media print{html,body{background:#fff;color:#111}.slide{display:flex;page-break-after:always;height:100vh}.sub,.n,.brand{color:#666}.notes{display:block;margin-top:auto;font-size:12px;color:#555;border-top:1px solid #ddd;padding-top:8px}}

@@ -13,7 +13,7 @@ import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../l
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
 import { IconPlay } from '../lib/icons'
-import { playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
+import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
 
 /** MediaSource, or Safari's managed one on iPhone */
 const hasStreamingEngine = (): boolean => typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
@@ -260,7 +260,7 @@ export default function SessionView({
           setVideoError(true)
           return
         }
-        const blob = new Blob([bytes.slice().buffer], { type: 'video/webm' })
+        const blob = new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })
         objectUrl = URL.createObjectURL(blob)
         setVideoSrc(objectUrl)
       } catch {
@@ -317,7 +317,7 @@ export default function SessionView({
             setVideoError(true)
             return
           }
-          setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' })))
+          setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
         })
       }
     })
@@ -381,7 +381,7 @@ export default function SessionView({
     if (!reelStamp) return undefined
     void window.sitka.readVideo(sessionId, 'reel').then((bytes) => {
       if (cancelled || !bytes || bytes.byteLength === 0) return
-      url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' }))
+      url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) }))
       setReelSrc(url)
     })
     return () => {
@@ -675,7 +675,7 @@ export default function SessionView({
                       setVideoError(true)
                       return
                     }
-                    setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'video/webm' })))
+                    setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
                   })()
                 }}
               />

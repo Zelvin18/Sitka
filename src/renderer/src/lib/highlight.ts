@@ -116,7 +116,8 @@ export function highlight(code: string, lang: string): Token[] {
     }
     // words
     if (/[A-Za-z_$@]/.test(ch)) {
-      let j = i
+      // the first character is always taken, so a lone @ or $ can never stall the loop
+      let j = i + 1
       while (j < n && /[A-Za-z0-9_$]/.test(code[j])) j++
       const word = code.slice(i, j)
       const next = code.slice(j).match(/^\s*\(/)

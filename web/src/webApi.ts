@@ -2491,6 +2491,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const durationMs = cache.get(id)?.meta.durationMs ?? (await loadSession(id))?.meta.durationMs
           if (file === 'video' && durationMs) {
             try {
+              // only a WebM has the length written in; an MP4 is left as it is
+              if (mediaType(out.subarray(0, 12)) !== 'video/webm') return out
               const fixed = await fixWebmDuration(
                 new Blob([out.buffer as ArrayBuffer], { type: 'video/webm' }),
                 durationMs
@@ -2874,6 +2876,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     createOrg: async (name: string, kind: Space) => {
       const clean = name.trim()
       if (!clean) return { error: 'Give the organisation a name.' }
+      // up to five of one's own, for now
+      const { count } = await sb.from('organizations').select('id', { count: 'exact', head: true }).eq('owner', user.id)
+      if ((count ?? 0) >= 5) return { error: 'You have set up five organisations, the most for now.' }
       const code = (): string =>
         Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
       const id = uid()

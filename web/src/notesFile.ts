@@ -6,18 +6,8 @@
  */
 import { briefToPdf } from '../../src/renderer/src/lib/pdf'
 
-/** the clock references Sitka's writing carries, removed */
-export function withoutTimes(md: string): string {
-  return md
-    .replace(/\[\[(?:[a-fA-F0-9-]{6,}@)?\d{1,2}:\d{2}(?::\d{2})?\]\]/g, '')
-    .replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '')
-    .replace(/\((?:at |around )?\d{1,2}:\d{2}(?::\d{2})?\)/g, '')
-    .replace(/\b(?:at|around|from|by)\s+\d{1,2}:\d{2}(?::\d{2})?(?!\s*(?:am|pm|AM|PM))\b/g, '')
-    .replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[—–-]\s*/gm, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/ ([,.;:])/g, '$1')
-    .replace(/\( *\)/g, '')
-}
+import { withoutTimes } from '../../src/shared/timesLogic'
+export { withoutTimes }
 
 export interface NotesParts {
   title: string

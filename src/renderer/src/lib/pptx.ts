@@ -74,14 +74,48 @@ function slideXml(t: DeckTemplate, s: PdfSlide, index: number, total: number, su
     if (sub) shapes.push(textBox(id++, 'Subtitle', m, SH * 0.68, SW - m * 2, SH * 0.14, [{ text: sub, size: 18, color: light, font }], 't'))
     if (t.bar !== 'none') shapes.push(rect(id++, 'Mark', m, SH * 0.66, 0.7 * IN, 0.05 * IN, t.id === 'midnight' ? clr(t.accent) : t.id === 'mono' ? clr(t.titleInk) : 'FFFFFF'))
   } else {
-    if (t.bar === 'left') shapes.push(rect(id++, 'Bar', 0, 0, 0.14 * IN, SH, clr(t.accent)))
-    if (t.bar === 'top') shapes.push(rect(id++, 'Bar', 0, 0, SW, 0.16 * IN, clr(t.accent)))
-    const left = t.bar === 'left' ? m + 0.2 * IN : m
     const titleColor = t.id === 'ocean' ? clr(t.accent) : clr(t.ink)
-    shapes.push(textBox(id++, 'Title', left, 0.55 * IN, SW - left - m, 1.3 * IN, [{ text: s.title, size: s.title.length > 50 ? 26 : 32, bold: true, color: titleColor, font }], 'b'))
-    if (t.bar === 'under') shapes.push(rect(id++, 'Underline', left, 1.98 * IN, 0.6 * IN, 0.04 * IN, clr(t.accent)))
-    const bullets: Para[] = s.bullets.map((b) => ({ text: b, size: 20, color: clr(t.ink), font, bullet: t.bullet, bulletColor: clr(t.accent), spaceBefore: 10 }))
-    shapes.push(textBox(id++, 'Body', left, 2.25 * IN, SW - left - m, SH - 2.25 * IN - 0.8 * IN, bullets, 't'))
+    const ink = clr(t.ink)
+    const accent = clr(t.accent)
+    const bullets = (size: number): Para[] => s.bullets.map((b) => ({ text: b, size, color: ink, font, bullet: t.bullet, bulletColor: accent, spaceBefore: 10 }))
+    if (t.slide === 'split') {
+      const panelW = SW * 0.36
+      shapes.push(rect(id++, 'Panel', 0, 0, panelW, SH, accent))
+      shapes.push(textBox(id++, 'Title', 0.5 * IN, 0.6 * IN, panelW - IN, SH - 1.2 * IN, [{ text: s.title, size: 30, bold: true, color: 'FFFFFF', font }], 'ctr'))
+      shapes.push(textBox(id++, 'Body', panelW + 0.5 * IN, 0.8 * IN, SW - panelW - m - 0.5 * IN, SH - 1.6 * IN, bullets(20), 'ctr'))
+    } else if (t.slide === 'number') {
+      if (t.bar === 'left') shapes.push(rect(id++, 'Bar', 0, 0, 0.14 * IN, SH, accent))
+      shapes.push(textBox(id++, 'Big number', SW - m - 4.2 * IN, 0.2 * IN, 4.2 * IN, 3.2 * IN, [{ text: String(index).padStart(2, '0'), size: 150, bold: true, color: '2A2A2E', font, align: 'ctr' }], 't'))
+      const left = m + 0.2 * IN
+      shapes.push(textBox(id++, 'Title', left, 0.55 * IN, SW - left - m - 4 * IN, 1.3 * IN, [{ text: s.title, size: s.title.length > 50 ? 26 : 32, bold: true, color: titleColor, font }], 'b'))
+      shapes.push(textBox(id++, 'Body', left, 2.25 * IN, SW - left - m, SH - 2.25 * IN - 0.8 * IN, bullets(20), 't'))
+    } else if (t.slide === 'cards') {
+      if (t.bar === 'left') shapes.push(rect(id++, 'Bar', 0, 0, 0.14 * IN, SH, accent))
+      const left = m + 0.2 * IN
+      shapes.push(textBox(id++, 'Title', left, 0.55 * IN, SW - left - m, 1.3 * IN, [{ text: s.title, size: s.title.length > 50 ? 26 : 32, bold: true, color: titleColor, font }], 'b'))
+      const cols = s.bullets.length > 1 ? 2 : 1
+      const gap = 0.2 * IN
+      const cardW = (SW - left - m - gap * (cols - 1)) / cols
+      const rows = Math.ceil(s.bullets.length / cols)
+      const cardH = Math.min(1.6 * IN, (SH - 2.3 * IN - 0.8 * IN - gap * (rows - 1)) / Math.max(1, rows))
+      s.bullets.forEach((b, k) => {
+        const x = left + (k % cols) * (cardW + gap)
+        const y = 2.3 * IN + Math.floor(k / cols) * (cardH + gap)
+        shapes.push(rect(id++, `Card ${k + 1}`, x, y, cardW, cardH, 'EDF2F8'))
+        shapes.push(rect(id++, `Card bar ${k + 1}`, x, y, 0.06 * IN, cardH, accent))
+        shapes.push(textBox(id++, `Card text ${k + 1}`, x + 0.25 * IN, y + 0.15 * IN, cardW - 0.45 * IN, cardH - 0.3 * IN, [{ text: b, size: 16, color: ink, font }], 'ctr'))
+      })
+    } else if (t.slide === 'centered') {
+      shapes.push(textBox(id++, 'Title', SW * 0.1, 0.7 * IN, SW * 0.8, 1.5 * IN, [{ text: s.title, size: s.title.length > 50 ? 26 : 32, bold: true, color: titleColor, font, align: 'ctr' }], 'b'))
+      shapes.push(rect(id++, 'Rule', SW / 2 - 0.35 * IN, 2.3 * IN, 0.7 * IN, 0.04 * IN, accent))
+      shapes.push(textBox(id++, 'Body', SW * 0.15, 2.6 * IN, SW * 0.7, SH - 2.6 * IN - 0.8 * IN, s.bullets.map((b) => ({ text: b, size: 19, color: ink, font, align: 'ctr' as const, spaceBefore: 12 })), 't'))
+    } else {
+      if (t.bar === 'top') shapes.push(rect(id++, 'Bar', 0, 0, SW, 0.16 * IN, accent))
+      const left = m
+      shapes.push(textBox(id++, 'Title', left, 0.55 * IN, SW - left - m, 1.3 * IN, [{ text: s.title, size: s.title.length > 50 ? 26 : 32, bold: true, color: titleColor, font }], 'b'))
+      if (t.bar === 'under') shapes.push(rect(id++, 'Underline', left, 1.98 * IN, 0.6 * IN, 0.04 * IN, accent))
+      shapes.push(textBox(id++, 'Body', left, 2.25 * IN, SW - left - m, SH - 2.25 * IN - 0.8 * IN, bullets(20), 't'))
+    }
     if (t.numbered) shapes.push(textBox(id++, 'Number', SW - m - 1.5 * IN, SH - 0.55 * IN, 1.5 * IN, 0.35 * IN, [{ text: `${index} / ${total - 1}`, size: 10, color: clr(t.muted), font, align: 'ctr' }], 'ctr'))
   }
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

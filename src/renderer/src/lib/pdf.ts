@@ -107,13 +107,15 @@ export interface DocTemplate {
   bullet: string
   /** table header fill */
   tableHead: RGB
+  /** how the pages are built, not just coloured */
+  layout: 'magazine' | 'sidebar' | 'report' | 'notebook' | 'sections'
 }
 
 export const DOC_TEMPLATES: DocTemplate[] = [
   {
     id: 'editorial',
     name: 'Editorial',
-    desc: 'Serif, generous margins, hairline rules. A magazine essay.',
+    desc: 'A magazine essay: a large opening line, drop capitals, pull quotes set wide.',
     serif: true,
     page: null,
     ink: hex('#141416'),
@@ -125,12 +127,13 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     numbered: false,
     caps: true,
     bullet: '—',
-    tableHead: hex('#f2f2ef')
+    tableHead: hex('#f2f2ef'),
+    layout: 'magazine'
   },
   {
     id: 'studio',
     name: 'Studio',
-    desc: 'Sans, bold black headings, one blue accent. Made to be read on a screen.',
+    desc: 'Headings in a column of their own down the left; the body runs beside them. Made for a screen.',
     serif: false,
     page: null,
     ink: hex('#101012'),
@@ -142,12 +145,13 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     numbered: false,
     caps: false,
     bullet: '•',
-    tableHead: hex('#eef2ff')
+    tableHead: hex('#eef2ff'),
+    layout: 'sidebar'
   },
   {
     id: 'boardroom',
     name: 'Boardroom',
-    desc: 'Navy, a running header, square bullets. For the people who sign things.',
+    desc: 'A report: a contents page, numbered section bands, a running header. For the people who sign things.',
     serif: false,
     page: null,
     ink: hex('#15161c'),
@@ -159,12 +163,13 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     numbered: true,
     caps: true,
     bullet: '▪',
-    tableHead: hex('#e6ebf4')
+    tableHead: hex('#e6ebf4'),
+    layout: 'report'
   },
   {
     id: 'paper',
     name: 'Paper',
-    desc: 'Warm cream pages, serif, a brown-ink accent. Notes you would keep.',
+    desc: 'A notebook: cream pages with a ruled frame, serif, ornaments at each heading. Notes you would keep.',
     serif: true,
     page: hex('#fbf7ef'),
     ink: hex('#2a241d'),
@@ -176,12 +181,13 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     numbered: false,
     caps: false,
     bullet: '•',
-    tableHead: hex('#f1e9dc')
+    tableHead: hex('#f1e9dc'),
+    layout: 'notebook'
   },
   {
     id: 'signal',
     name: 'Signal',
-    desc: 'A black cover, white pages, big numbered sections in green. Modern and loud.',
+    desc: 'Every section opens its own page under a black band with a huge number. Modern and loud.',
     serif: false,
     page: null,
     ink: hex('#0d0d0f'),
@@ -193,7 +199,8 @@ export const DOC_TEMPLATES: DocTemplate[] = [
     numbered: true,
     caps: false,
     bullet: '→',
-    tableHead: hex('#e9f6ee')
+    tableHead: hex('#e9f6ee'),
+    layout: 'sections'
   }
 ]
 
@@ -213,13 +220,15 @@ export interface DeckTemplate {
   /** slide numbers */
   numbered: boolean
   bullet: string
+  /** how a content slide is built */
+  slide: 'left' | 'number' | 'cards' | 'centered' | 'split'
 }
 
 export const DECK_TEMPLATES: DeckTemplate[] = [
   {
     id: 'mono',
     name: 'Mono',
-    desc: 'White slides, huge black titles, a thin rule. Nothing between you and the idea.',
+    desc: 'White slides, a huge title, a thin rule, the points beneath. Nothing between you and the idea.',
     serif: false,
     bg: hex('#ffffff'),
     ink: hex('#111113'),
@@ -229,12 +238,13 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     titleInk: hex('#ffffff'),
     bar: 'under',
     numbered: true,
-    bullet: '—'
+    bullet: '—',
+    slide: 'left'
   },
   {
     id: 'midnight',
     name: 'Midnight',
-    desc: 'Dark slides, white type, a soft grey accent. Made for a dim room.',
+    desc: 'Dark slides with a giant slide number behind the words. Made for a dim room.',
     serif: false,
     bg: hex('#0f0f11'),
     ink: hex('#f2f2f4'),
@@ -244,12 +254,13 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     titleInk: hex('#f2f2f4'),
     bar: 'left',
     numbered: true,
-    bullet: '•'
+    bullet: '•',
+    slide: 'number'
   },
   {
     id: 'ocean',
     name: 'Ocean',
-    desc: 'Deep blue title, white slides with blue headings and a side bar. Calm and corporate.',
+    desc: 'Deep blue title; each point on its own card in a grid. Calm and corporate.',
     serif: false,
     bg: hex('#ffffff'),
     ink: hex('#14202e'),
@@ -259,12 +270,13 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     titleInk: hex('#ffffff'),
     bar: 'left',
     numbered: true,
-    bullet: '▪'
+    bullet: '▪',
+    slide: 'cards'
   },
   {
     id: 'warm',
     name: 'Warm',
-    desc: 'Cream slides, serif titles, a terracotta accent. Human, unhurried.',
+    desc: 'Cream slides, everything centred, serif, generous air. Human, unhurried.',
     serif: true,
     bg: hex('#f7f0e4'),
     ink: hex('#2b231b'),
@@ -274,12 +286,13 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     titleInk: hex('#fff7ee'),
     bar: 'under',
     numbered: false,
-    bullet: '•'
+    bullet: '•',
+    slide: 'centered'
   },
   {
     id: 'bold',
     name: 'Bold',
-    desc: 'A vivid orange title slide, black headings, a top band. For a pitch.',
+    desc: 'Split slides: the title on an orange panel, the points beside it. For a pitch.',
     serif: false,
     bg: hex('#ffffff'),
     ink: hex('#0e0e10'),
@@ -289,7 +302,8 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     titleInk: hex('#ffffff'),
     bar: 'top',
     numbered: true,
-    bullet: '→'
+    bullet: '→',
+    slide: 'split'
   }
 ]
 
@@ -395,6 +409,14 @@ class Pdf {
   get usableW(): number {
     return this.pageW - this.margin * 2
   }
+  /** the body begins this far in from the margin: a sidebar layout keeps a column free on the left */
+  inset = 0
+  get left(): number {
+    return this.margin + this.inset
+  }
+  get bodyW(): number {
+    return this.usableW - this.inset
+  }
   get pageCount(): number {
     return this.pages.length + (this.started ? 1 : 0)
   }
@@ -450,7 +472,7 @@ class Pdf {
     const lh = size * (opts.lineHeight ?? 1.45)
     const serif = opts.serif ?? false
     const rs = opts.bold ? [{ text: md.replace(/\*\*/g, ''), bold: true }] : runs(md)
-    return wrap(words(rs, size, serif), this.usableW - (opts.indent ?? 0)).length * lh
+    return wrap(words(rs, size, serif), this.bodyW - (opts.indent ?? 0)).length * lh
   }
   paragraph(md: string, size: number, opts: ParaOpts = {}): void {
     const indent = opts.indent ?? 0
@@ -464,17 +486,36 @@ class Pdf {
       const rs = opts.bold ? [{ text: md.replace(/\*\*/g, ''), bold: true }] : runs(md)
       ws = words(rs, size, serif)
     }
-    const lines = wrap(ws, this.usableW - indent)
+    const lines = wrap(ws, this.bodyW - indent)
     if (opts.keep) this.ensure(Math.min(lines.length * lh + opts.keep, this.pageH - this.margin - this.top))
     lines.forEach((ln, i) => {
       this.ensure(lh)
       this.y -= lh
       if (i === 0 && opts.bullet) {
         const bf: Face = serif ? 'serif' : 'sans'
-        this.text(opts.bullet, this.margin + indent - width(opts.bullet, size, bf) - 6, this.y, size, bf, opts.bulletColor ?? color)
+        this.text(opts.bullet, this.left + indent - width(opts.bullet, size, bf) - 6, this.y, size, bf, opts.bulletColor ?? color)
       }
-      this.line(ln, this.margin + indent, size, color)
+      this.line(ln, this.left + indent, size, color)
     })
+  }
+  /** a page slipped in at `at`, drawn now: the page hook runs for it, then `draw` */
+  insertPage(at: number, draw: () => void): void {
+    if (this.started) this.pages.push(this.cur.join('\n'))
+    const savedCur = this.cur
+    const savedY = this.y
+    const savedStarted = this.started
+    this.cur = []
+    this.started = true
+    this.y = this.pageH - this.top
+    this.onPage?.(at)
+    draw()
+    this.pages.splice(at, 0, this.cur.join('\n'))
+    this.cur = savedCur.length ? [] : []
+    // the page that was current goes back to being current
+    const last = this.pages.pop() as string
+    this.cur = [last]
+    this.y = savedY
+    this.started = savedStarted
   }
   build(): Uint8Array {
     if (this.started) this.pages.push(this.cur.join('\n'))
@@ -540,11 +581,16 @@ export interface DocMeta {
 }
 
 /** the markdown, laid out in the style, onto the pages after the cover */
-function renderBody(p: Pdf, t: DocTemplate, md: string): void {
+function renderBody(p: Pdf, t: DocTemplate, md: string, toc?: { text: string; page: number }[]): void {
   const W = p.pageW
   const serif = t.serif
   const heavy: Face = serif ? 'serifBold' : 'sansBold'
   const light: Face = serif ? 'serif' : 'sans'
+  const layout = t.layout
+  if (layout === 'sidebar') p.inset = 132
+  /** the magazine: the first paragraph is the lede, the first of each section opens with a capital */
+  let lede = layout === 'magazine'
+  let dropCap = false
   // ---- the body ----
   const body = serif ? 11 : 10.5
   const lines = md.replace(/\r\n/g, '\n').split('\n')
@@ -557,8 +603,45 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
 
   const flushPara = (): void => {
     if (para.length) {
-      p.paragraph(para.join(' '), body, { color: t.ink, serif, lineHeight: 1.5 })
-      p.space(6)
+      const text = para.join(' ')
+      if (lede) {
+        // the opening line, set large and quiet
+        lede = false
+        p.paragraph(text, 14, { color: t.muted, serif, lineHeight: 1.5 })
+        p.space(14)
+      } else if (dropCap && text.length > 40 && /^[A-Za-z]/.test(text)) {
+        dropCap = false
+        // the first letter three lines tall, the first lines wrapped around it
+        const capSize = body * 1.5 * 3 * 0.92
+        const capW = width(text[0], capSize, heavy) + 6
+        const lh = body * 1.5
+        p.ensure(lh * 3 + 6)
+        const top = p.y
+        p.text(text[0], p.left, top - capSize * 0.78, capSize, heavy, t.accent)
+        const ws = words(runs(text.slice(1).replace(/^\s+/, '')), body, serif)
+        const firstLines = wrap(ws, p.bodyW - capW)
+        const first = firstLines.slice(0, 3)
+        const restWords = firstLines.slice(3).flat()
+        for (const ln of first) {
+          p.y -= lh
+          p.line(ln, p.left + capW, body, t.ink)
+        }
+        if (restWords.length) {
+          // the words not yet placed, re-wrapped to the full width, with the spaces between them restored
+          const rest = restWords.filter((w) => w.text !== ' ').flatMap((w, i) => (i ? [{ text: ' ', face: w.face, w: width(' ', body, w.face) }, w] : [w]))
+          for (const ln of wrap(rest, p.bodyW)) {
+            p.ensure(lh)
+            p.y -= lh
+            p.line(ln, p.left, body, t.ink)
+          }
+        }
+        // a short paragraph still clears the capital
+        p.y = Math.min(p.y, top - lh * 3)
+        p.space(6)
+      } else {
+        p.paragraph(text, body, { color: t.ink, serif, lineHeight: 1.5 })
+        p.space(6)
+      }
     }
     para = []
   }
@@ -569,11 +652,12 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
     p.ensure(Math.min(h, 400))
     const boxTop = p.y
     const drawn = Math.min(codeLines.length, Math.floor((p.y - p.margin - 16) / lh))
-    p.rect(p.margin, boxTop - drawn * lh - 16, p.usableW, drawn * lh + 16, t.page ? [0.94, 0.92, 0.87] : [0.955, 0.955, 0.96])
+    p.rect(p.left, boxTop - drawn * lh - 16, p.bodyW, drawn * lh + 16, t.page ? [0.94, 0.92, 0.87] : [0.955, 0.955, 0.96])
     p.y -= 8
+    const cols = Math.floor((p.bodyW - 20) / (9 * 0.6))
     for (const ln of codeLines.slice(0, drawn)) {
       p.y -= lh
-      p.text(ln.length > 96 ? ln.slice(0, 95) + '…' : ln, p.margin + 10, p.y, 9, 'mono', t.ink)
+      p.text(ln.length > cols ? ln.slice(0, cols - 1) + '…' : ln, p.left + 10, p.y, 9, 'mono', t.ink)
     }
     p.y -= 8
     const rest = codeLines.slice(drawn)
@@ -588,10 +672,11 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
   const flushTable = (): void => {
     if (table.length === 0) return
     const cols = Math.max(...table.map((r) => r.length))
-    const colW = p.usableW / cols
+    const colW = p.bodyW / cols
     table.forEach((row, ri) => {
       p.ensure(20)
-      if (ri === 0) p.rect(p.margin, p.y - 18, p.usableW, 18, t.tableHead)
+      if (ri === 0) p.rect(p.left, p.y - 18, p.bodyW, 18, t.tableHead)
+      else if (layout === 'report' && ri % 2 === 0) p.rect(p.left, p.y - 18, p.bodyW, 18, [0.97, 0.975, 0.985])
       p.y -= 13
       row.forEach((cell, ci) => {
         const face: Face = ri === 0 ? heavy : light
@@ -601,10 +686,10 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
           .filter(Boolean)
           .map((w) => ({ text: /^\s+$/.test(w) ? ' ' : w, face, w: width(/^\s+$/.test(w) ? ' ' : w, 9.5, face) }))
         const first = wrap(ws, colW - 10)[0] ?? []
-        p.line(first, p.margin + 5 + ci * colW, 9.5, ri === 0 ? t.accent : t.ink)
+        p.line(first, p.left + 5 + ci * colW, 9.5, ri === 0 ? t.accent : t.ink)
       })
       p.y -= 5
-      p.hline(p.margin, W - p.margin, p.y, t.rule, 0.5)
+      p.hline(p.left, W - p.margin, p.y, t.rule, 0.5)
     })
     p.space(10)
     table = []
@@ -640,8 +725,67 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
         p.space(8)
       } else if (level === 2) {
         section++
-        p.space(14)
         const label = t.caps ? textRaw.toUpperCase() : textRaw
+        if (layout === 'magazine') dropCap = true
+        if (layout === 'sections') {
+          // under a black band with the number: at the head of a fresh page,
+          // unless the page above is still mostly empty, when the band sits here
+          const bandH = 118
+          const atTop = p.y >= p.pageH - p.top - 10
+          if (!atTop && p.y < p.pageH * 0.62) p.newPage()
+          const bandTop = p.y >= p.pageH - p.top - 10 ? p.pageH : p.y - 14
+          p.rect(0, bandTop - bandH, W, bandH, t.ink)
+          p.text(String(section).padStart(2, '0'), p.margin, bandTop - bandH + 30, 54, 'sansBold', t.accent)
+          const ls = wrap(words([{ text: textRaw, bold: true }], 22, false), p.usableW - 110)
+          let yy = bandTop - 46
+          for (const ln of ls.slice(0, 2)) {
+            p.line(ln, p.margin + 100, 22, [1, 1, 1], yy)
+            yy -= 27
+          }
+          p.y = bandTop - bandH - 34
+          toc?.push({ text: textRaw, page: p.pageCount })
+          continue
+        }
+        if (layout === 'sidebar') {
+          // in the column on the left, level with the first line of what follows
+          p.space(16)
+          p.ensure(70)
+          const ls = wrap(words([{ text: textRaw, bold: true }], 12.5, false), p.inset - 16)
+          let yy = p.y
+          for (const ln of ls.slice(0, 4)) {
+            yy -= 12.5 * 1.35
+            p.line(ln, p.margin, 12.5, t.accent, yy)
+          }
+          p.rect(p.margin, p.y - 2, 22, 2.5, t.accent)
+          toc?.push({ text: textRaw, page: p.pageCount })
+          continue
+        }
+        if (layout === 'report') {
+          // a numbered band across the body
+          p.space(16)
+          p.ensure(48)
+          p.rect(p.left, p.y - 26, p.bodyW, 26, t.tableHead)
+          p.text(String(section).padStart(2, '0'), p.left + 10, p.y - 18, 10, 'sansBold', t.accent)
+          const ls = wrap(words([{ text: label, bold: true }], 11, false), p.bodyW - 50)
+          p.line(ls[0] ?? [], p.left + 36, 11, t.accent, p.y - 18)
+          p.y -= 26
+          p.space(10)
+          toc?.push({ text: textRaw, page: p.pageCount })
+          continue
+        }
+        if (layout === 'notebook') {
+          p.space(16)
+          p.ensure(44)
+          p.rect(p.left, p.y - 4, 6, 6, t.accent)
+          p.paragraph(textRaw, 15, { bold: true, serif, color: t.accent, indent: 14, lineHeight: 1.3, keep: 30 })
+          p.y -= 3
+          p.hline(p.left, W - p.margin, p.y, t.rule, 0.6)
+          p.space(8)
+          toc?.push({ text: textRaw, page: p.pageCount })
+          continue
+        }
+        p.space(14)
+        toc?.push({ text: textRaw, page: p.pageCount })
         if (t.numbered) {
           // the number sits on the heading's own baseline
           const size = t.caps ? 11.5 : 16
@@ -690,13 +834,33 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
       continue
     }
     const quote = line.match(/^\s*>\s?(.+)$/)
+    if (quote && layout === 'magazine') {
+      flushPara()
+      flushTable()
+      // a pull quote: set large across the measure, between two hairlines
+      p.space(10)
+      p.ensure(80)
+      p.hline(p.left + p.bodyW * 0.2, p.left + p.bodyW * 0.8, p.y, t.rule, 0.6)
+      p.space(8)
+      p.text('\u201c', p.left + p.bodyW * 0.2 - 8, p.y - 30, 34, 'serifBold', t.accent)
+      const ls = wrap(words([{ text: quote[1].replace(/^["\u201c]|["\u201d]$/g, ''), bold: false }], 15, true), p.bodyW * 0.62)
+      for (const ln of ls) {
+        p.y -= 15 * 1.4
+        const wsum = ln.reduce((n, w) => n + w.w, 0)
+        p.line(ln, p.left + (p.bodyW - wsum) / 2, 15, t.ink)
+      }
+      p.space(10)
+      p.hline(p.left + p.bodyW * 0.2, p.left + p.bodyW * 0.8, p.y, t.rule, 0.6)
+      p.space(12)
+      continue
+    }
     if (quote) {
       flushPara()
       flushTable()
       p.space(4)
       const top = p.y - body * 0.45
       p.paragraph(quote[1], body, { indent: 16, color: t.muted, serif, lineHeight: 1.5 })
-      p.rect(p.margin, p.y - 3, 2.5, top - p.y + 3, t.accent)
+      p.rect(p.left, p.y - 3, 2.5, top - p.y + 3, t.accent)
       p.space(10)
       continue
     }
@@ -704,7 +868,7 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
       flushPara()
       p.ensure(12)
       p.y -= 6
-      p.hline(p.margin, W - p.margin, p.y, t.rule, 0.6)
+      p.hline(p.left, W - p.margin, p.y, t.rule, 0.6)
       p.y -= 6
       continue
     }
@@ -713,6 +877,7 @@ function renderBody(p: Pdf, t: DocTemplate, md: string): void {
   flushPara()
   if (inCode) flushCode()
   flushTable()
+  p.inset = 0
 }
 
 /** A document PDF from Markdown, A4, in one of the five styles, with a cover. */
@@ -730,6 +895,10 @@ export function markdownToPdf(title: string, md: string, templateId?: string | n
   p.onPage = (n) => {
     if (t.page) p.rect(0, 0, W, H, t.page)
     if (n === 0) return
+    if (t.layout === 'notebook') {
+      // the ruled frame of a notebook page
+      p.raw(`${RG(t.rule)} 0.6 w ${(margin * 0.55).toFixed(2)} ${(margin * 0.55).toFixed(2)} ${(W - margin * 1.1).toFixed(2)} ${(H - margin * 1.1).toFixed(2)} re S`)
+    }
     if (t.band) {
       p.rect(0, H - 40, W, 40, t.accent)
       p.text(title.length > 70 ? title.slice(0, 67) + '…' : title, margin, H - 25, 9, 'sansBold', [1, 1, 1])
@@ -814,8 +983,28 @@ export function markdownToPdf(title: string, md: string, templateId?: string | n
   }
   cover()
   p.newPage()
-
-  renderBody(p, t, md)
+  const toc: { text: string; page: number }[] = []
+  renderBody(p, t, md, toc)
+  if (t.layout === 'report' && toc.length > 1) {
+    // a contents page after the cover; every page after it moves along by one
+    p.insertPage(1, () => {
+      p.text('CONTENTS', margin, H - 84 - 40, 9, 'sansBold', t.muted)
+      p.rect(margin, H - 84 - 52, 28, 2, t.accent)
+      let yy = H - 84 - 90
+      toc.forEach((e, i) => {
+        if (yy < margin + 20) return
+        const num = String(i + 1).padStart(2, '0')
+        const pageNo = String(e.page)
+        p.text(num, margin, yy, 11, 'sansBold', t.accent)
+        const label = e.text.length > 70 ? e.text.slice(0, 67) + '…' : e.text
+        p.text(label, margin + 32, yy, 11.5, 'sans', t.ink)
+        const lw = width(label, 11.5, 'sans')
+        p.raw(`${RG(t.rule)} 0.5 w [1 3] 0 d ${(margin + 40 + lw).toFixed(2)} ${(yy + 3).toFixed(2)} m ${(W - margin - 30).toFixed(2)} ${(yy + 3).toFixed(2)} l S [] 0 d`)
+        p.text(pageNo, W - margin - width(pageNo, 11, 'sans'), yy, 11, 'sans', t.muted)
+        yy -= 26
+      })
+    })
+  }
   return p.build()
 }
 
@@ -988,7 +1177,7 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
     p.rect(0, 0, W, H, n === 0 ? t.titleBg : t.bg)
     if (n === 0) return
     if (t.bar === 'left') p.rect(0, 0, 10, H, t.accent)
-    if (t.bar === 'top') p.rect(0, H - 12, W, 12, t.accent)
+    if (t.bar === 'top' && t.slide !== 'split') p.rect(0, H - 12, W, 12, t.accent)
   }
   p.onFinish = (n, total) => {
     if (n === 0 || !t.numbered) return ''
@@ -1011,29 +1200,118 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
       if (t.bar !== 'none') p.rect(margin, y - 60, 60, 4, t.id === 'mono' ? t.titleInk : t.id === 'midnight' ? t.accent : [1, 1, 1])
       return
     }
-    // a content slide
+    // a content slide, in the layout of its style
     const titleSize = s.title.length > 50 ? 24 : 30
-    p.space(30)
-    p.paragraph(s.title, titleSize, { bold: true, serif, color: t.id === 'ocean' ? t.accent : t.ink, lineHeight: 1.15 })
-    if (t.bar === 'under') {
-      p.y -= 10
-      p.rect(margin, p.y, 48, 3, t.accent)
-      p.y -= 8
-    }
-    p.space(18)
-    for (const b of s.bullets) {
-      p.paragraph(b, 17, { indent: 26, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
-      p.space(4)
+    const titleColor = t.id === 'ocean' ? t.accent : t.ink
+    if (t.slide === 'split') {
+      // the title on a panel of the accent colour, the points beside it
+      const panelW = W * 0.36
+      p.rect(0, 0, panelW, H, t.accent)
+      const ls = wrap(words([{ text: s.title, bold: true }], 28, serif), panelW - margin - 24)
+      let yy = H * 0.5 + (ls.length * 28 * 1.12) / 2
+      for (const ln of ls) {
+        yy -= 28 * 1.12
+        p.line(ln, margin * 0.6, 28, [1, 1, 1], yy)
+      }
+      p.inset = panelW - margin + 30
+      // the points sit at the same height as the title
+      const total = s.bullets.reduce((n, b) => n + p.measure(b, 17, { serif, lineHeight: 1.5, indent: 24 }) + 8, 0)
+      p.y = Math.min(H - 60, H / 2 + total / 2 + 10)
+      for (const b of s.bullets) {
+        p.paragraph(b, 17, { indent: 24, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+        p.space(8)
+      }
+      p.inset = 0
+    } else if (t.slide === 'number') {
+      // a giant number behind the words
+      const num = String(i).padStart(2, '0')
+      p.text(num, W - margin - width(num, 170, 'sansBold'), H - 200, 170, 'sansBold', [0.16, 0.16, 0.18])
+      p.space(30)
+      p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
+      p.space(20)
+      for (const b of s.bullets) {
+        p.paragraph(b, 17, { indent: 26, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+        p.space(4)
+      }
+    } else if (t.slide === 'cards') {
+      // each point on a card in a grid of two
+      p.space(30)
+      p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
+      p.space(14)
+      const cols = s.bullets.length > 1 ? 2 : 1
+      const gap = 14
+      const cardW = (p.usableW - gap * (cols - 1)) / cols
+      const cardFill: RGB = [0.93, 0.95, 0.975]
+      let row = 0
+      let top = p.y
+      s.bullets.forEach((b, k) => {
+        const col = k % cols
+        if (col === 0 && k > 0) {
+          row++
+          top = p.y - gap
+        }
+        const x = margin + col * (cardW + gap)
+        const inner = cardW - 30
+        const lines = wrap(words(runs(b), 15, serif), inner)
+        const h = Math.max(66, lines.length * 15 * 1.45 + 30)
+        p.rect(x, top - h, cardW, h, cardFill)
+        p.rect(x, top - h, 4, h, t.accent)
+        // the lines sit in the middle of the card
+        let yy = top - (h - lines.length * 15 * 1.45) / 2 - 15 * 0.95
+        for (const ln of lines) {
+          p.line(ln, x + 20, 15, t.ink, yy)
+          yy -= 15 * 1.45
+        }
+        if (col === cols - 1 || k === s.bullets.length - 1) p.y = Math.min(p.y, top - h)
+        else p.y = Math.min(p.y, top - h)
+      })
+      void row
+    } else if (t.slide === 'centered') {
+      // everything centred, with air
+      p.y = H - 110
+      const ls = wrap(words([{ text: s.title, bold: true }], titleSize, serif), p.usableW * 0.8)
+      for (const ln of ls) {
+        p.y -= titleSize * 1.15
+        const wsum = ln.reduce((n, w) => n + w.w, 0)
+        p.line(ln, margin + (p.usableW - wsum) / 2, titleSize, titleColor)
+      }
+      p.y -= 12
+      p.rect(W / 2 - 24, p.y, 48, 3, t.accent)
+      p.y -= 26
+      for (const b of s.bullets) {
+        const bl = wrap(words(runs(b), 16, serif), p.usableW * 0.7)
+        for (const ln of bl) {
+          p.y -= 16 * 1.5
+          const wsum = ln.reduce((n, w) => n + w.w, 0)
+          p.line(ln, margin + (p.usableW - wsum) / 2, 16, t.ink)
+        }
+        p.y -= 8
+      }
+    } else {
+      p.space(30)
+      p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
+      if (t.bar === 'under') {
+        p.y -= 10
+        p.rect(margin, p.y, 48, 3, t.accent)
+        p.y -= 8
+      }
+      p.space(18)
+      for (const b of s.bullets) {
+        p.paragraph(b, 17, { indent: 26, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+        p.space(4)
+      }
     }
     if (s.notes) {
+      if (t.slide === 'split') p.inset = W * 0.36 - margin + 30
       const noteH = p.measure(s.notes, 10, { serif, lineHeight: 1.4 }) + 30
       const yNotes = Math.min(p.y - 26, margin + noteH)
       p.y = yNotes
-      p.hline(margin, W - margin, p.y, t.muted, 0.5)
+      p.hline(p.left, W - margin, p.y, t.muted, 0.5)
       p.y -= 14
-      p.text('NOTES', margin, p.y, 8, heavy, t.muted)
+      p.text('NOTES', p.left, p.y, 8, heavy, t.muted)
       p.y -= 4
       p.paragraph(s.notes, 10, { color: t.muted, serif, lineHeight: 1.4 })
+      p.inset = 0
     }
   })
   return p.build()

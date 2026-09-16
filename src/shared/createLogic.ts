@@ -42,7 +42,7 @@ export function createSystemPrompt(kind: CreationKind): string {
       'TASK: write a complete, polished document in Markdown.',
       '- Start with a single "# " title line, then "## " sections. Short paragraphs; "-" bullets and numbered steps where they genuinely help; a Markdown table when comparing things.',
       '- Match length and tone to the request: a memo is a page, a report can be several, an email is short.',
-      '- If sessions were provided and you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from that session.',
+      '- Write for a reader who was not there and will never see the recording: never cite moments, timestamps or clock times ([[12:34]], (0:15), "at 12:34"). Say what was said, not when.',
       '- Output ONLY the document Markdown. No preamble, no explanation, no code fences around the whole document.'
     ].join('\n')
   }

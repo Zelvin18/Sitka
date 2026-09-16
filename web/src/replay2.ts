@@ -448,7 +448,7 @@ function loadMedia(): Promise<boolean> {
         // Three ways to open the same bytes, tried in turn if the browser
         // refuses one: the file with its length written in, the plain
         // joined parts, and the first part alone. Whichever opens, plays.
-        const raw = new Blob(blobs, { type: 'video/webm' })
+        const raw = new Blob(blobs, { type: mediaType(new Uint8Array(await blobs[0].slice(0, 12).arrayBuffer())) })
         // What did we actually receive? A WebM starts 1A 45 DF A3. If the first
         // part does not, the header is found further in and the file is
         // opened from there; and the finding is written down for the pill.

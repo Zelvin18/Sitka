@@ -15,14 +15,17 @@ import { copyRich } from '../lib/clipboard'
 import { deckPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
 import { deckToPdf, deckTemplate, docTemplate, markdownToPdf, toHex } from '../lib/pdf'
 import { deckToPptx } from '../lib/pptx'
+import { zip } from '../lib/zip'
 import StylePicker from './StylePicker'
 import Designing from './Designing'
+import { withoutTimes } from '@shared/timesLogic'
 import { highlight } from '../lib/highlight'
 import {
   IconCode,
   IconCopy,
   IconDoc,
   IconDownload,
+  IconShare,
   IconPlus,
   IconSlides,
   IconTrash,
@@ -42,7 +45,7 @@ const DECK_FORMATS: SaveFormat[] = [
 ]
 
 const CODE_FORMATS: SaveFormat[] = [
-  { id: 'files', label: 'Code files', tag: 'files', desc: 'Each file saved with its own name, ready to drop into a project.' }
+  { id: 'files', label: 'Code files', tag: '.zip', desc: 'Every file with its own name, together in one zip, ready to drop into a project.' }
 ]
 
 interface Props {
@@ -120,6 +123,8 @@ const saveBytes = (name: string, bytes: Uint8Array): void => {
 }
 
 const safeName = (t: string): string => t.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'sitka'
+/** a phone (or a laptop with a share sheet) that can pass a file on */
+const canShareFiles = (): boolean => typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof navigator.canShare === 'function'
 
 /** the document preview in its style: paper, ink, accent, the face */
 function docPageStyle(id?: string): React.CSSProperties {
@@ -229,6 +234,21 @@ export default function CreateView({
       setGenerating(false)
     }
   }
+  // the phone's own share sheet, with the PDF in it
+  const shareMade = async (): Promise<void> => {
+    if (!selected) return
+    const name = safeName(selected.title)
+    const bytes =
+      selected.kind === 'presentation' && deck
+        ? deckToPdf(deck.title, deck.subtitle, deck.slides, selected.template)
+        : markdownToPdf(selected.title, withoutTimes(selected.content), selected.template, { subtitle: new Date(selected.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) })
+    const file = new File([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], `${name}.pdf`, { type: 'application/pdf' })
+    try {
+      await navigator.share({ files: [file], title: selected.title })
+    } catch {
+      /* the sheet was closed */
+    }
+  }
   const openMade = (): void => {
     if (designing?.made) setSelected(designing.made)
     setDesigning(null)
@@ -312,10 +332,12 @@ export default function CreateView({
   const exportDoc = (how: 'md' | 'word' | 'pdf'): void => {
     if (!selected) return
     const name = safeName(selected.title)
-    if (how === 'md') void window.sitka.saveTextFile(`${name}.md`, selected.content)
+    // a file that leaves the app carries no clocks: (0:15) means nothing to whoever it is sent to
+    const text = withoutTimes(selected.content)
+    if (how === 'md') void window.sitka.saveTextFile(`${name}.md`, text)
     else if (how === 'word')
-      void window.sitka.saveTextFile(`${name}.doc`, wordDocument(selected.title, mdToHtml(selected.content), selected.template))
-    else saveBytes(`${name}.pdf`, markdownToPdf(selected.title, selected.content, selected.template, { subtitle: new Date(selected.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) }))
+      void window.sitka.saveTextFile(`${name}.doc`, wordDocument(selected.title, mdToHtml(text), selected.template))
+    else saveBytes(`${name}.pdf`, markdownToPdf(selected.title, text, selected.template, { subtitle: new Date(selected.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) }))
   }
   const exportDeck = (how: 'html' | 'pdf' | 'pptx'): void => {
     if (!selected || !deck) return
@@ -328,8 +350,15 @@ export default function CreateView({
     else saveBytes(`${safeName(deck.title)}.pdf`, deckToPdf(deck.title, deck.subtitle, deck.slides, selected.template))
   }
   const exportCode = (): void => {
-    if (!code) return
-    for (const f of code.files) void window.sitka.saveTextFile(f.name.split(/[\\/]/).pop() ?? f.name, f.code)
+    if (!code || !selected) return
+    // one file is saved as itself; several travel together as a zip, which
+    // every browser allows where a burst of downloads is blocked
+    if (code.files.length === 1) {
+      const f = code.files[0]
+      void window.sitka.saveTextFile(f.name.split(/[\/]/).pop() ?? f.name, f.code)
+      return
+    }
+    saveBytes(`${safeName(selected.title)}.zip`, zip(code.files.map((f) => ({ name: f.name.replace(/^[\/]+/, ''), data: f.code }))))
   }
 
   const saveFormats: SaveFormat[] =
@@ -354,6 +383,9 @@ export default function CreateView({
             onClick={() => {
               setSelected(null)
               setError(null)
+              setPrompt('')
+              setChosen(new Set())
+              setDesigning(null)
             }}
           >
             <IconPlus size={13} strokeWidth={2.4} />
@@ -502,9 +534,15 @@ export default function CreateView({
                     {copied ? 'Copied' : 'Copy'}
                   </button>
                 )}
+                {selected.kind !== 'code' && canShareFiles() && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => void shareMade()}>
+                    <IconShare size={13} />
+                    Share
+                  </button>
+                )}
                 <button className="btn btn-sm" onClick={() => setSaving(true)}>
                   <IconDownload size={13} />
-                  Save
+                  Download
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"

@@ -185,6 +185,7 @@ export default function EcosystemView({
                 <span className="home-door-arrow">→</span>
               </button>
             ))}
+            <OrgGate compact kind={kind} onJoined={onJoinedOrg} owned={orgs.filter((o) => o.role === 'owner').length} />
           </div>
         )}
 

@@ -5,13 +5,19 @@ import { IconBriefcase, IconCap, IconPlus, Mark } from '../lib/icons'
 interface Props {
   kind: Space
   onJoined: (org: Organization) => void
+  /** beneath a list of organisations already joined: one line, no story */
+  compact?: boolean
+  /** how many the person already owns; up to five may be set up */
+  owned?: number
 }
+
+export const MAX_OWNED_ORGS = 5
 
 /**
  * The door into an organisation: join with a code, or create one.
  * Shown on the Business and Education pages until the user belongs to one.
  */
-export default function OrgGate({ kind, onJoined }: Props): React.JSX.Element {
+export default function OrgGate({ kind, onJoined, compact, owned = 0 }: Props): React.JSX.Element {
   const education = kind === 'education'
   const [mode, setMode] = useState<'idle' | 'join' | 'create'>('idle')
   const [code, setCode] = useState('')
@@ -45,31 +51,41 @@ export default function OrgGate({ kind, onJoined }: Props): React.JSX.Element {
     onJoined(res.org)
   }
 
+  const canCreate = owned < MAX_OWNED_ORGS
   return (
-    <div className="org-gate">
-      <div className="org-gate-art">
-        {education ? <IconCap size={22} strokeWidth={1.5} /> : <IconBriefcase size={22} strokeWidth={1.5} />}
-      </div>
-      <div className="org-gate-text">
-        <div className="org-gate-title">
-          {education ? 'Part of a university or school?' : 'Part of a company or team?'}
-        </div>
-        <div className="org-gate-desc">
-          {education
-            ? 'Join your institution and Sitka becomes the companion for every course you take: it knows what your lecturers taught, in their words, and what they shared.'
-            : 'Join your organisation and Sitka becomes your company’s memory: what was decided in every meeting, why, and who promised what.'}
-        </div>
-      </div>
+    <div className={`org-gate${compact ? ' compact' : ''}`}>
+      {!compact && (
+        <>
+          <div className="org-gate-art">
+            {education ? <IconCap size={22} strokeWidth={1.5} /> : <IconBriefcase size={22} strokeWidth={1.5} />}
+          </div>
+          <div className="org-gate-text">
+            <div className="org-gate-title">
+              {education ? 'Part of a university or school?' : 'Part of a company or team?'}
+            </div>
+            <div className="org-gate-desc">
+              {education
+                ? 'Join your institution and Sitka becomes the companion for every course you take: it knows what your lecturers taught, in their words, and what they shared.'
+                : 'Join your organisation and Sitka becomes your company’s memory: what was decided in every meeting, why, and who promised what.'}
+            </div>
+          </div>
+        </>
+      )}
 
       {mode === 'idle' && (
         <div className="org-gate-actions">
-          <button className="btn btn-primary btn-sm" onClick={() => setMode('join')}>
+          {compact && <span className="org-gate-more">{education ? 'Another institution?' : 'Another organisation?'}</span>}
+          <button className={`btn ${compact ? 'btn-ghost' : 'btn-primary'} btn-sm`} onClick={() => setMode('join')}>
             Join with a code
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setMode('create')}>
-            <IconPlus size={13} strokeWidth={2.2} />
-            {education ? 'Set up my institution' : 'Set up my organisation'}
-          </button>
+          {canCreate ? (
+            <button className="btn btn-ghost btn-sm" onClick={() => setMode('create')}>
+              <IconPlus size={13} strokeWidth={2.2} />
+              {compact ? (education ? 'Set up another' : 'Set up another') : education ? 'Set up my institution' : 'Set up my organisation'}
+            </button>
+          ) : (
+            <span className="org-gate-more">You have set up {MAX_OWNED_ORGS}, the most for now.</span>
+          )}
         </div>
       )}
 
