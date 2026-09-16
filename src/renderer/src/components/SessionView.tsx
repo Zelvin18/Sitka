@@ -111,8 +111,19 @@ export default function SessionView({
   }, [])
   useEffect(() => {
     const v = videoRef.current
-    if (v) applyLoud(v, loud)
-  }, [loud, videoSrc, applyLoud])
+    if (!v) return
+    // The boost is for sound-only sessions, whose element is fetched with
+    // CORS so a gain node may hear it. A video plays through its own
+    // controls: routed through a gain node without CORS it would go silent.
+    if (data?.meta.audioOnly) applyLoud(v, loud)
+    else {
+      v.volume = 1
+      if (gainRef.current) {
+        void gainRef.current.ctx.close().catch(() => undefined)
+        gainRef.current = null
+      }
+    }
+  }, [loud, videoSrc, applyLoud, data?.meta.audioOnly])
   useEffect(
     () => () => {
       void gainRef.current?.ctx.close().catch(() => undefined)
