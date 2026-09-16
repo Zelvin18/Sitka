@@ -22,6 +22,7 @@ import {
 } from '../../src/shared/createLogic'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX, REWRITE_VERSION } from '../../src/shared/types'
+import { personNote } from '../../src/shared/person'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import {
@@ -992,9 +993,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     })
   }
 
+  /** the person's given name, for prompts that speak to them */
+  const person = (): string => {
+    const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
+    return personNote(meta.full_name || meta.name || '')
+  }
+
   // ---------- ask prompts (mirrors the desktop ai.ts) ----------
   function askSystemPrompt(live: boolean): string {
     return [
+      person(),
       'You are Sitka, an AI assistant that is attending a live session (a lecture, meeting, presentation, or event) together with the user.',
       live
         ? 'The session is happening RIGHT NOW. The transcript below covers everything captured so far, up to the present moment. When the user asks about "now" or "currently", focus on the most recent parts of the transcript.'
@@ -1905,8 +1913,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     getSettings: async () => getSettings(),
     getProfile: async () => {
       const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
-      const name = (meta.full_name || meta.name || user.email?.split('@')[0] || 'You').trim()
-      return { name, email: user.email ?? undefined, cloud: true }
+      const given = (meta.full_name || meta.name || '').trim()
+      const name = given || user.email?.split('@')[0] || 'You'
+      return { name, email: user.email ?? undefined, cloud: true, needsName: !given }
+    },
+    setProfileName: async (name: string) => {
+      const clean = name.trim().slice(0, 80)
+      if (!clean) return null
+      const { data, error } = await sb.auth.updateUser({ data: { full_name: clean } })
+      if (error || !data.user) return null
+      user.user_metadata = data.user.user_metadata
+      return { name: clean, email: user.email ?? undefined, cloud: true }
     },
     signOut: async () => {
       await sb.auth.signOut()
@@ -2844,6 +2861,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const idMap = new Map(rows.map((r) => [r.id.slice(0, 8), r.id]))
         const system = [
           'You are Sitka Overview — the intelligence over EVERYTHING this user has attended and recorded.',
+          person(),
           `Their library: ${rows.length} sessions — ${rows.map((r) => `"${r.meta.title}"`).slice(0, 20).join(', ')}.`,
           'Relevant moments retrieved from their sessions are below; each is tagged [[<id>@M:SS]].',
           'Rules: ground answers in the retrieved moments; cite them EXACTLY as [[<id>@M:SS]] (plain ASCII double brackets, ONE time, never a range) so the app renders clickable links into those recordings. If the library does not cover something, say so.',
@@ -3113,6 +3131,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const noun = space?.kind === 'course' ? 'course' : space?.kind === 'team' ? 'team' : 'project'
         const system = [
           `You are Sitka for the ${noun} "${space?.name ?? ''}"${space?.description ? ` — ${space.description}` : ''}.`,
+          person(),
           noun === 'course'
             ? 'You are the teaching assistant for this course: you answer from what the lecturer actually taught in these sessions and from the materials they shared, in the terms they used. This is what will be examined.'
             : 'You are the memory of this team: you answer from what was actually said in these meetings and from the shared materials — decisions, reasons, promises and who made them.',
@@ -3894,6 +3913,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       try {
         const system = [
           'You are scoring a spoken rehearsal of a presentation against its goal, audience and materials.',
+          person(),
           'Return ONLY JSON: {"scores": {"content": n, "clarity": n, "structure": n, "confidence": n, "timing": n, "overall": n}, "feedback": [string], "summary": string}',
           '- Every score is 0-100 (be honest, not kind). - feedback: 3-6 specific, actionable notes. - summary: 2 sentences.'
         ].join('\n')
@@ -3981,7 +4001,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const row = await loadCoach(id)
         if (!row) return { error: 'Project not found.' }
         const out = await aiChatFull(
-          JUDGE_ANSWER_SYSTEM,
+          [JUDGE_ANSWER_SYSTEM, person()].join('\n'),
           [{ role: 'user', content: judgeAnswerUser(coachContext(row.data), persona, question, answer) }],
           600,
           false,
@@ -3997,7 +4017,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       try {
         const row = await loadCoach(id)
         if (!row) return {}
-        const system = [STUDIO_HINT_SYSTEM, '', `Goal: ${row.data.goal} — audience: ${row.data.audience}.`].join('\n')
+        const system = [STUDIO_HINT_SYSTEM, person(), '', `Goal: ${row.data.goal} — audience: ${row.data.audience}.`].join('\n')
         const out = await aiChat(system, [
           { role: 'user', content: transcriptBlock(segments.slice(-20)) }
         ])

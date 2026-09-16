@@ -1,5 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, cleanDescription } from '@shared/visionLogic'
+import { personNote } from '@shared/person'
+import * as settingsStore from './store'
+
+/** the person's given name, for prompts that speak to them */
+export function person(): string {
+  try {
+    return personNote(settingsStore.getSettings().profileName)
+  } catch {
+    return ''
+  }
+}
 import type {
   ChatMessage,
   SessionHighlight,
@@ -73,6 +84,7 @@ function languageRule(lang?: string): string {
 function askSystemPrompt(live: boolean): string {
   return [
     'You are Sitka, an AI assistant that is attending a live session (a lecture, meeting, presentation, or event) together with the user.',
+    person(),
     live
       ? 'The session is happening RIGHT NOW. The transcript below covers everything captured so far, up to the present moment. When the user asks about "now" or "currently", focus on the most recent parts of the transcript.'
       : 'The session has ended. The transcript below covers the full recording.',

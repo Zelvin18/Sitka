@@ -9,6 +9,8 @@ export interface Settings {
   supabaseServiceKey: string
   /** Deployed attendee web app, e.g. https://sitka.vercel.app */
   webAppUrl: string
+  /** what the person is called, given once; the desktop keeps it here */
+  profileName?: string
   // ---- preferences (optional: older settings files simply lack them) ----
   /** appearance: follow the device, or force light or dark */
   theme?: 'system' | 'light' | 'dark'
@@ -441,6 +443,8 @@ export interface Profile {
   email?: string
   /** true when signed in to the online workspace; false on the desktop's local workspace */
   cloud: boolean
+  /** true when no name was ever given: the app asks once, so it can be personal */
+  needsName?: boolean
 }
 
 // ---------- session materials: what the user shared so Sitka knows the plan ----------

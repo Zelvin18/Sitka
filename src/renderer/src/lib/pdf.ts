@@ -10,6 +10,7 @@
  * definitions drive the PowerPoint and web-page exports, so a style chosen
  * once looks the same whichever file is made from it.
  */
+import { blend, deckDesign, pointMark, type Paint } from '@shared/deckDesign'
 
 // ---------- fonts ----------
 // Advance widths for ASCII 32..126 (per 1000 em), from the standard AFMs.
@@ -35,7 +36,13 @@ const WINANSI: Record<string, number> = {
   ' ': 0x20, '£': 0xa3, '©': 0xa9, '®': 0xae, '°': 0xb0, '±': 0xb1, '²': 0xb2, '³': 0xb3, '·': 0xb7,
   '×': 0xd7, '÷': 0xf7, 'é': 0xe9, 'è': 0xe8, 'ê': 0xea, 'á': 0xe1, 'à': 0xe0, 'ä': 0xe4, 'ö': 0xf6,
   'ü': 0xfc, 'ñ': 0xf1, 'ç': 0xe7, 'í': 0xed, 'ó': 0xf3, 'ú': 0xfa, 'É': 0xc9, 'Ü': 0xdc, 'Ö': 0xd6, 'Ä': 0xc4,
-  '✓': 0x76, '→': 0x9b, '■': 0x95, '▪': 0x95
+  '✓': 0x76, '→': 0x9b, '■': 0x95, '▪': 0x95,
+  // the hyphens and dashes writing tools slip in ("multi‑user", figure dashes), and the quiet spaces
+  '‐': 0x2d, '‑': 0x2d, '‒': 0x96, '―': 0x97, '−': 0x96, '­': 0x2d,
+  ' ': 0x20, ' ': 0x20, ' ': 0x20, ' ': 0x20, ' ': 0x20, '​': 0x20,
+  '′': 0x27, '″': 0x22, 'ʼ': 0x92, '●': 0x95,
+  '←': 0x8b, '≤': 0x3c, '≥': 0x3e, '≈': 0x7e, '≠': 0x23, '✔': 0x76,
+  '✗': 0x78, '✘': 0x78
 }
 
 function toWinAnsi(s: string): number[] {
@@ -45,7 +52,12 @@ function toWinAnsi(s: string): number[] {
     if (c <= 126) out.push(c)
     else if (WINANSI[ch] !== undefined) out.push(WINANSI[ch])
     else if (c >= 0xa0 && c <= 0xff) out.push(c)
-    else out.push(63)
+    else {
+      // a letter with a mark the font lacks becomes its plain letter; anything else a space, never "?"
+      const plain = ch.normalize('NFD').replace(/[̀-ͯ]/g, '')
+      const pc = plain.codePointAt(0) ?? 32
+      out.push(plain.length > 0 && pc <= 126 ? pc : 32)
+    }
   }
   return out
 }
@@ -298,7 +310,7 @@ export const DECK_TEMPLATES: DeckTemplate[] = [
     ink: hex('#0e0e10'),
     muted: hex('#6b6b73'),
     accent: hex('#ff4f1f'),
-    titleBg: hex('#ff4f1f'),
+    titleBg: hex('#ffffff'),
     titleInk: hex('#ffffff'),
     bar: 'top',
     numbered: true,
@@ -384,6 +396,8 @@ interface ParaOpts {
   bullet?: string
   color?: RGB
   bulletColor?: RGB
+  /** the mark set in the heavy face (a number in front of a point) */
+  bulletBold?: boolean
   lineHeight?: number
   serif?: boolean
   face?: Face
@@ -443,6 +457,18 @@ class Pdf {
   rect(x: number, y: number, w: number, h: number, color: RGB): void {
     this.raw(`${rg(color)} ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`)
   }
+  /** a filled circle, drawn as four curves */
+  circle(cx: number, cy: number, r: number, color: RGB): void {
+    const k = 0.5523 * r
+    const f = (n: number): string => n.toFixed(2)
+    this.raw(
+      `${rg(color)} ${f(cx + r)} ${f(cy)} m ` +
+        `${f(cx + r)} ${f(cy + k)} ${f(cx + k)} ${f(cy + r)} ${f(cx)} ${f(cy + r)} c ` +
+        `${f(cx - k)} ${f(cy + r)} ${f(cx - r)} ${f(cy + k)} ${f(cx - r)} ${f(cy)} c ` +
+        `${f(cx - r)} ${f(cy - k)} ${f(cx - k)} ${f(cy - r)} ${f(cx)} ${f(cy - r)} c ` +
+        `${f(cx + k)} ${f(cy - r)} ${f(cx + r)} ${f(cy - k)} ${f(cx + r)} ${f(cy)} c f`
+    )
+  }
   hline(x1: number, x2: number, y: number, color: RGB, w = 0.6): void {
     this.raw(`${RG(color)} ${w} w ${x1.toFixed(2)} ${y.toFixed(2)} m ${x2.toFixed(2)} ${y.toFixed(2)} l S`)
   }
@@ -492,8 +518,14 @@ class Pdf {
       this.ensure(lh)
       this.y -= lh
       if (i === 0 && opts.bullet) {
-        const bf: Face = serif ? 'serif' : 'sans'
-        this.text(opts.bullet, this.left + indent - width(opts.bullet, size, bf) - 6, this.y, size, bf, opts.bulletColor ?? color)
+        if (opts.bullet === '▪') {
+          // a true square, not the font's dot
+          const sq = size * 0.38
+          this.rect(this.left + indent - sq - 8, this.y + size * 0.22, sq, sq, opts.bulletColor ?? color)
+        } else {
+          const bf: Face = opts.bulletBold ? (serif ? 'serifBold' : 'sansBold') : serif ? 'serif' : 'sans'
+          this.text(opts.bullet, this.left + indent - width(opts.bullet, size, bf) - 6, this.y, size, bf, opts.bulletColor ?? color)
+        }
       }
       this.line(ln, this.left + indent, size, color)
     })
@@ -725,7 +757,9 @@ function renderBody(p: Pdf, t: DocTemplate, md: string, toc?: { text: string; pa
         p.space(8)
       } else if (level === 2) {
         section++
-        const label = t.caps ? textRaw.toUpperCase() : textRaw
+        // a style that numbers its sections drops a number the writer put in the heading
+        const bare = t.numbered ? textRaw.replace(/^\d+[.)]\s+/, '') : textRaw
+        const label = t.caps ? bare.toUpperCase() : bare
         if (layout === 'magazine') dropCap = true
         if (layout === 'sections') {
           // under a black band with the number: at the head of a fresh page,
@@ -1173,11 +1207,20 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
   const serif = t.serif
   const heavy: Face = serif ? 'serifBold' : 'sansBold'
   const light: Face = serif ? 'serif' : 'sans'
+  const design = deckDesign(t.id)
+  const paint = (name: Paint): RGB =>
+    name === 'accent' ? t.accent : name === 'ink' ? t.ink : name === 'bg' ? t.bg : name === 'titleBg' ? t.titleBg : name === 'titleInk' ? t.titleInk : name === 'muted' ? t.muted : name === 'white' ? [1, 1, 1] : [0, 0, 0]
   p.onPage = (n) => {
-    p.rect(0, 0, W, H, n === 0 ? t.titleBg : t.bg)
+    const under = n === 0 ? t.titleBg : t.bg
+    p.rect(0, 0, W, H, under)
+    // the design's shapes, their translucency blended over the page (the page is one colour)
+    for (const sh of n === 0 ? design.title : design.content) {
+      const c = blend(paint(sh.paint), under, sh.alpha)
+      if (sh.kind === 'circle') p.circle(sh.x * W, H - sh.y * H, (sh.r ?? 0.1) * H, c)
+      else p.rect(sh.x * W, H - (sh.y + (sh.h ?? 0)) * H, (sh.w ?? 0) * W, (sh.h ?? 0) * H, c)
+    }
     if (n === 0) return
-    if (t.bar === 'left') p.rect(0, 0, 10, H, t.accent)
-    if (t.bar === 'top' && t.slide !== 'split') p.rect(0, H - 12, W, 12, t.accent)
+    if (t.bar === 'left' && t.slide === 'number') p.rect(0, 0, 10, H, t.accent)
   }
   p.onFinish = (n, total) => {
     if (n === 0 || !t.numbered) return ''
@@ -1188,39 +1231,61 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
     p.newPage()
     if (i === 0) {
       // the title slide
+      const sub = subtitle ?? s.bullets[0]
+      if (t.id === 'bold') {
+        const panelW = W * 0.45
+        const size = s.title.length > 40 ? 34 : 44
+        const ls = wrap(words([{ text: s.title, bold: true }], size, serif), panelW - margin * 1.4)
+        let y = H * 0.18 + 40 + ls.length * size * 1.1
+        for (const ln of ls) {
+          y -= size * 1.1
+          p.line(ln, margin * 0.7, size, [1, 1, 1], y)
+        }
+        p.text(title.toUpperCase(), margin * 0.7, H * 0.09 - 4, 9, heavy, [1, 1, 1])
+        if (sub) {
+          const sl = wrap(words(runs(sub), 16, serif), W - panelW - margin * 1.7)
+          let yy = H * 0.5 + (sl.length * 16 * 1.5) / 2
+          for (const ln of sl) {
+            yy -= 16 * 1.5
+            p.line(ln, panelW + margin * 0.9, 16, t.ink, yy)
+          }
+        }
+        return
+      }
       const size = s.title.length > 40 ? 40 : 52
-      const ls = wrap(words([{ text: s.title, bold: true }], size, serif), W - margin * 2)
+      const ls = wrap(words([{ text: s.title, bold: true }], size, serif), W - margin * 2 - (t.id === 'mono' ? 160 : 0))
       let y = H * 0.56 + (ls.length * size * 1.1) / 2
       for (const ln of ls) {
         y -= size * 1.1
         p.line(ln, margin, size, t.titleInk, y)
       }
-      const sub = subtitle ?? s.bullets[0]
-      if (sub) p.text(sub, margin, y - 34, 16, light, t.id === 'ocean' || t.id === 'bold' || t.id === 'mono' || t.id === 'warm' ? [1, 1, 1] : t.muted)
+      if (sub) p.text(sub, margin, y - 34, 16, light, t.id === 'ocean' || t.id === 'mono' || t.id === 'warm' ? [1, 1, 1] : t.muted)
       if (t.bar !== 'none') p.rect(margin, y - 60, 60, 4, t.id === 'mono' ? t.titleInk : t.id === 'midnight' ? t.accent : [1, 1, 1])
       return
     }
     // a content slide, in the layout of its style
     const titleSize = s.title.length > 50 ? 24 : 30
-    const titleColor = t.id === 'ocean' ? t.accent : t.ink
+    const titleColor = t.id === 'ocean' ? [1, 1, 1] as RGB : t.ink
+    const markOf = (k: number): string => pointMark(design.marker, k, t.bullet)
+    const markIndent = design.marker === 'number' ? 34 : 26
     if (t.slide === 'split') {
-      // the title on a panel of the accent colour, the points beside it
+      // the title on the panel the design paints, the points beside it
       const panelW = W * 0.36
-      p.rect(0, 0, panelW, H, t.accent)
       const ls = wrap(words([{ text: s.title, bold: true }], 28, serif), panelW - margin - 24)
-      let yy = H * 0.5 + (ls.length * 28 * 1.12) / 2
+      let yy = H * 0.57 + (ls.length * 28 * 1.12) / 2
       for (const ln of ls) {
         yy -= 28 * 1.12
         p.line(ln, margin * 0.6, 28, [1, 1, 1], yy)
       }
-      p.inset = panelW - margin + 30
+      p.text(String(i).padStart(2, '0'), margin * 0.6, H * 0.07 - 6, 18, heavy, [1, 1, 1])
+      p.inset = panelW - margin + 36
       // the points sit at the same height as the title
-      const total = s.bullets.reduce((n, b) => n + p.measure(b, 17, { serif, lineHeight: 1.5, indent: 24 }) + 8, 0)
+      const total = s.bullets.reduce((n, b) => n + p.measure(b, 17, { serif, lineHeight: 1.5, indent: markIndent }) + 8, 0)
       p.y = Math.min(H - 60, H / 2 + total / 2 + 10)
-      for (const b of s.bullets) {
-        p.paragraph(b, 17, { indent: 24, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+      s.bullets.forEach((b, k) => {
+        p.paragraph(b, 17, { indent: markIndent, bullet: markOf(k), bulletColor: t.accent, bulletBold: true, color: t.ink, serif, lineHeight: 1.5 })
         p.space(8)
-      }
+      })
       p.inset = 0
     } else if (t.slide === 'number') {
       // a giant number behind the words
@@ -1229,15 +1294,20 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
       p.space(30)
       p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
       p.space(20)
-      for (const b of s.bullets) {
-        p.paragraph(b, 17, { indent: 26, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+      s.bullets.forEach((b, k) => {
+        p.paragraph(b, 17, { indent: markIndent, bullet: markOf(k), bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
         p.space(4)
-      }
+      })
     } else if (t.slide === 'cards') {
-      // each point on a card in a grid of two
-      p.space(30)
-      p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
-      p.space(14)
+      // the title in the band at the head; each point on a card in a grid of two
+      const bandH = H * 0.2
+      const tl = wrap(words([{ text: s.title, bold: true }], titleSize - 2, serif), p.usableW)
+      let ty = H - bandH / 2 + (tl.length * (titleSize - 2) * 1.1) / 2 - (titleSize - 2) * 0.85
+      for (const ln of tl) {
+        p.line(ln, margin, titleSize - 2, titleColor, ty)
+        ty -= (titleSize - 2) * 1.1
+      }
+      p.y = H - bandH - 26
       const cols = s.bullets.length > 1 ? 2 : 1
       const gap = 14
       const cardW = (p.usableW - gap * (cols - 1)) / cols
@@ -1288,23 +1358,35 @@ export function deckToPdf(title: string, subtitle: string | undefined, slides: P
         p.y -= 8
       }
     } else {
-      p.space(30)
-      p.paragraph(s.title, titleSize, { bold: true, serif, color: titleColor, lineHeight: 1.15 })
-      if (t.bar === 'under') {
-        p.y -= 10
-        p.rect(margin, p.y, 48, 3, t.accent)
-        p.y -= 8
+      // Studio: a square carrying the number, the title beside it, a footer line
+      const tile = 54
+      p.space(24)
+      const top = p.y
+      if (design.numberTile) {
+        p.rect(margin, top - tile, tile, tile, t.ink)
+        const num = String(i).padStart(2, '0')
+        p.text(num, margin + (tile - width(num, 18, 'sansBold')) / 2, top - tile / 2 - 6, 18, 'sansBold', t.bg)
       }
-      p.space(18)
-      for (const b of s.bullets) {
-        p.paragraph(b, 17, { indent: 26, bullet: t.bullet, bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
+      const tx = design.numberTile ? margin + tile + 18 : margin
+      const tl = wrap(words([{ text: s.title, bold: true }], titleSize - 4, serif), W - tx - margin)
+      let ty = top - tile / 2 + (tl.length * (titleSize - 4) * 1.1) / 2 - (titleSize - 4) * 0.8
+      for (const ln of tl) {
+        p.line(ln, tx, titleSize - 4, titleColor, ty)
+        ty -= (titleSize - 4) * 1.1
+      }
+      p.y = Math.min(top - tile, ty) - 26
+      s.bullets.forEach((b, k) => {
+        p.paragraph(b, 17, { indent: markIndent, bullet: markOf(k), bulletColor: t.accent, color: t.ink, serif, lineHeight: 1.5 })
         p.space(4)
-      }
+      })
+      if (design.footer) p.text(title.toUpperCase(), margin, H * 0.085, 8, heavy, t.muted)
     }
     if (s.notes) {
       if (t.slide === 'split') p.inset = W * 0.36 - margin + 30
       const noteH = p.measure(s.notes, 10, { serif, lineHeight: 1.4 }) + 30
-      const yNotes = Math.min(p.y - 26, margin + noteH)
+      // above the foot line and the running title, where the design has them
+      const floor = design.footer ? H * 0.135 : margin
+      const yNotes = Math.min(p.y - 26, floor + noteH)
       p.y = yNotes
       p.hline(p.left, W - margin, p.y, t.muted, 0.5)
       p.y -= 14

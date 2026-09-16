@@ -83,7 +83,21 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
 
   useEffect(() => {
     void window.sitka.getProfile().then(setProfile)
+    const onProfile = (e: Event): void => setProfile((e as CustomEvent<Profile>).detail)
+    window.addEventListener('sitka:profile', onProfile)
+    return () => window.removeEventListener('sitka:profile', onProfile)
   }, [])
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const saveName = async (): Promise<void> => {
+    const clean = (nameDraft ?? '').trim()
+    if (!clean) return
+    const p = await window.sitka.setProfileName(clean).catch(() => null)
+    if (p) {
+      setProfile(p)
+      setNameDraft(null)
+      window.dispatchEvent(new CustomEvent('sitka:profile', { detail: p }))
+    }
+  }
 
   useEffect(() => {
     if (settings) {
@@ -193,6 +207,34 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
               </button>
             )}
           </div>
+          <Row title="Your name" desc="What Sitka calls you — on screen, and in a kind word now and then." wrap>
+            {nameDraft === null ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => setNameDraft(profile?.needsName ? '' : (profile?.name ?? ''))}>
+                {profile?.needsName ? 'Add your name' : 'Change'}
+              </button>
+            ) : (
+              <div className="set-name-edit">
+                <input
+                  className="input"
+                  value={nameDraft}
+                  maxLength={80}
+                  autoFocus
+                  placeholder="Your name"
+                  onChange={(e) => setNameDraft(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveName()
+                    if (e.key === 'Escape') setNameDraft(null)
+                  }}
+                />
+                <button className="btn btn-sm" disabled={!nameDraft.trim()} onClick={() => void saveName()}>
+                  Save
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setNameDraft(null)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+          </Row>
         </div>
 
         <div className="section-title">Appearance</div>

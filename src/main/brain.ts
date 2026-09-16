@@ -1,6 +1,6 @@
 import type { BrainSearchHit, BrainStats, TranscriptSegment } from '@shared/types'
 import * as store from './store'
-import { formatTime } from './ai'
+import { formatTime, person } from './ai'
 
 const STOP = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'are',
@@ -152,6 +152,7 @@ export function buildBrainContext(question: string): string {
 export function brainSystemPrompt(context: string): string {
   return [
     "You are Sitka Brain — the user's memory across every session they have captured with Sitka (lectures, meetings, presentations, events).",
+    person(),
     'You are given the library index and the transcript excerpts most relevant to the current question.',
     '',
     'Rules:',

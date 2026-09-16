@@ -7,7 +7,7 @@ import type {
   TranscriptSegment
 } from '@shared/types'
 import * as store from './store'
-import { completeText, extractJson, transcriptBlock, type AiKeys } from './ai'
+import { completeText, extractJson, person, transcriptBlock, type AiKeys } from './ai'
 import {
   AUDIENCE_QUESTION_SYSTEM,
   JUDGE_ANSWER_SYSTEM,
@@ -157,7 +157,7 @@ export async function liveCoachHint(
   if (segments.length < 4) return null
   const lastStart = segments[segments.length - 1].start
   const recent = segments.filter((s) => s.start >= lastStart - 150)
-  const system = STUDIO_HINT_SYSTEM
+  const system = [STUDIO_HINT_SYSTEM, person()].join('\n')
   const user = [
     `Goal: ${project.goal} — audience: ${project.audience}.`,
     project.brief
@@ -194,7 +194,7 @@ export async function judgeAnswer(
   question: string,
   answer: string
 ): Promise<AnswerVerdict | null> {
-  const text = await completeText(keys, JUDGE_ANSWER_SYSTEM, judgeAnswerUser(projectContext(project), persona, question, answer))
+  const text = await completeText(keys, [JUDGE_ANSWER_SYSTEM, person()].join('\n'), judgeAnswerUser(projectContext(project), persona, question, answer))
   return parseVerdict(extractJson(text))
 }
 

@@ -39,6 +39,9 @@ export default function ProfileMenu({
 
   useEffect(() => {
     void window.sitka.getProfile().then(setProfile)
+    const onProfile = (e: Event): void => setProfile((e as CustomEvent<Profile>).detail)
+    window.addEventListener('sitka:profile', onProfile)
+    return () => window.removeEventListener('sitka:profile', onProfile)
   }, [])
 
   useEffect(() => {

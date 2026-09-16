@@ -254,7 +254,13 @@ async function boot(): Promise<void> {
         err.textContent = 'The password needs at least 6 characters.'
         return false
       }
-      const { data: d, error } = await sb.auth.signUp(c)
+      // the name, so Sitka is personal from the first day rather than an email address
+      const name = ((el('gname') as HTMLInputElement | null)?.value ?? '').trim().slice(0, 80)
+      if (!name) {
+        err.textContent = 'Type your name first — it is what Sitka will call you.'
+        return false
+      }
+      const { data: d, error } = await sb.auth.signUp({ ...c, options: { data: { full_name: name } } })
       if (error) {
         err.textContent = plain(error.message)
         return false

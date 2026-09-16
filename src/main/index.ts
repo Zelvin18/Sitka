@@ -994,13 +994,22 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('profile:get', () => {
-    let name = 'You'
-    try {
-      name = userInfo().username || name
-    } catch {
-      /* some environments hide the user */
+    const given = (store.getSettings().profileName || '').trim()
+    let name = given || 'You'
+    if (!given) {
+      try {
+        name = userInfo().username || name
+      } catch {
+        /* some environments hide the user */
+      }
     }
-    return { name, cloud: false }
+    return { name, cloud: false, needsName: !given }
+  })
+  ipcMain.handle('profile:set', (_e, name: string) => {
+    const clean = String(name || '').trim().slice(0, 80)
+    if (!clean) return null
+    store.setSettings({ ...store.getSettings(), profileName: clean })
+    return { name: clean, cloud: false }
   })
   ipcMain.handle('profile:signOut', () => undefined)
 

@@ -153,6 +153,8 @@
       </div>
       <h2 class="gtitle" id="gtitle">Welcome back.</h2>
       <p class="gsub" id="gsubtitle">Sign in to open your workspace.</p>
+      <div class="glabel hidden" id="gnamelabel">Your name</div>
+      <input class="gin hidden" id="gname" type="text" autocomplete="name" placeholder="What should Sitka call you?" maxlength="80">
       <div class="glabel">Email</div>
       <input class="gin" id="gemail" type="email" autocomplete="email" placeholder="you@example.com" inputmode="email">
       <div class="glabel">Password</div>
@@ -186,6 +188,8 @@
     $('gsubtitle').textContent = up ? 'Free to start. Your sessions stay yours.' : 'Sign in to open your workspace.'
     $('gsignin').classList.toggle('hidden', up)
     $('gsignup').classList.toggle('hidden', !up)
+    $('gname').classList.toggle('hidden', !up)
+    $('gnamelabel').classList.toggle('hidden', !up)
     $('gforgot').classList.toggle('hidden', up)
     $('gterms').classList.toggle('hidden', !up)
     $('gswitch').innerHTML = up

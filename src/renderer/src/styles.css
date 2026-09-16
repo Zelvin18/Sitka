@@ -11811,3 +11811,551 @@ video {
     display: none;
   }
 }
+
+/* the name, asked once */
+.dialog.name-prompt {
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px 22px 18px;
+}
+.name-prompt-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.name-prompt-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 6px 0 14px;
+  line-height: 1.45;
+}
+.name-prompt .input {
+  width: 100%;
+}
+.name-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.set-name-edit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.set-name-edit .input {
+  min-width: 180px;
+  flex: 1;
+}
+
+/* ============ the deck's design on screen: the shapes behind the words ============ */
+.deck-deco {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.deck-deco i {
+  position: absolute;
+  display: block;
+}
+.deck-deco .deck-deco-circle {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.deck-card,
+.present-slide {
+  position: relative;
+  overflow: hidden;
+}
+.deck-card > *:not(.deck-deco),
+.present-slide > *:not(.deck-deco) {
+  position: relative;
+  z-index: 1;
+}
+.deck-card-big,
+.present-big {
+  z-index: 0 !important;
+}
+/* the numbered points of Bold, the squares of Studio */
+.deck-card-bullets.marks-number,
+.present-slide ul.marks-number {
+  list-style: none;
+  padding-left: 0;
+}
+.deck-card-bullets.marks-number li,
+.present-slide ul.marks-number li {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+}
+.deck-card-bullets.marks-number li::before,
+.present-slide ul.marks-number li::before {
+  content: attr(data-mark);
+  font-weight: 800;
+  color: var(--deck-accent, var(--pr-accent));
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.present-slide ul.marks-number li::before {
+  color: var(--pr-accent);
+  font-size: 0.9em;
+}
+.deck-card-bullets.marks-square,
+.present-slide ul.marks-square {
+  list-style: none;
+  padding-left: 0;
+}
+.deck-card-bullets.marks-square li,
+.present-slide ul.marks-square li {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+}
+.deck-card-bullets.marks-square li::before,
+.present-slide ul.marks-square li::before {
+  content: '';
+  flex: none;
+  width: 0.42em;
+  height: 0.42em;
+  background: var(--deck-accent, var(--pr-accent));
+  align-self: center;
+}
+/* Studio: the square carrying the number, the foot line */
+.deck-tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1em;
+  height: 2.1em;
+  background: var(--deck-accent, var(--pr-ink));
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.7em;
+  letter-spacing: 0.02em;
+}
+.deck-card.d-mono .deck-card-head {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.present-slide.d-mono .present-head {
+  display: flex;
+  align-items: center;
+  gap: 2vw;
+}
+.present-slide.d-mono .deck-tile {
+  width: 1.4em;
+  height: 1.4em;
+  font-size: clamp(18px, 2.6vw, 34px);
+  background: var(--pr-ink);
+  color: var(--pr-bg);
+}
+.deck-foot {
+  position: absolute;
+  left: 18px;
+  bottom: 8%;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--deck-muted);
+  opacity: 0.7;
+}
+.present-slide .deck-foot {
+  left: 9vw;
+  bottom: 8vh;
+  font-size: 11px;
+  color: var(--pr-muted);
+}
+/* Ocean: the title in the band at the head */
+.deck-card.d-ocean.lay-cards {
+  padding-top: 0;
+}
+.deck-card.d-ocean.lay-cards .deck-card-head {
+  min-height: 20%;
+  justify-content: center;
+  color: #fff;
+  margin: 0 -18px 8px;
+  padding: 0 18px;
+  width: calc(100% + 36px);
+}
+.deck-card.d-ocean.lay-cards .deck-card-n {
+  color: rgba(255, 255, 255, 0.7);
+}
+.present-slide.d-ocean.lay-cards {
+  padding-top: 0;
+  justify-content: flex-start;
+}
+.present-slide.d-ocean.lay-cards .present-head {
+  min-height: 20vh;
+  display: flex;
+  align-items: center;
+  margin: 0 -9vw 4vh;
+  padding: 0 9vw;
+}
+.present-slide.d-ocean.lay-cards h1 {
+  color: #fff;
+  font-size: clamp(24px, 3.6vw, 44px);
+}
+/* Bold: the title on its panel, the number at the panel's foot */
+.deck-panel-n {
+  position: absolute;
+  left: 14px;
+  bottom: 4%;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+}
+.deck-card.lay-split .deck-card-head {
+  background: transparent;
+  position: relative;
+}
+.present-slide.lay-split .present-head {
+  flex: 0 0 36%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 7vh 4vw;
+}
+.present-slide.lay-split .present-head h1 {
+  background: transparent;
+  padding: 0;
+  flex: none;
+  width: 100%;
+}
+.present-slide.lay-split .deck-panel-n {
+  left: 4vw;
+  bottom: 4vh;
+  font-size: clamp(14px, 1.6vw, 22px);
+}
+.deck-card.d-bold.first .deck-card-head {
+  width: 45%;
+  color: #fff;
+  min-height: 70%;
+  justify-content: flex-end;
+  padding-right: 14px;
+}
+.deck-card.d-bold.first .deck-card-sub {
+  color: #fff;
+  opacity: 0.85;
+}
+.present-slide.d-bold.title {
+  align-items: flex-start;
+}
+.present-slide.d-bold.title .present-head {
+  width: 45%;
+  margin-left: -9vw;
+  padding: 0 4vw 0 9vw;
+  min-height: 60vh;
+  display: flex;
+  align-items: flex-end;
+  color: #fff;
+}
+.present-slide.d-bold.title .present-sub {
+  position: absolute;
+  left: 52%;
+  right: 8vw;
+  top: 45%;
+  color: var(--pr-ink);
+  opacity: 1;
+}
+
+/* ============ the document on screen, as the PDF sets it ============ */
+.doc-page {
+  position: relative;
+  font-size: 14.5px;
+  line-height: 1.62;
+  padding: 44px 48px 52px;
+}
+.doc-page h1 {
+  font-size: 30px;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 750;
+  margin: 0 0 18px;
+}
+.doc-page h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 30px 0 10px;
+  line-height: 1.25;
+}
+.doc-page h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 20px 0 6px;
+}
+.doc-page h4 {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin: 16px 0 4px;
+  color: var(--doc-muted);
+}
+.doc-page p {
+  margin: 0 0 12px;
+}
+.doc-page ul,
+.doc-page ol {
+  margin: 0 0 14px;
+  padding-left: 24px;
+}
+.doc-page li {
+  margin: 0 0 6px;
+  padding-left: 4px;
+}
+.doc-page li::marker {
+  color: var(--doc-accent);
+}
+.doc-page blockquote {
+  margin: 18px 0;
+  padding: 4px 0 4px 18px;
+  border-left: 3px solid var(--doc-accent);
+  color: var(--doc-muted);
+  font-style: italic;
+}
+.doc-page hr {
+  border: none;
+  border-top: 1px solid var(--doc-rule);
+  margin: 24px 0;
+}
+.doc-page code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--doc-ink) 6%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.doc-page .doc-code {
+  background: color-mix(in srgb, var(--doc-ink) 5%, transparent);
+  border: 1px solid var(--doc-rule);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.doc-page .doc-code code {
+  background: none;
+  padding: 0;
+}
+.doc-page a {
+  color: var(--doc-accent);
+}
+.doc-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0 18px;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.doc-table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--doc-accent);
+  padding: 8px 10px;
+  border-bottom: 1.5px solid var(--doc-rule);
+  background: color-mix(in srgb, var(--doc-accent) 8%, transparent);
+}
+.doc-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--doc-rule);
+  vertical-align: top;
+}
+.doc-table.striped tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--doc-accent) 4%, transparent);
+}
+/* Boardroom: the running band at the head, sections numbered in bands */
+.doc-band {
+  margin: -44px -48px 34px;
+  padding: 12px 48px;
+  background: var(--doc-accent);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.doc-page.lay-report h1 {
+  font-size: 32px;
+  margin-bottom: 26px;
+}
+/* Signal: a dark cover block */
+.doc-cover {
+  margin: -44px -48px 30px;
+  padding: 54px 48px 40px;
+  background: var(--doc-ink);
+  color: #fff;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  position: relative;
+}
+.doc-cover::after {
+  content: '';
+  position: absolute;
+  left: 48px;
+  bottom: 24px;
+  width: 44px;
+  height: 4px;
+  background: var(--doc-accent);
+}
+.doc-page.lay-sections > h1 {
+  display: none;
+}
+/* Editorial: the title set large in serif, a rule beneath, the opening line wide */
+.doc-page.lay-magazine h1 {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--doc-rule);
+  margin-bottom: 20px;
+}
+/* Studio: the title across both columns with a block of the accent */
+.doc-page.lay-sidebar > h1 {
+  padding-left: 18px;
+  border-left: 6px solid var(--doc-accent);
+  margin-bottom: 8px;
+}
+/* Paper: an ornament above the title */
+.doc-page.lay-notebook h1 {
+  text-align: center;
+  padding-top: 18px;
+  position: relative;
+  margin-bottom: 26px;
+}
+.doc-page.lay-notebook h1::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--doc-accent);
+}
+.doc-page.lay-notebook h1::after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 1px;
+  background: var(--doc-rule);
+  margin: 14px auto 0;
+}
+.doc-page.lay-sections h2 {
+  margin-left: -48px;
+  margin-right: -48px;
+  padding-left: 118px;
+  padding-right: 48px;
+}
+.doc-page.lay-sections h2::before {
+  left: 48px;
+}
+@media (max-width: 720px) {
+  .doc-page {
+    padding: 26px 20px 32px;
+    font-size: 14px;
+  }
+  .doc-band {
+    margin: -26px -20px 22px;
+    padding: 10px 20px;
+  }
+  .doc-cover {
+    margin: -26px -20px 22px;
+    padding: 36px 20px 30px;
+    font-size: 26px;
+  }
+  .doc-cover::after {
+    left: 20px;
+  }
+  .doc-page.lay-sections h2 {
+    margin-left: -20px;
+    margin-right: -20px;
+    padding-left: 78px;
+    padding-right: 20px;
+    font-size: 16px;
+  }
+  .doc-page.lay-sections h2::before {
+    left: 20px;
+    font-size: 26px;
+  }
+  .doc-page.lay-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .doc-page.lay-sidebar > * {
+    grid-column: 1;
+  }
+  .doc-page.lay-sidebar > h2 {
+    margin-top: 22px;
+  }
+  .doc-page.lay-sidebar > h2 + * {
+    margin-top: 8px;
+  }
+  .doc-page.lay-magazine h1 {
+    font-size: 30px;
+  }
+}
+
+/* the points beside Bold's panel keep their room; on a phone the panel is a band above them */
+.present-slide.lay-split ul.marks-number {
+  padding-left: 8vw;
+}
+.deck-card.lay-split .deck-card-head {
+  flex-basis: 36%;
+}
+.deck-card.lay-split .deck-card-bullets.marks-number {
+  padding-left: 18px;
+}
+@media (max-width: 720px) {
+  .present-slide.lay-split .deck-deco,
+  .present-slide.d-bold.title .deck-deco {
+    display: none;
+  }
+  .present-slide.lay-split .present-head {
+    flex: none;
+    background: var(--pr-accent);
+    color: #fff;
+    padding: 5vh 6vw;
+    margin: 0 -9vw 3vh;
+  }
+  .present-slide.lay-split .deck-panel-n {
+    display: none;
+  }
+  .present-slide.lay-split ul.marks-number {
+    padding-left: 0;
+  }
+  .present-slide.d-bold.title .present-head {
+    width: auto;
+    margin: 0 -9vw 2vh;
+    padding: 6vh 9vw 4vh;
+    min-height: 0;
+    background: var(--pr-accent);
+  }
+  .present-slide.d-bold.title .present-sub {
+    position: static;
+  }
+  .deck-card.lay-split .deck-card-head {
+    background: var(--deck-accent);
+    color: #fff;
+    flex-basis: auto;
+  }
+  .deck-card.lay-split .deck-deco,
+  .deck-card.d-bold.first .deck-deco {
+    display: none;
+  }
+  .deck-card.d-bold.first .deck-card-head {
+    width: auto;
+    min-height: 0;
+    background: var(--deck-accent);
+    padding: 10px 12px;
+    border-radius: 6px;
+  }
+}

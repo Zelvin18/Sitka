@@ -18,6 +18,9 @@ import { deckToPptx } from '../lib/pptx'
 import { zip } from '../lib/zip'
 import StylePicker from './StylePicker'
 import Designing from './Designing'
+import DeckDeco from './DeckDeco'
+import DocPreview from './DocPreview'
+import { deckDesign, pointMark } from '@shared/deckDesign'
 import { withoutTimes } from '@shared/timesLogic'
 import { highlight } from '../lib/highlight'
 import {
@@ -150,8 +153,7 @@ function deckCardStyle(id: string | undefined, title: boolean): React.CSSPropert
     fontFamily: t.serif ? 'Georgia, "Times New Roman", serif' : undefined,
     ['--deck-accent' as string]: toHex(t.accent),
     ['--deck-muted' as string]: title ? toHex(t.titleInk) : t.id === 'midnight' ? '#c9c9d0' : toHex(t.ink),
-    borderLeft: !title && t.bar === 'left' ? `5px solid ${toHex(t.accent)}` : undefined,
-    borderTop: !title && t.bar === 'top' ? `5px solid ${toHex(t.accent)}` : undefined
+    borderLeft: !title && t.bar === 'left' && t.slide === 'number' ? `5px solid ${toHex(t.accent)}` : undefined
   }
 }
 /** the presenting screen in its style */
@@ -597,7 +599,7 @@ export default function CreateView({
             <div className="create-body">
               {selected.kind === 'document' && (
                 <div className={`doc-page lay-${docTemplate(selected.template).layout}`} style={docPageStyle(selected.template)}>
-                  <AiText text={selected.content} onSeek={seekFor} />
+                  <DocPreview text={selected.content} layout={docTemplate(selected.template).layout} />
                 </div>
               )}
 
@@ -607,23 +609,29 @@ export default function CreateView({
                     {deck.slides.map((s, i) => (
                       <button
                         key={i}
-                        className={`deck-card${i === 0 ? ' first' : ` lay-${deckTemplate(selected.template).slide}`}`}
+                        className={`deck-card d-${deckTemplate(selected.template).id}${i === 0 ? ' first' : ` lay-${deckTemplate(selected.template).slide}`}`}
                         style={deckCardStyle(selected.template, i === 0)}
                         onClick={() => setPresentAt(i)}
                       >
+                        <DeckDeco templateId={selected.template} title={i === 0} />
                         <span className="deck-card-n">{i + 1}</span>
                         {i > 0 && deckTemplate(selected.template).slide === 'number' && <span className="deck-card-big">{String(i).padStart(2, '0')}</span>}
                         <span className="deck-card-head">
+                          {i > 0 && deckDesign(selected.template).numberTile && <span className="deck-tile">{String(i).padStart(2, '0')}</span>}
                           <span className="deck-card-title">{s.title}</span>
                           {i === 0 && deck.subtitle && <span className="deck-card-sub">{deck.subtitle}</span>}
+                          {i > 0 && deckTemplate(selected.template).slide === 'split' && <span className="deck-panel-n">{String(i).padStart(2, '0')}</span>}
                         </span>
-                        {s.bullets.length > 0 && (
-                          <ul className="deck-card-bullets">
-                            {s.bullets.slice(0, 4).map((b, j) => (
-                              <li key={j}>{b}</li>
+                        {s.bullets.filter((b) => !(i === 0 && b === deck.subtitle)).length > 0 && (
+                          <ul className={`deck-card-bullets marks-${deckDesign(selected.template).marker}`}>
+                            {s.bullets.filter((b) => !(i === 0 && b === deck.subtitle)).slice(0, 4).map((b, j) => (
+                              <li key={j} data-mark={pointMark(deckDesign(selected.template).marker, j, deckTemplate(selected.template).bullet)}>
+                                {b}
+                              </li>
                             ))}
                           </ul>
                         )}
+                        {i > 0 && deckDesign(selected.template).footer && <span className="deck-foot">{deck.title}</span>}
                       </button>
                     ))}
                   </div>
@@ -705,17 +713,25 @@ export default function CreateView({
             return x > window.innerWidth / 2 ? Math.min(deck.slides.length - 1, n + 1) : Math.max(0, n - 1)
           })
         }}>
-          <div className={`present-slide${presentAt === 0 ? ' title' : ` lay-${deckTemplate(selected?.template).slide}`}`}>
+          <div className={`present-slide d-${deckTemplate(selected?.template).id}${presentAt === 0 ? ' title' : ` lay-${deckTemplate(selected?.template).slide}`}`}>
+            <DeckDeco templateId={selected?.template} title={presentAt === 0} />
             {presentAt > 0 && deckTemplate(selected?.template).slide === 'number' && <div className="present-big">{String(presentAt).padStart(2, '0')}</div>}
-            <h1>{deck.slides[presentAt].title}</h1>
+            <div className="present-head">
+              {presentAt > 0 && deckDesign(selected?.template).numberTile && <span className="deck-tile">{String(presentAt).padStart(2, '0')}</span>}
+              <h1>{deck.slides[presentAt].title}</h1>
+              {presentAt > 0 && deckTemplate(selected?.template).slide === 'split' && <span className="deck-panel-n">{String(presentAt).padStart(2, '0')}</span>}
+            </div>
             {presentAt === 0 && deck.subtitle && <p className="present-sub">{deck.subtitle}</p>}
-            {deck.slides[presentAt].bullets.length > 0 && (
-              <ul>
-                {deck.slides[presentAt].bullets.map((b, j) => (
-                  <li key={j}>{b}</li>
+            {deck.slides[presentAt].bullets.filter((b) => !(presentAt === 0 && b === deck.subtitle)).length > 0 && (
+              <ul className={`marks-${deckDesign(selected?.template).marker}`}>
+                {deck.slides[presentAt].bullets.filter((b) => !(presentAt === 0 && b === deck.subtitle)).map((b, j) => (
+                  <li key={j} data-mark={pointMark(deckDesign(selected?.template).marker, j, deckTemplate(selected?.template).bullet)}>
+                    {b}
+                  </li>
                 ))}
               </ul>
             )}
+            {presentAt > 0 && deckDesign(selected?.template).footer && <span className="deck-foot">{deck.title}</span>}
           </div>
           {showNotes && deck.slides[presentAt].notes && (
             <div className="present-notes">{deck.slides[presentAt].notes}</div>
@@ -798,7 +814,7 @@ export default function CreateView({
           </div>
           <div className="viewer-body">
             <div className={`doc-page lay-${docTemplate(selected.template).layout}`} style={docPageStyle(selected.template)}>
-              <AiText text={selected.content} onSeek={seekFor} />
+              <DocPreview text={selected.content} layout={docTemplate(selected.template).layout} />
             </div>
           </div>
         </div>

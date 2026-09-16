@@ -24,6 +24,7 @@ import SessionView from './components/SessionView'
 import QuickRecord from './components/QuickRecord'
 import CreateView from './components/CreateView'
 import ProfileMenu from './components/ProfileMenu'
+import NamePrompt from './components/NamePrompt'
 
 type View =
   | { name: 'homepage' }
@@ -387,6 +388,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app">
+      <NamePrompt />
       {(sidebarOpen || phone) && (
         <Sidebar
           sessions={sidebarSessions}

@@ -40,6 +40,8 @@ import type {
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   getProfile: (): Promise<Profile> => ipcRenderer.invoke('profile:get'),
+  /** what the person is called; null when nothing was given */
+  setProfileName: (name: string): Promise<Profile | null> => ipcRenderer.invoke('profile:set', name),
   /** Online: sign out and return to the gate. Desktop: nothing to sign out of. */
   signOut: (): Promise<void> => ipcRenderer.invoke('profile:signOut'),
   setSettings: (s: Settings): Promise<void> => ipcRenderer.invoke('settings:set', s),
