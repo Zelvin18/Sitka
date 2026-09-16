@@ -1,5 +1,6 @@
 import Photo from './Photo'
-import React from 'react'
+import React, { useState } from 'react'
+import ConfirmDialog from './ConfirmDialog'
 import type { Organization, SessionKind, SessionMeta } from '@shared/types'
 import OrgGate from './OrgGate'
 import {
@@ -9,7 +10,8 @@ import {
   IconPlay,
   IconScreen,
   IconSparkle,
-  IconStar
+  IconStar,
+  IconTrash
 } from '../lib/icons'
 import { formatDate, formatDuration } from '../lib/format'
 
@@ -22,6 +24,8 @@ interface Props {
   onGoCoach: () => void
   onGoOverview: () => void
   onOpenSession: (id: string) => void
+  /** one of these sessions, deleted for good */
+  onDeleteSession: (id: string) => void
   /** organisations of this kind the user belongs to (none → the join door shows) */
   orgs: Organization[]
   onJoinedOrg: (org: Organization) => void
@@ -42,12 +46,14 @@ export default function EcosystemView({
   onGoCoach,
   onGoOverview,
   onOpenSession,
+  onDeleteSession,
   orgs,
   onJoinedOrg,
   onOpenOrg
 }: Props): React.JSX.Element {
   const business = kind === 'business'
   const done = sessions.filter((s) => s.status === 'complete')
+  const [pendingDelete, setPendingDelete] = useState<SessionMeta | null>(null)
 
   const starts = business
     ? [
@@ -225,17 +231,35 @@ export default function EcosystemView({
             </div>
             <div className="eco-sessions">
               {done.slice(0, 6).map((s) => (
-                <button key={s.id} className="eco-session" onClick={() => onOpenSession(s.id)}>
-                  <span className="eco-session-icon">
-                    <IconPlay size={13} strokeWidth={2.2} />
-                  </span>
-                  <span className="eco-session-title">{s.title}</span>
-                  <span className="eco-session-meta">
-                    {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
-                  </span>
-                </button>
+                <div key={s.id} className="eco-session-row">
+                  <button className="eco-session" onClick={() => onOpenSession(s.id)}>
+                    <span className="eco-session-icon">
+                      <IconPlay size={13} strokeWidth={2.2} />
+                    </span>
+                    <span className="eco-session-title">{s.title}</span>
+                    <span className="eco-session-meta">
+                      {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
+                    </span>
+                  </button>
+                  <button type="button" className="row-delete" title={business ? 'Delete this meeting' : 'Delete this lecture'} onClick={() => setPendingDelete(s)}>
+                    <IconTrash size={13} />
+                  </button>
+                </div>
               ))}
             </div>
+            {pendingDelete && (
+              <ConfirmDialog
+                title={business ? 'Delete this meeting?' : 'Delete this lecture?'}
+                message={`“${pendingDelete.title}” — the recording, transcript, notes and chat will be permanently deleted. This cannot be undone.`}
+                confirmLabel="Delete"
+                onConfirm={() => {
+                  const id = pendingDelete.id
+                  setPendingDelete(null)
+                  onDeleteSession(id)
+                }}
+                onCancel={() => setPendingDelete(null)}
+              />
+            )}
           </>
         )}
 

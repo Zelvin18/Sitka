@@ -43,6 +43,8 @@ interface Props {
   /** the space open in this organisation, part of the app's own history so Back returns to it */
   spaceId?: string
   onSpace: (spaceId: string | null) => void
+  /** one of the user's own sessions, deleted for good */
+  onDeleteSession: (id: string) => Promise<void> | void
 }
 
 type Tab = 'ask' | 'sessions' | 'materials' | 'understanding' | 'people'
@@ -64,7 +66,8 @@ export default function OrgView({
   onLeft,
   onChanged,
   spaceId,
-  onSpace
+  onSpace,
+  onDeleteSession
 }: Props): React.JSX.Element {
   const education = org.kind === 'education'
   const lead = org.role === 'owner' || org.role === 'lead'
@@ -87,6 +90,45 @@ export default function OrgView({
   const [confirmDeleteOrg, setConfirmDeleteOrg] = useState(false)
   const [deleteOrgError, setDeleteOrgError] = useState<string | null>(null)
   const [confirmDeleteSpace, setConfirmDeleteSpace] = useState<OrgSpace | null>(null)
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState<SessionMeta | null>(null)
+  const mine = new Set(mySessions.map((s) => s.id))
+  /** the space goes, for everyone; the list and the counts follow */
+  const removeSpace = (s: OrgSpace): void => {
+    setConfirmDeleteSpace(null)
+    void window.sitka
+      .deleteSpace(s.id)
+      .then(async () => {
+        setActive((cur) => (cur && cur.id === s.id ? null : cur))
+        await refresh()
+        onChanged()
+      })
+      .catch((err: unknown) => setDeleteOrgError(err instanceof Error ? err.message : String(err)))
+  }
+  const removeSession = async (s: SessionMeta): Promise<void> => {
+    setConfirmDeleteSession(null)
+    await onDeleteSession(s.id)
+    setSessions((cur) => cur.filter((x) => x.id !== s.id))
+    await refresh()
+    onChanged()
+  }
+  const sessionDialog = confirmDeleteSession && (
+    <ConfirmDialog
+      title={`Delete “${confirmDeleteSession.title}”?`}
+      message="The recording, transcript, notes and chat are deleted for good, for everyone in this space too. This cannot be undone."
+      confirmLabel="Delete"
+      onConfirm={() => void removeSession(confirmDeleteSession)}
+      onCancel={() => setConfirmDeleteSession(null)}
+    />
+  )
+  const spaceDialog = confirmDeleteSpace && (
+    <ConfirmDialog
+      title={`Delete “${confirmDeleteSpace.name}”?`}
+      message="Its materials are removed for everyone. Sessions are not deleted; they simply stop being filed here."
+      confirmLabel="Delete"
+      onConfirm={() => removeSpace(confirmDeleteSpace)}
+      onCancel={() => setConfirmDeleteSpace(null)}
+    />
+  )
 
   // per-space data
   const [sessions, setSessions] = useState<SessionMeta[]>([])
@@ -354,24 +396,38 @@ export default function OrgView({
           ) : (
             <div className="org-grid">
               {spaces.map((s) => (
-                <button
-                  key={s.id}
-                  className="org-card"
-                  onClick={() => {
-                    setActive(s)
-                    setTab('ask')
-                    setChatKey((k) => k + 1)
-                  }}
-                >
-                  <span className="org-card-icon">{kindIcon(s.kind)}</span>
-                  <span className="org-card-name">{s.name}</span>
-                  {s.description && <span className="org-card-desc">{s.description}</span>}
-                  <span className="org-card-meta">
-                    {s.sessions} {s.sessions === 1 ? 'session' : 'sessions'}
-                    <span className="org-meta-dot" />
-                    {s.materials} {s.materials === 1 ? 'document' : 'documents'}
-                  </span>
-                </button>
+                <div key={s.id} className="org-card-wrap">
+                  <button
+                    className="org-card"
+                    onClick={() => {
+                      setActive(s)
+                      setTab('ask')
+                      setChatKey((k) => k + 1)
+                    }}
+                  >
+                    <span className="org-card-icon">{kindIcon(s.kind)}</span>
+                    <span className="org-card-name">{s.name}</span>
+                    {s.description && <span className="org-card-desc">{s.description}</span>}
+                    <span className="org-card-meta">
+                      {s.sessions} {s.sessions === 1 ? 'session' : 'sessions'}
+                      <span className="org-meta-dot" />
+                      {s.materials} {s.materials === 1 ? 'document' : 'documents'}
+                    </span>
+                  </button>
+                  {lead && (
+                    <button
+                      type="button"
+                      className="row-delete"
+                      title={`Delete this ${spaceNoun(s.kind)}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setConfirmDeleteSpace(s)
+                      }}
+                    >
+                      <IconTrash size={13} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -476,6 +532,7 @@ export default function OrgView({
           </div>
         )}
 
+        {spaceDialog}
         {confirmDeleteOrg && (
           <ConfirmDialog
             title={`Delete ${org.name}?`}
@@ -553,6 +610,11 @@ export default function OrgView({
           >
             <IconMic size={13} strokeWidth={2} />
           </button>
+          {lead && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)} title={`Delete this ${noun}`}>
+              <IconTrash size={13} strokeWidth={2} />
+            </button>
+          )}
         </div>
         <div className="brain-modes" style={{ marginTop: 12 }}>
           <div className="seg">
@@ -654,15 +716,22 @@ export default function OrgView({
             ) : (
               <div className="eco-sessions">
                 {sessions.map((s) => (
-                  <button key={s.id} className="eco-session" onClick={() => onOpenSession(s.id)}>
-                    <span className="eco-session-icon">
-                      <IconPlay size={13} strokeWidth={2.2} />
-                    </span>
-                    <span className="eco-session-title">{s.title}</span>
-                    <span className="eco-session-meta">
-                      {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
-                    </span>
-                  </button>
+                  <div key={s.id} className="eco-session-row">
+                    <button className="eco-session" onClick={() => onOpenSession(s.id)}>
+                      <span className="eco-session-icon">
+                        <IconPlay size={13} strokeWidth={2.2} />
+                      </span>
+                      <span className="eco-session-title">{s.title}</span>
+                      <span className="eco-session-meta">
+                        {formatDate(s.createdAt)} · {formatDuration(s.durationMs)}
+                      </span>
+                    </button>
+                    {mine.has(s.id) && (
+                      <button type="button" className="row-delete" title="Delete this session" onClick={() => setConfirmDeleteSession(s)}>
+                        <IconTrash size={13} />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -796,26 +865,8 @@ export default function OrgView({
         )}
       </div>
 
-      {confirmDeleteSpace && (
-        <ConfirmDialog
-          title={`Delete “${confirmDeleteSpace.name}”?`}
-          message="Its materials are removed for everyone. Sessions are not deleted; they simply stop being filed here."
-          confirmLabel="Delete"
-          onConfirm={() => {
-            const s = confirmDeleteSpace
-            setConfirmDeleteSpace(null)
-            void window.sitka
-              .deleteSpace(s.id)
-              .then(async () => {
-                setActive(null)
-                await refresh()
-                onChanged()
-              })
-              .catch((err: unknown) => setDeleteOrgError(err instanceof Error ? err.message : String(err)))
-          }}
-          onCancel={() => setConfirmDeleteSpace(null)}
-        />
-      )}
+      {spaceDialog}
+      {sessionDialog}
     </div>
   )
 }

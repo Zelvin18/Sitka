@@ -12359,3 +12359,58 @@ video {
     border-radius: 6px;
   }
 }
+
+/* a row with something to open and a quiet delete beside it */
+.eco-session-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.eco-session-row .eco-session {
+  flex: 1;
+  min-width: 0;
+}
+.row-delete {
+  flex: none;
+  width: 38px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.row-delete:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+  background: var(--bg-soft);
+}
+.org-card-wrap {
+  position: relative;
+}
+.org-card-wrap .org-card {
+  width: 100%;
+  height: 100%;
+}
+.org-card-wrap .row-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  opacity: 0;
+}
+.org-card-wrap:hover .row-delete,
+.org-card-wrap:focus-within .row-delete {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .org-card-wrap .row-delete {
+    opacity: 1;
+  }
+}

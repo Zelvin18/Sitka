@@ -538,6 +538,7 @@ export default function App(): React.JSX.Element {
             onGoCoach={() => setView({ name: 'coach' })}
             onGoOverview={() => setView({ name: 'brain' })}
             onOpenSession={openSession}
+            onDeleteSession={(id) => void deleteSession(id)}
             orgs={orgs.filter((o) => o.kind === view.name)}
             onJoinedOrg={(org) => {
               void refreshOrgs()
@@ -561,6 +562,7 @@ export default function App(): React.JSX.Element {
                   setView({ name: 'live', space: org.kind, presetKind, audioOnly, orgSpaceId, orgSpaceName })
                 }}
                 onOpenSession={openSession}
+                onDeleteSession={(id) => deleteSession(id)}
                 onOpenSettings={() => setView({ name: 'settings' })}
                 onLeft={() => {
                   void refreshOrgs()
