@@ -160,6 +160,20 @@ async function launch(): Promise<void> {
   }
 }
 
+/**
+ * The page remembered for a refresh belongs to the session that was signed
+ * in; a fresh sign-in starts at the home page, not wherever the last person
+ * on this browser left off.
+ */
+function forgetPlace(): void {
+  try {
+    sessionStorage.removeItem('sitka.view')
+    localStorage.removeItem('sitka.space')
+  } catch {
+    /* no storage: nothing was remembered */
+  }
+}
+
 async function boot(): Promise<void> {
   const isRecovery = location.hash.includes('type=recovery')
   const { data } = await sb.auth.getSession()
@@ -240,6 +254,7 @@ async function boot(): Promise<void> {
         err.textContent = plain(error.message)
         return false
       }
+      forgetPlace()
       return true
     })
   ;(el('gsignup') as HTMLButtonElement).onclick = () =>
@@ -269,6 +284,7 @@ async function boot(): Promise<void> {
         err.textContent = 'Account created — check your email to confirm, then sign in.'
         return false
       }
+      forgetPlace()
       return true
     })
   ;(el('gpassword') as HTMLInputElement).addEventListener('keydown', (e) => {

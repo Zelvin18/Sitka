@@ -1927,6 +1927,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     signOut: async () => {
       await sb.auth.signOut()
+      // the next person to sign in on this browser starts at the home page
+      try {
+        sessionStorage.removeItem('sitka.view')
+        localStorage.removeItem('sitka.space')
+      } catch {
+        /* ignore */
+      }
       location.href = '/app'
     },
     setSettings: async (s: Settings) => {
