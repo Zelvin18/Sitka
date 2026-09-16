@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { createRequire } from 'module'
-import { existsSync, renameSync, statSync, unlinkSync } from 'fs'
+import { closeSync, existsSync, openSync, readSync, renameSync, statSync, unlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { videoPath } from './store'
 
@@ -21,19 +21,35 @@ export function resolveFfmpeg(): string | null {
   }
 }
 
+/** The container a recording is in, from its first bytes: MP4 (sound alone is recorded as AAC in MP4) or WebM. */
+export function containerOf(file: string): 'mp4' | 'webm' {
+  try {
+    const fd = openSync(file, 'r')
+    const head = Buffer.alloc(12)
+    readSync(fd, head, 0, 12, 0)
+    closeSync(fd)
+    return head.subarray(4, 8).toString('latin1') === 'ftyp' ? 'mp4' : 'webm'
+  } catch {
+    return 'webm'
+  }
+}
+
 /**
- * Rewrite a session's MediaRecorder webm with a proper seek index (duration +
- * cues). Stream copy only — no re-encoding, so it takes seconds. Returns true
- * when the file was replaced.
+ * Rewrite a session's MediaRecorder file with a proper seek index (duration +
+ * cues, or the MP4 index moved to the front). Stream copy only — no
+ * re-encoding, so it takes seconds. Returns true when the file was replaced.
  */
 export async function remuxSession(id: string): Promise<boolean> {
   const ffmpeg = resolveFfmpeg()
   const src = videoPath(id)
   if (!ffmpeg || !existsSync(src)) return false
-  const tmp = join(dirname(src), 'video.remux.webm')
+  // the output keeps the recording's own container: AAC cannot go into WebM
+  const kind = containerOf(src)
+  const tmp = join(dirname(src), kind === 'mp4' ? 'video.remux.mp4' : 'video.remux.webm')
 
   const ok = await new Promise<boolean>((resolve) => {
-    const proc = spawn(ffmpeg, ['-y', '-i', src, '-c', 'copy', tmp], {
+    const args = kind === 'mp4' ? ['-y', '-i', src, '-c', 'copy', '-movflags', '+faststart', tmp] : ['-y', '-i', src, '-c', 'copy', tmp]
+    const proc = spawn(ffmpeg, args, {
       windowsHide: true
     })
     proc.on('error', () => resolve(false))

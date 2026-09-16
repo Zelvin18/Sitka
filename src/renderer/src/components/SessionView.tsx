@@ -12,7 +12,7 @@ import Splitter from './Splitter'
 import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../lib/persist'
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
-import { IconPlay } from '../lib/icons'
+import { IconPause, IconPlay } from '../lib/icons'
 import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
 
 /** MediaSource, or Safari's managed one on iPhone */
@@ -65,9 +65,21 @@ export default function SessionView({
   const failWith = (why: string): void => {
     diagRef.current = why
     const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
-    report?.('session-player', why)
+    report?.('session-player', `${why} · ${navigator.userAgent.slice(0, 80)}`)
+    setVideoSrc(null)
     setVideoError(true)
   }
+  // The ways a recording can be played, tried in order: the whole file by
+  // its link, the parts as a stream, the whole file read into memory. A way
+  // that errors, or that gives no data in twenty seconds, hands over to the
+  // next; only when the last is exhausted does the player say what it tried.
+  type Way = 'url' | 'stream' | 'blob'
+  const ladderRef = useRef<{ ways: Way[]; tried: string[] }>({ ways: [], tried: [] })
+  const loadGenRef = useRef(0)
+  const objectUrlRef = useRef<string | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [mediaDuration, setMediaDuration] = useState(0)
+  const [rate, setRate] = useState(1)
   // On the website the recording is fetched from the cloud, which can be a
   // long download on a phone: it waits for a tap (or a jump to a moment).
   // On the desktop it is a local file and loads at once.
@@ -228,36 +240,39 @@ export default function SessionView({
   // MediaRecorder webm files have no seek index, so seeking a streamed source
   // snaps back to 0. Loading the whole file as a blob (read via the main
   // process) makes every byte available locally, so Chromium can seek anywhere.
-  useEffect(() => {
-    let cancelled = false
-    let objectUrl: string | null = null
-    durationFixedRef.current = false
-    setVideoSrc(null)
-    setVideoError(false)
-    setVideoLive(false)
-    if (!videoWanted) return undefined
-    void (async () => {
+  const advance = useCallback(
+    async (gen: number, note?: string): Promise<void> => {
+      if (gen !== loadGenRef.current) return
+      const L = ladderRef.current
+      if (note) L.tried.push(note)
+      const way = L.ways.shift()
+      durationFixedRef.current = false
+      setVideoLive(false)
+      if (!way) {
+        failWith(L.tried.length > 0 ? L.tried.join('; ') : 'no recording was found in the cloud or on this device')
+        return
+      }
       try {
-        // Remux on first open if needed — gives the file a real duration and
-        // seek index. Playback always uses a locally loaded blob: every byte
-        // is in hand, so seeking can never fail.
-        await window.sitka.prepareSession(sessionId)
-        if (cancelled) return
-        // On the website the recording plays from one whole file when there is
-        // one: native, progressive, the fastest start on any device. Failing
-        // that it is streamed part by part; the whole file is read into memory
-        // only when neither is possible.
-        const url = await window.sitka.videoUrl(sessionId)
-        if (cancelled) return
-        if (url) {
-          diagRef.current = 'the whole file'
+        if (way === 'url') {
+          // one whole file by its link: native, progressive, the fastest start
+          const url = await window.sitka.videoUrl(sessionId)
+          if (gen !== loadGenRef.current) return
+          if (!url) {
+            void advance(gen)
+            return
+          }
+          diagRef.current = 'the whole file by its link'
           setVideoSrc(url)
           return
         }
-        const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
-        const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId)
-        if (cancelled) return
-        if (parts.length > 0 && hasStreamingEngine()) {
+        if (way === 'stream') {
+          const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
+          const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId).catch(() => [])
+          if (gen !== loadGenRef.current) return
+          if (parts.length === 0 || !hasStreamingEngine()) {
+            void advance(gen, parts.length === 0 ? 'no parts in the cloud' : undefined)
+            return
+          }
           streamPartsRef.current = parts
           streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
           diagRef.current = `a stream of ${parts.length} part${parts.length === 1 ? '' : 's'}`
@@ -265,24 +280,58 @@ export default function SessionView({
           return
         }
         const bytes = await window.sitka.readVideo(sessionId)
-        if (cancelled) return
+        if (gen !== loadGenRef.current) return
         if (!bytes || bytes.byteLength === 0) {
-          failWith(parts.length === 0 ? 'no recording was found in the cloud or on this device' : 'the file could not be read')
+          void advance(gen, 'no file could be read from the cloud or this device')
           return
         }
-        diagRef.current = `the whole file in memory (${mediaType(bytes.subarray(0, 12))}, ${(bytes.byteLength / 1048576).toFixed(1)} MB)`
-        const blob = new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })
-        objectUrl = URL.createObjectURL(blob)
-        setVideoSrc(objectUrl)
-      } catch {
-        if (!cancelled) setVideoError(true)
+        const kind = mediaType(bytes.subarray(0, 12))
+        diagRef.current = `the whole file in memory (${kind}, ${(bytes.byteLength / 1048576).toFixed(1)} MB)`
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: kind }))
+        setVideoSrc(objectUrlRef.current)
+      } catch (err) {
+        void advance(gen, `${diagRef.current || way}: ${err instanceof Error ? err.message : String(err)}`)
       }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionId]
+  )
+  useEffect(() => {
+    const gen = ++loadGenRef.current
+    durationFixedRef.current = false
+    setVideoSrc(null)
+    setVideoError(false)
+    setVideoLive(false)
+    setPlaying(false)
+    setMediaDuration(0)
+    diagRef.current = ''
+    ladderRef.current = { ways: ['url', 'stream', 'blob'], tried: [] }
+    if (!videoWanted) return undefined
+    void (async () => {
+      // Remux on first open if needed (desktop): a real duration and seek index.
+      await window.sitka.prepareSession(sessionId).catch(() => undefined)
+      if (gen !== loadGenRef.current) return
+      void advance(gen)
     })()
     return () => {
-      cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
     }
-  }, [sessionId, videoWanted])
+  }, [sessionId, videoWanted, advance])
+
+  // A source that shows nothing is not waited on for good: twenty seconds
+  // without so much as its length, and the next way is tried.
+  useEffect(() => {
+    if (!videoSrc || videoSrc === 'progressive') return undefined
+    const gen = loadGenRef.current
+    const t = window.setTimeout(() => {
+      const v = videoRef.current
+      if (gen !== loadGenRef.current || !v || v.readyState >= 1) return
+      void advance(gen, `${diagRef.current} gave nothing in 20 s (network state ${v.networkState})`)
+    }, 20000)
+    return () => window.clearTimeout(t)
+  }, [videoSrc, advance])
 
   // A different session: the recording loads straight away, and the mark
   // stays over the player until it has something to show.
@@ -318,31 +367,20 @@ export default function SessionView({
           },
           { durationSec, lookahead: 3 }
         )
+    const gen = loadGenRef.current
     // twenty seconds without a first frame is a stream that will not come
     const watchdog = window.setTimeout(() => {
       if (cancelled || !videoRef.current || videoRef.current.readyState >= 1) return
       cancelled = true
       streamPartsRef.current = []
-      void window.sitka.readVideo(sessionId).then((bytes) => {
-        if (!bytes || bytes.byteLength === 0) {
-          setVideoError(true)
-          return
-        }
-        setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
-      })
+      void advance(gen, `${diagRef.current} gave nothing in 20 s`)
     }, 20000)
     void run.then((ok) => {
       if (cancelled) return
       if (!ok) {
-        // this file cannot be streamed: read it whole instead
+        // this file cannot be streamed: the next way
         streamPartsRef.current = []
-        void window.sitka.readVideo(sessionId).then((bytes) => {
-          if (cancelled || !bytes || bytes.byteLength === 0) {
-            setVideoError(true)
-            return
-          }
-          setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
-        })
+        void advance(gen, `${diagRef.current} could not be streamed`)
       }
     })
     return () => {
@@ -673,48 +711,32 @@ export default function SessionView({
                 ref={videoRef}
                 src={videoSrc === 'progressive' ? undefined : videoSrc}
                 poster={poster ?? undefined}
-                controls
+                controls={!meta.audioOnly}
                 playsInline
-                onLoadedMetadata={onLoadedMetadata}
+                preload={meta.audioOnly ? 'auto' : 'metadata'}
+                onLoadedMetadata={(e) => {
+                  setMediaDuration(e.currentTarget.duration)
+                  onLoadedMetadata()
+                }}
+                onDurationChange={(e) => setMediaDuration(e.currentTarget.duration)}
                 onLoadedData={() => setVideoLive(true)}
-                onPlaying={() => setVideoLive(true)}
+                onCanPlay={() => setVideoLive(true)}
+                onPlaying={() => {
+                  setVideoLive(true)
+                  setPlaying(true)
+                }}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onError={(e) => {
-                  // The link did not open: expired, gone, or refused. Never a
-                  // spinner for good: fall back to the parts, then to the file.
-                  if (videoSrc?.startsWith('blob:')) {
-                    const code = (e.currentTarget as HTMLVideoElement).error?.code
-                    failWith(`${diagRef.current} would not play (code ${code ?? '?'})`)
-                    return
-                  }
-                  if (videoSrc === 'progressive') {
-                    // the stream broke: the whole file, read into memory, plays anything
-                    streamPartsRef.current = []
-                    void window.sitka.readVideo(sessionId).then((bytes) => {
-                      if (!bytes || bytes.byteLength === 0) {
-                        setVideoError(true)
-                        return
-                      }
-                      setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
-                    })
-                    return
-                  }
-                  void (async () => {
-                    const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
-                    const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId).catch(() => [])
-                    if (parts.length > 0 && hasStreamingEngine()) {
-                      streamPartsRef.current = parts
-                      streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
-                      setVideoSrc('progressive')
-                      return
-                    }
-                    const bytes = await window.sitka.readVideo(sessionId).catch(() => null)
-                    if (!bytes || bytes.byteLength === 0) {
-                      setVideoError(true)
-                      return
-                    }
-                    setVideoSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
-                  })()
+                  // The link did not open, the stream broke, or the file was
+                  // refused: never a dead player, the next way is tried.
+                  const el = e.currentTarget as HTMLVideoElement
+                  const code = el.error?.code
+                  const msg = el.error?.message ? ` ${el.error.message.slice(0, 80)}` : ''
+                  streamPartsRef.current = []
+                  void advance(loadGenRef.current, `${diagRef.current} would not play (code ${code ?? '?'}${msg})`)
                 }}
               />
               {!videoLive && !meta.audioOnly && (
@@ -729,17 +751,101 @@ export default function SessionView({
                 </div>
               )}
               {meta.audioOnly && (
-                <div className={`audio-overlay${meta.banner ? ' with-banner' : ''}`}>
+                <div className={`audio-overlay${meta.banner ? ' with-banner' : ''}${playing ? ' playing' : ''}`}>
                   {meta.banner ? (
                     <img className="audio-banner" src={meta.banner} alt="" />
                   ) : (
-                    <>
-                      <span className="audio-overlay-icon">
-                        <IconMic size={20} strokeWidth={1.6} />
+                    <div className="voice-mark">
+                      <span className="voice-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
                       </span>
-                      <span>Audio session</span>
-                    </>
+                      <span className="voice-mark-text">
+                        <IconMic size={14} strokeWidth={1.8} /> Voice recording
+                      </span>
+                    </div>
                   )}
+                  <div className="voice-bar" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="voice-play"
+                      title={playing ? 'Pause' : 'Play'}
+                      onClick={() => {
+                        // a phone may not fetch a sound until a tap asks for it:
+                        // the tap itself starts the load, then the playing
+                        const v = videoRef.current
+                        if (!v) return
+                        if (!v.paused) {
+                          v.pause()
+                          return
+                        }
+                        if (v.readyState === 0 && videoSrc !== 'progressive') v.load()
+                        void v.play().catch(() => undefined)
+                      }}
+                    >
+                      {playing ? <IconPause size={16} strokeWidth={2.6} /> : <IconPlay size={16} strokeWidth={2.2} />}
+                    </button>
+                    {(() => {
+                      const total =
+                        Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : (meta.durationMs || 0) / 1000
+                      return (
+                        <>
+                          <span className="voice-time">{formatTime(Math.min(currentTime, total || currentTime))}</span>
+                          <input
+                            type="range"
+                            className="voice-scrub"
+                            min={0}
+                            max={Math.max(1, Math.floor(total))}
+                            step={1}
+                            value={Math.min(Math.floor(currentTime), Math.max(1, Math.floor(total)))}
+                            disabled={!videoLive}
+                            onChange={(e) => {
+                              const t = Number(e.currentTarget.value)
+                              setCurrentTime(t)
+                              seek(t)
+                            }}
+                            aria-label="Position"
+                          />
+                          <span className="voice-time voice-total">
+                            {videoLive ? formatTime(total) : diagRef.current ? 'Loading…' : 'Opening…'}
+                          </span>
+                        </>
+                      )
+                    })()}
+                    <button
+                      type="button"
+                      className="voice-rate"
+                      title="Speed"
+                      onClick={() => {
+                        const next = rate >= 2 ? 1 : rate === 1 ? 1.25 : rate === 1.25 ? 1.5 : 2
+                        setRate(next)
+                        if (videoRef.current) videoRef.current.playbackRate = next
+                      }}
+                    >
+                      {rate}×
+                    </button>
+                    <button
+                      type="button"
+                      className="voice-dl"
+                      title="Download the recording"
+                      onClick={() =>
+                        void window.sitka.readVideo(sessionId).then((bytes) => {
+                          if (!bytes || bytes.byteLength === 0) return
+                          const kind = mediaType(bytes.subarray(0, 12))
+                          const copy = new ArrayBuffer(bytes.byteLength)
+                          new Uint8Array(copy).set(bytes)
+                          void window.sitka.saveBinaryFile(`${meta.title.replace(/[^\w\- ]+/g, '').trim() || 'recording'}.${kind === 'video/mp4' ? 'm4a' : 'webm'}`, copy)
+                        })
+                      }
+                    >
+                      <IconDownload size={15} strokeWidth={1.9} />
+                    </button>
+                  </div>
                   {!meta.readOnly && (
                     <FilePick
                       documents={false}

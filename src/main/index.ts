@@ -42,7 +42,7 @@ import { ON_SCREEN_PREFIX } from '@shared/types'
 import type { CreateRequest, Creation } from '@shared/types'
 import * as store from './store'
 import { SAMPLE_TITLE, sampleDurationMs, sampleSegments } from '@shared/sample'
-import { remuxSession } from './remux'
+import { containerOf, remuxSession } from './remux'
 import { generateReel } from './reel'
 import { ensureThumb } from './thumbs'
 import {
@@ -189,6 +189,8 @@ app.whenReady().then(() => {
     if (!existsSync(filePath)) return new Response('Not found', { status: 404 })
 
     const total = statSync(filePath).size
+    // labelled by what it is: sound alone is recorded as MP4 under the same name
+    const contentType = containerOf(filePath) === 'mp4' ? 'video/mp4' : 'video/webm'
     const range = request.headers.get('range')
     if (range) {
       const m = range.match(/bytes=(\d*)-(\d*)/)
@@ -211,7 +213,7 @@ app.whenReady().then(() => {
           'Content-Range': `bytes ${start}-${end}/${total}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': String(end - start + 1),
-          'Content-Type': 'video/webm'
+          'Content-Type': contentType
         }
       })
     }
@@ -222,7 +224,7 @@ app.whenReady().then(() => {
       headers: {
         'Accept-Ranges': 'bytes',
         'Content-Length': String(total),
-        'Content-Type': 'video/webm'
+        'Content-Type': contentType
       }
     })
   })

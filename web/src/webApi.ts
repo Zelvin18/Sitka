@@ -331,7 +331,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // The recorder writes MP4 in fragments with an empty header, which a
       // player must read to the end before showing a frame. Rewritten with
       // the index first, it starts in a second however long the session ran.
-      const flat = kind === 'video/mp4' ? flatten(bytes) : null
+      let flat = kind === 'video/mp4' ? flatten(bytes) : null
+      if (flat && !(await playable(flat, kind))) {
+        // the rewrite is not one this browser opens: the recording is kept as it was
+        reportError(location.pathname, `flattened recording failed its check (${id}, ${Math.round(bytes.byteLength / 1e6)} MB)`)
+        flat = null
+      }
       const blob = new Blob([(flat ?? bytes).buffer as ArrayBuffer], { type: kind })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       const { error } = await store.upload(videoPath(id), blob, kind)
@@ -418,7 +423,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (whole.size < 5000) return { ok: false, error: 'The prepared file came out empty.' }
       // index first, so phones start it at once
       const flatBytes = flatten(new Uint8Array(await whole.arrayBuffer()))
-      if (flatBytes) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
+      if (flatBytes && (await playable(flatBytes, 'video/mp4'))) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       const { error } = await store.upload(videoPath(id), whole, 'video/mp4')
       if (error) return { ok: false, error: 'Could not store the prepared file: ' + error }
@@ -4060,6 +4065,38 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return null
     }
   }
+  /**
+   * Whether this browser can open a file: its length read within a few
+   * seconds, and a positive one. A rewritten recording is checked this way
+   * before it is stored as the file every player tries first; one that
+   * fails the check is stored as it was recorded, and streamed instead.
+   */
+  function playable(bytes: Uint8Array, kind: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let v: HTMLVideoElement | null = document.createElement('video')
+      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: kind }))
+      const done = (ok: boolean): void => {
+        if (!v) return
+        v.removeAttribute('src')
+        v.load()
+        v = null
+        URL.revokeObjectURL(url)
+        resolve(ok)
+      }
+      const timer = setTimeout(() => done(false), 8000)
+      v.muted = true
+      v.preload = 'metadata'
+      v.onloadedmetadata = () => {
+        clearTimeout(timer)
+        done(Boolean(v && Number.isFinite(v.duration) && v.duration > 0))
+      }
+      v.onerror = () => {
+        clearTimeout(timer)
+        done(false)
+      }
+      v.src = url
+    })
+  }
 
   // ---------- whole files made before the rewrite ----------
   // A recording joined into one file before this change is still in fragments
@@ -4103,7 +4140,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return true
     }
     const flat = flatten(src)
-    if (!flat) {
+    if (!flat || !(await playable(flat, 'video/mp4'))) {
       // not in fragments after all, or beyond this rewriter: leave it, and stop asking
       d.meta.flat = true
       await patchSession(id, { meta: d.meta })

@@ -2,7 +2,7 @@ import Photo from './Photo'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionMeta, Settings } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
-import { IconPlus, IconScreen, IconStar, IconTrash } from '../lib/icons'
+import { IconPlus, IconScreen, IconStar, IconTrash, IconMic } from '../lib/icons'
 import Loading, { LOADING_WORDS } from './Loading'
 import { formatDuration } from '../lib/format'
 
@@ -46,7 +46,7 @@ export default function Home({
     let cancelled = false
     void (async () => {
       for (const s of sessions) {
-        if (s.status !== 'complete' || requestedRef.current.has(s.id)) continue
+        if (s.status !== 'complete' || s.audioOnly || requestedRef.current.has(s.id)) continue
         requestedRef.current.add(s.id)
         const thumb = await window.sitka.getThumb(s.id)
         if (cancelled) return
@@ -64,7 +64,7 @@ export default function Home({
 
   // Keep retrying gently while any completed session still lacks a thumbnail.
   useEffect(() => {
-    const missing = sessions.some((s) => s.status === 'complete' && !thumbs[s.id])
+    const missing = sessions.some((s) => s.status === 'complete' && !s.audioOnly && !thumbs[s.id])
     if (!missing) return undefined
     const t = setTimeout(() => setRetryTick((n) => n + 1), 8000)
     return () => clearTimeout(t)
@@ -198,7 +198,24 @@ export default function Home({
                   {g.items.map((s) => (
               <div key={s.id} className="lib-card" onClick={() => onOpenSession(s.id)}>
                 <div className="lib-thumb-wrap">
-                  {thumbs[s.id] ? (
+                  {s.banner ? (
+                    <img className="lib-thumb" src={s.banner} alt="" />
+                  ) : s.audioOnly ? (
+                    <div className="lib-thumb-voice">
+                      <span className="voice-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <span className="lib-thumb-voice-text">
+                        <IconMic size={12} strokeWidth={2} /> Voice
+                      </span>
+                    </div>
+                  ) : thumbs[s.id] ? (
                     <img className="lib-thumb" src={thumbs[s.id]} alt="" />
                   ) : (
                     <div className="lib-thumb-empty">

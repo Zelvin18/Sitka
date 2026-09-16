@@ -184,6 +184,9 @@ export const IconScreen = (p: IconProps) =>
 export const IconPlay = (p: IconProps) =>
   base(p.size, p.strokeWidth, <path d="M6 4.5v15l13-7.5z" />)
 
+export const IconPause = (p: IconProps) =>
+  base(p.size, p.strokeWidth, <path d="M8 5v14M16 5v14" />)
+
 export const IconStop = (p: IconProps) =>
   base(p.size, p.strokeWidth, <rect x="6" y="6" width="12" height="12" rx="2" />)
 

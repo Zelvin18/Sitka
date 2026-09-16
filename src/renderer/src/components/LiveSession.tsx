@@ -2126,6 +2126,46 @@ export default function LiveSession({
                     ))}
                   </div>
                 )}
+                {/* A picture for a listen-only session, chosen before the tap that starts it. */}
+                <div className="banner-row">
+                  <div className="banner-pick">
+                    {banner ? (
+                      <>
+                        <img src={banner} alt="" className="banner-pick-img" />
+                        <div className="banner-pick-text">
+                          <div className="banner-pick-title">Banner</div>
+                          <div className="banner-pick-sub">Shown where the video would be when you just listen.</div>
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="banner-pick-text">
+                          <div className="banner-pick-title">
+                            Banner <span className="setup-optional">optional</span>
+                          </div>
+                          <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be when you just listen.</div>
+                        </div>
+                        <FilePick
+                          documents={false}
+                          multiple={false}
+                          onFiles={(files) => {
+                            const f = files[0]
+                            if (f) void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
+                          }}
+                        >
+                          {(open) => (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={open}>
+                              Add picture
+                            </button>
+                          )}
+                        </FilePick>
+                      </>
+                    )}
+                  </div>
+                </div>
                 {blankPicture && webStream && (
                   <div className="web-pick-warn">
                     <span>
@@ -2156,41 +2196,6 @@ export default function LiveSession({
                 <div className="setup-step-body" style={{ marginTop: 10 }}>
                   <div className="setup-step-hint">
                     Sitka reads them before it listens, so it knows where the session is heading.
-                  </div>
-                  <div className="banner-pick" style={{ marginTop: 0, marginBottom: 12 }}>
-                    {banner ? (
-                      <>
-                        <img src={banner} alt="" className="banner-pick-img" />
-                        <div className="banner-pick-text">
-                          <div className="banner-pick-title">Banner</div>
-                          <div className="banner-pick-sub">Shown where the video would be, for a listen-only session.</div>
-                        </div>
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
-                          Remove
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="banner-pick-text">
-                          <div className="banner-pick-title">Banner for a listen-only session</div>
-                          <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be.</div>
-                        </div>
-                        <FilePick
-                          documents={false}
-                          multiple={false}
-                          onFiles={(files) => {
-                            const f = files[0]
-                            if (f) void shrinkImageFile(f, 1280, 0.8).then(setBanner).catch(() => undefined)
-                          }}
-                        >
-                          {(open) => (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={open}>
-                              Add picture
-                            </button>
-                          )}
-                        </FilePick>
-                      </>
-                    )}
                   </div>
                   <MaterialsPanel
                     compact
