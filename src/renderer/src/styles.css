@@ -10090,3 +10090,45 @@ video {
     gap: 14px;
   }
 }
+
+/* ============ photograph cards on phones ============
+   The card is a picture with the words at its foot, not a column of words
+   with a hole where the illustration used to be. The drawn illustration is
+   gone entirely here; the veil rises from the bottom so the words read. */
+@media (max-width: 720px) {
+  .ev-hero.photo {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 380px;
+    padding: 22px 20px 22px;
+    gap: 0;
+  }
+  .ev-hero.photo .ev-hero-art,
+  .ev-hero.photo .coach-art {
+    display: none;
+  }
+  .ev-hero.photo .ev-hero-text {
+    max-width: none;
+  }
+  .ev-hero.photo .ev-hero-veil,
+  .join-hero .ev-hero-veil {
+    background: linear-gradient(
+      to top,
+      var(--bg) 0%,
+      color-mix(in srgb, var(--bg) 90%, transparent) 38%,
+      color-mix(in srgb, var(--bg) 45%, transparent) 66%,
+      color-mix(in srgb, var(--bg) 12%, transparent) 100%
+    );
+  }
+  .ev-hero.photo .ev-hero-title {
+    font-size: 27px;
+  }
+  .ev-hero.photo .ev-hero-sub {
+    font-size: 14.5px;
+    margin-bottom: 14px;
+  }
+  .join-hero {
+    margin-bottom: 22px;
+  }
+}

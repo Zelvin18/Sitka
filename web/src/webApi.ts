@@ -2880,7 +2880,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     listSpaces: async (orgId: string): Promise<OrgSpace[]> => {
       const { data: spaces } = await sb
         .from('org_spaces')
-        .select('id,org_id,name,kind,description,created_at')
+        .select('id,org_id,name,kind,description,created_at,created_by')
         .eq('org_id', orgId)
         .order('created_at', { ascending: true })
       if (!spaces || spaces.length === 0) return []
@@ -2903,7 +2903,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         description: (s.description as string) || '',
         sessions: sessionsBy.get(s.id as string) ?? 0,
         materials: (mats ?? []).filter((m) => m.space_id === s.id).length,
-        createdAt: new Date(s.created_at as string).getTime()
+        createdAt: new Date(s.created_at as string).getTime(),
+        mine: s.created_by === user.id
       }))
     },
     createSpace: async (orgId: string, name: string, kind: OrgSpaceKind, description: string) => {
@@ -2929,7 +2930,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return space ? { space } : { error: 'Created, but could not be read back.' }
     },
     deleteSpace: async (spaceId: string) => {
-      await sb.from('org_spaces').delete().eq('id', spaceId)
+      // the database allows this only for the space's creator or the organisation's owner
+      const { error, count } = await sb.from('org_spaces').delete({ count: 'exact' }).eq('id', spaceId)
+      if (error) throw new Error(error.message)
+      if (!count) throw new Error('Only the person who created it, or the owner of the organisation, can delete this.')
     },
     listSpaceMaterials: async (spaceId: string): Promise<SpaceMaterial[]> => {
       const { data } = await sb

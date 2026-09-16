@@ -377,6 +377,8 @@ export interface OrgSpace {
   sessions: number
   materials: number
   createdAt: number
+  /** true when the signed-in person created this space: they, and the organisation's owner, may delete it */
+  mine?: boolean
 }
 
 export interface OrgMember {

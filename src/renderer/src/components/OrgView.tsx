@@ -648,12 +648,14 @@ export default function OrgView({
                   onAdd={async (name, text) => setMaterials(await window.sitka.addSpaceMaterial(active.id, name, text))}
                   onRemove={async (id) => setMaterials(await window.sitka.removeSpaceMaterial(active.id, id))}
                 />
-                <div className="org-danger">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
-                    <IconTrash size={13} />
-                    Delete this {noun}
-                  </button>
-                </div>
+                {(active.mine || org.role === 'owner') && (
+                  <div className="org-danger">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
+                      <IconTrash size={13} />
+                      Delete this {noun}
+                    </button>
+                  </div>
+                )}
               </>
             ) : materials.length === 0 ? (
               <div className="transcript-waiting">
@@ -752,7 +754,7 @@ export default function OrgView({
                 </div>
               ))}
             </div>
-            {lead && (
+            {(active.mine || org.role === 'owner') && (
               <div className="org-danger">
                 <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)}>
                   <IconTrash size={13} />
@@ -772,11 +774,14 @@ export default function OrgView({
           onConfirm={() => {
             const s = confirmDeleteSpace
             setConfirmDeleteSpace(null)
-            void window.sitka.deleteSpace(s.id).then(async () => {
-              setActive(null)
-              await refresh()
-              onChanged()
-            })
+            void window.sitka
+              .deleteSpace(s.id)
+              .then(async () => {
+                setActive(null)
+                await refresh()
+                onChanged()
+              })
+              .catch((err: unknown) => setDeleteOrgError(err instanceof Error ? err.message : String(err)))
           }}
           onCancel={() => setConfirmDeleteSpace(null)}
         />
