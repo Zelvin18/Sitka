@@ -1,6 +1,5 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import './style.css'
-import { mountAttendTour } from './attendTour'
 import { installFocusGuard } from '../../src/shared/focusGuard'
 // A refreshed page starts at its top. Browsers put a reloaded page back
 // where it was scrolled, which lands people mid-section with no bearings.
@@ -1890,7 +1889,6 @@ async function boot(): Promise<void> {
   } else {
     el('loading').classList.add('hidden')
     el('join').classList.remove('hidden')
-    mountAttendTour(el('attendtour'))
   }
 }
 void boot()

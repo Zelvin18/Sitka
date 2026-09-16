@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="/event-join.webp" fetchpriority="high">
 </head>
 <body>
 <header><div class="hdr-in">
@@ -39,9 +40,12 @@
 
 <div id="join" class="joinwrap hidden">
   <aside class="joinvis" aria-hidden="true">
+    <div class="jv-glimpse" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAAoACADASIAAhEBAxEB/8QAGQAAAwEBAQAAAAAAAAAAAAAAAAMEBQEC/8QAJBAAAgIBAwMFAQAAAAAAAAAAAQIAAxESITEEQVEFEyIyYXH/xAAVAQEBAAAAAAAAAAAAAAAAAAAAAf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKPUbaupwrDBHB8TG9R6ayhGIw6NjcR/X2k1MVOGA2MxmtutJ+djD+yK9abO52/IuzKfbnxHdPaUt0sNj2/Yy2ss7WONXcYlQyy3VWQDM4kgkAyitvt4MncfM7wDJBzniWV2alBkWAOTtH1lQzKjFlB2JGIHF2EXahZsgwhA57bHljGVJphCQf/Z)"></div>
+    <img class="jv-photo" src="/event-join.webp" alt="" decoding="async" fetchpriority="high" onload="this.classList.add('in')">
+    <div class="jv-veil"></div>
     <div class="jv-in">
       <h2 class="jv-title">Everything the speaker says and shows — on your screen, in your language.</h2>
-      <div id="attendtour" class="jv-tour"></div>
+      <p class="jv-sub">Live captions, the speaker's screen, and your own Sitka to ask. Nothing to install.</p>
     </div>
   </aside>
   <div class="joinform">

@@ -201,11 +201,16 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--t3) 50%),lin
 
 /* ---------- joining: the promise on one side, two choices on the other ---------- */
 .joinwrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;animation:fadeup .5s ease}
-.joinvis{background:#111114;color:#f1f1f3;position:relative;overflow:hidden;flex:none}
-.joinvis::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 55% at 30% 30%,rgba(255,255,255,.09),transparent 70%);pointer-events:none}
-.joinvis::after{content:'';position:absolute;inset:0;background-image:radial-gradient(#2c2c32 1px,transparent 1.2px);background-size:22px 22px;opacity:.5;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 40% 40%,#000 10%,transparent 75%);mask-image:radial-gradient(ellipse 70% 70% at 40% 40%,#000 10%,transparent 75%);pointer-events:none}
-.jv-in{position:relative;z-index:1;padding:26px 22px 24px;max-width:520px}
-.jv-title{font-size:clamp(22px,3vw,34px);line-height:1.1;letter-spacing:-.03em;font-weight:800;margin:0 0 18px}
+/* the photograph fills the side; a veil deepens towards the foot so the words read in white.
+   On a phone it is the band at the top of the page, the words at its foot. */
+.joinvis{background:#111114;color:#f1f1f3;position:relative;overflow:hidden;flex:none;display:flex;align-items:flex-end;min-height:380px}
+.jv-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 26%;display:block;opacity:0;transition:opacity .35s ease;z-index:0}
+.jv-photo.in{opacity:1}
+.jv-glimpse{position:absolute;inset:-6%;background-size:cover;background-position:center 26%;filter:blur(18px);transform:scale(1.04);z-index:0}
+.jv-veil{position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,12,.94) 0%,rgba(10,10,12,.66) 34%,rgba(10,10,12,.16) 66%,rgba(10,10,12,.22) 100%);pointer-events:none;z-index:0}
+.jv-in{position:relative;z-index:1;padding:26px 22px 22px;max-width:520px;text-shadow:0 1px 10px rgba(0,0,0,.35)}
+.jv-title{font-size:clamp(22px,3vw,34px);line-height:1.1;letter-spacing:-.03em;font-weight:800;margin:0 0 10px}
+.jv-sub{margin:0;color:#d6d6dc;font-size:14.5px;line-height:1.5}
 header a.brand{color:inherit;text-decoration:none}
 /* the attending story */
 .jv-tour{display:none}
@@ -278,9 +283,10 @@ header a.brand{color:inherit;text-decoration:none}
 .leave:hover{color:var(--danger);border-color:var(--danger)}
 @media(min-width:900px){
   .joinwrap{flex-direction:row;overflow:hidden}
-  .joinvis{flex:0 0 46%;display:flex;align-items:center}
-  .jv-in{padding:48px 52px;max-width:560px}
-  .jv-tour{display:block}
+  .joinvis{flex:0 0 46%;display:flex;align-items:flex-end;min-height:0}
+  .jv-photo,.jv-glimpse{object-position:center 40%;background-position:center 40%}
+  .jv-in{padding:48px 52px 44px;max-width:560px}
+  .jv-sub{font-size:16px}
   .joinform{align-items:center;overflow-y:auto;padding:40px 48px}
   .jf-mark{display:block;margin-bottom:18px}
   .joinform h1{font-size:30px}
