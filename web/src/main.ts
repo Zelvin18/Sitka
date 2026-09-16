@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
+import { downloadBytes, fileName, notesPdf, withoutTimes } from './notesFile'
 import './style.css'
 import { installFocusGuard } from '../../src/shared/focusGuard'
 // A refreshed page starts at its top. Browsers put a reloaded page back
@@ -1758,11 +1759,87 @@ el('proxyback').onclick = () => {
   showProxyStatus(proxyId)
 }
 
-function renderBrief(brief: string): void {
+let briefShown = false
+function renderBrief(brief: string, proxyId: string): void {
   el('proxytitle').textContent = 'Your personal brief'
   el('proxystatus').textContent = ''
-  el('proxybrief').innerHTML = `<div class="tkcard md" style="text-align:left">${md(brief)}</div>`
+  el('proxybrief').innerHTML = `<div class="tkcard md" style="text-align:left">${md(withoutTimes(brief))}</div>`
   document.querySelector('.hero-art')?.classList.remove('rippling')
+  if (briefShown) return
+  briefShown = true
+  // the brief as a file to keep
+  el('proxytools').classList.remove('hidden')
+  el('proxydl').onclick = () =>
+    downloadBytes(
+      fileName((ev?.title || 'Event') + ' brief'),
+      notesPdf({
+        title: ev?.title || 'Event brief',
+        subtitle: ev?.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
+        notes: brief,
+        notesLabel: 'Your brief'
+      })
+    )
+  // and Sitka, who sat through it, to ask
+  el('proxychat').classList.remove('hidden')
+  attId = proxyId
+  const history: { role: 'user' | 'assistant'; content: string }[] = []
+  let busyQ = false
+  const askProxy = async (q: string): Promise<void> => {
+    if (busyQ || !q.trim()) return
+    busyQ = true
+    const msgs = el('proxymsgs')
+    const u = document.createElement('div')
+    u.className = 'bub-u'
+    u.textContent = q
+    msgs.appendChild(u)
+    const typing = document.createElement('div')
+    typing.className = 'typing'
+    typing.textContent = 'Sitka is thinking…'
+    msgs.appendChild(typing)
+    history.push({ role: 'user', content: q })
+    try {
+      const r = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitka to attend for them', lang: myLang, history: history.slice(-8) }),
+        signal: AbortSignal.timeout(55000)
+      })
+      const j = (await r.json().catch(() => ({}))) as { answer?: string; error?: string }
+      typing.remove()
+      const a = document.createElement('div')
+      if (r.ok && j.answer) {
+        a.className = 'bub-a md'
+        a.innerHTML = md(j.answer)
+        history.push({ role: 'assistant', content: j.answer })
+      } else {
+        a.className = 'notice err'
+        a.textContent = j.error || 'Sitka could not answer — try again.'
+      }
+      msgs.appendChild(a)
+    } catch {
+      typing.remove()
+      const a = document.createElement('div')
+      a.className = 'notice err'
+      a.textContent = 'Connection problem — try again.'
+      msgs.appendChild(a)
+    } finally {
+      busyQ = false
+      if (history.length > 16) history.splice(0, history.length - 16)
+    }
+  }
+  const box = el('proxytext') as HTMLTextAreaElement
+  ;(el('proxysendq') as HTMLButtonElement).onclick = () => {
+    const v = box.value
+    box.value = ''
+    void askProxy(v)
+  }
+  box.addEventListener('keydown', (e) => {
+    const ke = e as KeyboardEvent
+    if (ke.key === 'Enter' && !ke.shiftKey) {
+      e.preventDefault()
+      ;(el('proxysendq') as HTMLButtonElement).click()
+    }
+  })
 }
 
 function showProxyStatus(proxyId: string): void {
@@ -1770,13 +1847,18 @@ function showProxyStatus(proxyId: string): void {
   el('join').classList.add('hidden')
   el('proxywait').classList.remove('hidden')
   const check = async (): Promise<boolean> => {
-    const { data } = await sb
-      .from('proxies')
-      .select('status,brief')
-      .eq('attendee_id', proxyId)
-      .single()
+    // the event itself is asked as well, so the page knows when it starts
+    // and when it ends without anyone refreshing it
+    const [{ data }, { data: fresh }] = await Promise.all([
+      sb.from('proxies').select('status,brief').eq('attendee_id', proxyId).single(),
+      sb.from('events').select('*').eq('id', eventId).single()
+    ])
+    if (fresh) {
+      ev = fresh as EventRow
+      setBadge(ev.status === 'live' ? 'live' : ev.status === 'ended' ? 'ended' : 'soon')
+    }
     if (data?.status === 'ready' && data.brief) {
-      renderBrief(data.brief as string)
+      renderBrief(data.brief as string, proxyId)
       return true
     }
     if (data?.status === 'error') {
@@ -1793,9 +1875,14 @@ function showProxyStatus(proxyId: string): void {
     return false
   }
   void check()
+  // every few seconds until the brief is in; a sleeping phone catches up the moment it wakes
   const t = window.setInterval(async () => {
+    if (document.visibilityState !== 'visible') return
     if (await check()) clearInterval(t)
-  }, 15000)
+  }, 5000)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void check()
+  })
   sb.channel('proxy-' + proxyId)
     .on(
       'postgres_changes',
@@ -1803,7 +1890,7 @@ function showProxyStatus(proxyId: string): void {
       (payload) => {
         const row = payload.new as { status: string; brief: string | null }
         if (row.status === 'ready' && row.brief) {
-          renderBrief(row.brief)
+          renderBrief(row.brief, proxyId)
           clearInterval(t)
         }
       }

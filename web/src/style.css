@@ -426,3 +426,11 @@ html,body{overscroll-behavior:none}
 /* the host's banner where the video would be: the stage tag and the pause label do not apply to a still */
 .stagecard.banner .stagetag,.stagecard.banner .stagepaused{display:none}
 .stagecard.banner img{object-fit:cover}
+
+/* the proxy's brief: kept, and asked about */
+.proxytools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+.dl{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 15px;border-radius:999px;border:1px solid var(--text);background:var(--text);color:var(--bg);font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.dl:hover{opacity:.9}
+.proxychat{text-align:left;margin-top:8px}
+.proxychat .inputrow{margin-top:10px}
+#proxymsgs .bub-a{white-space:normal}

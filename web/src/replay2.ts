@@ -10,6 +10,7 @@ import { installFocusGuard } from '../../src/shared/focusGuard'
 import { canStream, mediaType, playProgressively, sniffWebmMime } from '../../src/shared/progressive'
 import { isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore } from './store'
+import { downloadBytes, fileName, notesPdf } from './notesFile'
 
 installFocusGuard()
 // A refreshed page starts at its top. Browsers put a reloaded page back
@@ -1175,6 +1176,25 @@ async function boot(): Promise<void> {
   el('mt').textContent = d.title
   if (d.durationMs) el('tlen').textContent = ' / ' + fmt(d.durationMs / 1000)
 
+  // the notes as a file: the summary, the moments and the notes, no clocks
+  if ((d.summary || d.notes.trim() || d.highlights.length) && !d.live) {
+    el('dlrow').hidden = false
+    el('dlnotes').onclick = () => {
+      const bits: string[] = []
+      if (d.dateIso) bits.push(fmtDate(d.dateIso))
+      if (d.durationMs) bits.push(fmtLen(d.durationMs))
+      downloadBytes(
+        fileName(d.title),
+        notesPdf({
+          title: d.title,
+          subtitle: bits.join(' · '),
+          summary: d.summary,
+          moments: d.highlights.map((h) => h.label),
+          notes: d.notes
+        })
+      )
+    }
+  }
   const lead = el('lead')
   if (d.summary) lead.textContent = d.summary
   else {

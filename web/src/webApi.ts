@@ -1561,8 +1561,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const system = [
             'You attended a live event on behalf of someone who could not be there. Write their personal brief.',
             `They told you what they care about:\n"${p.request}"`,
-            'Structure: open with 2-3 sentences on the event overall; then "## What happened about your topics" — address EACH thing they asked for, citing moments as [[M:SS]] where discussed, or say plainly it was not covered (answer from the materials if you can); end with "## Worth knowing anyway" — 2-3 bullets of other important moments.',
-            'Be specific and grounded — never invent coverage that did not happen.',
+            'Structure: open with 2-3 sentences on the event overall; then "## What happened about your topics" — address EACH thing they asked for, in prose they can keep, or say plainly it was not covered (answer from the materials if you can); end with "## Worth knowing anyway" — 2-3 bullets of other important moments.',
+            'Be specific and grounded — never invent coverage that did not happen. This is a document to keep, not a player: never write timestamps or clock times ([12:34], "at 12:34"); say what was said, not when.',
             materials ? `\nEvent materials:\n${materials.slice(0, 8000)}` : ''
           ]
             .filter(Boolean)

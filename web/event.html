@@ -87,6 +87,19 @@
   <h1 style="text-align:center" id="proxytitle">Sitka is attending for you</h1>
   <div class="sub" style="text-align:center" id="proxystatus">Keep this link — your personal brief appears here when the event ends.</div>
   <div id="proxybrief" style="text-align:left"></div>
+  <div class="proxytools hidden" id="proxytools">
+    <button class="dl" id="proxydl" type="button"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M4 19h16"/></svg>Download the brief</button>
+    <span class="small">A PDF to keep.</span>
+  </div>
+  <div class="proxychat hidden" id="proxychat">
+    <div class="label" style="margin-top:22px">Ask Sitka about this event</div>
+    <div class="notice">Sitka sat through the whole event. Ask about anything it said, what was decided, or what it meant for your topics.</div>
+    <div id="proxymsgs"></div>
+    <div class="inputrow">
+      <textarea id="proxytext" rows="1" placeholder="Ask about this event…"></textarea>
+      <button class="send" id="proxysendq"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>
+    </div>
+  </div>
 </div>
 
 <div id="wait" class="center hidden" style="text-align:center">

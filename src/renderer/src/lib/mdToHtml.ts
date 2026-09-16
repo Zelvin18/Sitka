@@ -3,6 +3,7 @@
  * Covers what Sitka writes: headings, paragraphs, bullets, numbered lists,
  * tables, fenced code, bold, italic, inline code and links.
  */
+import { deckTemplate, docTemplate, toHex } from './pdf'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -141,12 +142,14 @@ hr{border:none;border-top:1px solid #d8d8d4;margin:20px 0}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
-/** Word opens HTML saved with a .doc extension as a normal document. */
-export function wordDocument(title: string, bodyHtml: string): string {
+/** Word opens HTML saved with a .doc extension as a normal document; the style sets its faces and colours. */
+export function wordDocument(title: string, bodyHtml: string, templateId?: string | null): string {
+  const t = docTemplate(templateId)
+  const font = t.serif ? 'Georgia,"Times New Roman",serif' : 'Calibri,Arial,sans-serif'
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
-<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.4}h1{font-size:20pt}h2{font-size:14pt;margin-top:16pt}h3{font-size:12pt}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4pt 6pt}</style>
-</head><body>${bodyHtml}</body></html>`
+<style>body{font-family:${font};font-size:11pt;line-height:1.45;color:${toHex(t.ink)}}h1{font-size:22pt;color:${toHex(t.ink)}}h2{font-size:14pt;margin-top:16pt;color:${toHex(t.accent)}${t.caps ? ';text-transform:uppercase;letter-spacing:.06em;font-size:11pt' : ''}}h3{font-size:12pt}table{border-collapse:collapse}th{background:${toHex(t.tableHead)};color:${toHex(t.accent)}}th,td{border:1px solid ${toHex(t.rule)};padding:4pt 6pt}blockquote{border-left:3pt solid ${toHex(t.accent)};margin:8pt 0;padding-left:10pt;color:${toHex(t.muted)}}</style>
+</head><body><h1>${esc(title)}</h1>${bodyHtml}</body></html>`
 }
 
 export interface DeckSlideLike {
@@ -155,8 +158,10 @@ export interface DeckSlideLike {
   notes?: string
 }
 
-/** A self-contained slide deck: arrow keys, click, or swipe; prints one slide per page. */
-export function deckPage(title: string, subtitle: string | undefined, slides: DeckSlideLike[]): string {
+/** A self-contained slide deck in its style: arrow keys, click, or swipe; prints one slide per page. */
+export function deckPage(title: string, subtitle: string | undefined, slides: DeckSlideLike[], templateId?: string | null): string {
+  const t = deckTemplate(templateId)
+  const font = t.serif ? 'Georgia,"Times New Roman",serif' : "Inter,-apple-system,'Segoe UI',sans-serif"
   const slideHtml = slides
     .map(
       (s, i) => `<section class="slide${i === 0 ? ' title' : ''}">
@@ -170,14 +175,17 @@ export function deckPage(title: string, subtitle: string | undefined, slides: De
     .join('\n')
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:#0b0b0d;color:#f2f2f4;font-family:Inter,-apple-system,'Segoe UI',sans-serif}
-.slide{display:none;position:relative;width:100vw;height:100vh;padding:7vh 9vw;flex-direction:column;justify-content:center}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:${toHex(t.bg)};color:${toHex(t.ink)};font-family:${font}}
+.slide{display:none;position:relative;width:100vw;height:100vh;padding:7vh 9vw;flex-direction:column;justify-content:center;background:${toHex(t.bg)}}
 .slide.on{display:flex}
-.slide h1{font-size:clamp(28px,5.2vw,64px);letter-spacing:-.03em;margin:0 0 4vh;line-height:1.05}
-.slide.title h1{font-size:clamp(36px,7vw,92px)}
-.sub{font-size:clamp(16px,2.2vw,28px);color:#a3a3ab;margin:0}
-ul{margin:0;padding-left:1.2em;font-size:clamp(17px,2.4vw,32px);line-height:1.45}li{margin:.35em 0}
-.n{position:absolute;right:3vw;bottom:3vh;font-size:14px;color:#6e6e76}
+.slide.title{background:${toHex(t.titleBg)};color:${toHex(t.titleInk)}}
+${t.bar === 'left' ? `.slide:not(.title){border-left:14px solid ${toHex(t.accent)}}` : t.bar === 'top' ? `.slide:not(.title){border-top:14px solid ${toHex(t.accent)}}` : ''}
+.slide h1{font-size:clamp(28px,5.2vw,64px);letter-spacing:-.03em;margin:0 0 4vh;line-height:1.05;color:${t.id === 'ocean' ? toHex(t.accent) : 'inherit'}}
+${t.bar === 'under' ? `.slide:not(.title) h1::after{content:'';display:block;width:64px;height:4px;background:${toHex(t.accent)};margin-top:2vh}` : ''}
+.slide.title h1{font-size:clamp(36px,7vw,92px);color:inherit}
+.sub{font-size:clamp(16px,2.2vw,28px);color:${t.id === 'midnight' ? toHex(t.muted) : 'inherit'};opacity:.85;margin:0}
+ul{margin:0;padding-left:1.2em;font-size:clamp(17px,2.4vw,32px);line-height:1.45;list-style:none}li{margin:.35em 0;position:relative}li::before{content:'${t.bullet}';position:absolute;left:-1.2em;color:${toHex(t.accent)}}
+.n{position:absolute;right:3vw;bottom:3vh;font-size:14px;color:${toHex(t.muted)}}
 .notes{display:none}
 .brand{position:absolute;left:3vw;bottom:3vh;font-size:13px;color:#6e6e76;letter-spacing:.12em;text-transform:uppercase}
 @media print{html,body{background:#fff;color:#111}.slide{display:flex;page-break-after:always;height:100vh}.sub,.n,.brand{color:#666}.notes{display:block;margin-top:auto;font-size:12px;color:#555;border-top:1px solid #ddd;padding-top:8px}}

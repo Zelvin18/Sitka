@@ -480,6 +480,8 @@ export interface Creation {
   sessionIds: string[]
   createdAt: number
   updatedAt: number
+  /** the style every file made from it follows (a DOC_TEMPLATES or DECK_TEMPLATES id) */
+  template?: string
 }
 
 export interface PresentationSlide {

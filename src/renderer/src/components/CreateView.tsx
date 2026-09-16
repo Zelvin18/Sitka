@@ -13,7 +13,10 @@ import SaveDialog, { type SaveFormat } from './SaveDialog'
 import { formatDate } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import { deckPage, mdToHtml, wordDocument } from '../lib/mdToHtml'
-import { deckToPdf, markdownToPdf } from '../lib/pdf'
+import { deckToPdf, deckTemplate, docTemplate, markdownToPdf, toHex } from '../lib/pdf'
+import { deckToPptx } from '../lib/pptx'
+import StylePicker from './StylePicker'
+import { highlight } from '../lib/highlight'
 import {
   IconCode,
   IconCopy,
@@ -32,8 +35,9 @@ const DOC_FORMATS: SaveFormat[] = [
 ]
 
 const DECK_FORMATS: SaveFormat[] = [
-  { id: 'html', label: 'Slide deck', tag: '.html', desc: 'One file that opens in any browser. Arrow keys move between slides.' },
-  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'One page per slide with the speaker notes underneath. Downloads straight away.' }
+  { id: 'pptx', label: 'PowerPoint', tag: '.pptx', desc: 'Opens in PowerPoint, Keynote or Google Slides, in the chosen style, with the speaker notes in place.' },
+  { id: 'pdf', label: 'PDF', tag: '.pdf', desc: 'One page per slide with the speaker notes underneath. Downloads straight away.' },
+  { id: 'html', label: 'Web page', tag: '.html', desc: 'One file that opens in any browser. Arrow keys move between slides.' }
 ]
 
 const CODE_FORMATS: SaveFormat[] = [
@@ -116,6 +120,47 @@ const saveBytes = (name: string, bytes: Uint8Array): void => {
 
 const safeName = (t: string): string => t.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'sitka'
 
+/** the document preview in its style: paper, ink, accent, the face */
+function docPageStyle(id?: string): React.CSSProperties {
+  const t = docTemplate(id)
+  return {
+    ['--doc-paper' as string]: t.page ? toHex(t.page) : undefined,
+    ['--doc-ink' as string]: toHex(t.ink),
+    ['--doc-accent' as string]: toHex(t.accent),
+    ['--doc-muted' as string]: toHex(t.muted),
+    ['--doc-rule' as string]: toHex(t.rule),
+    ['--doc-font' as string]: t.serif ? 'Georgia, "Times New Roman", serif' : 'inherit',
+    background: t.page ? toHex(t.page) : undefined,
+    color: toHex(t.ink)
+  }
+}
+/** a slide card in its style */
+function deckCardStyle(id: string | undefined, title: boolean): React.CSSProperties {
+  const t = deckTemplate(id)
+  return {
+    background: toHex(title ? t.titleBg : t.bg),
+    color: toHex(title ? t.titleInk : t.ink),
+    fontFamily: t.serif ? 'Georgia, "Times New Roman", serif' : undefined,
+    ['--deck-accent' as string]: toHex(t.accent),
+    ['--deck-muted' as string]: toHex(title ? t.titleInk : t.muted),
+    borderLeft: !title && t.bar === 'left' ? `5px solid ${toHex(t.accent)}` : undefined,
+    borderTop: !title && t.bar === 'top' ? `5px solid ${toHex(t.accent)}` : undefined
+  }
+}
+/** the presenting screen in its style */
+function presentStyle(id?: string): React.CSSProperties {
+  const t = deckTemplate(id)
+  return {
+    ['--pr-bg' as string]: toHex(t.bg),
+    ['--pr-title-bg' as string]: toHex(t.titleBg),
+    ['--pr-ink' as string]: toHex(t.ink),
+    ['--pr-title-ink' as string]: toHex(t.titleInk),
+    ['--pr-accent' as string]: toHex(t.accent),
+    ['--pr-muted' as string]: toHex(t.muted),
+    ['--pr-font' as string]: t.serif ? 'Georgia, "Times New Roman", serif' : 'inherit'
+  }
+}
+
 export default function CreateView({
   sessions,
   hasChatKey,
@@ -125,6 +170,8 @@ export default function CreateView({
   const [creations, setCreations] = useState<Creation[]>([])
   const [selected, setSelected] = useState<Creation | null>(null)
   const [kind, setKind] = useState<CreationKind>('document')
+  const [docStyle, setDocStyle] = useState('editorial')
+  const [deckStyle, setDeckStyle] = useState('mono')
   const [prompt, setPrompt] = useState('')
   const [chosen, setChosen] = useState<Set<string>>(new Set())
   const [generating, setGenerating] = useState(false)
@@ -162,7 +209,10 @@ export default function CreateView({
         return
       }
       if (res.creation) {
-        setSelected(res.creation)
+        const style = req.previous ? selected?.template : req.kind === 'document' ? docStyle : req.kind === 'presentation' ? deckStyle : undefined
+        const made = style ? { ...res.creation, template: style } : res.creation
+        if (style) await window.sitka.saveCreation(made)
+        setSelected(made)
         setRefine('')
         await refresh()
       }
@@ -184,6 +234,14 @@ export default function CreateView({
       sessionIds: selected.sessionIds,
       previous: { id: selected.id, content: selected.content, instruction: refine.trim() }
     })
+  }
+
+  // a style changed on a finished creation is kept with it
+  const restyle = (id: string): void => {
+    if (!selected) return
+    const next = { ...selected, template: id, updatedAt: Date.now() }
+    setSelected(next)
+    void window.sitka.saveCreation(next).then(() => refresh())
   }
 
   const confirmDelete = (): void => {
@@ -236,17 +294,18 @@ export default function CreateView({
     const name = safeName(selected.title)
     if (how === 'md') void window.sitka.saveTextFile(`${name}.md`, selected.content)
     else if (how === 'word')
-      void window.sitka.saveTextFile(`${name}.doc`, wordDocument(selected.title, mdToHtml(selected.content)))
-    else saveBytes(`${name}.pdf`, markdownToPdf(selected.title, selected.content))
+      void window.sitka.saveTextFile(`${name}.doc`, wordDocument(selected.title, mdToHtml(selected.content), selected.template))
+    else saveBytes(`${name}.pdf`, markdownToPdf(selected.title, selected.content, selected.template, { subtitle: new Date(selected.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) }))
   }
-  const exportDeck = (how: 'html' | 'pdf'): void => {
+  const exportDeck = (how: 'html' | 'pdf' | 'pptx'): void => {
     if (!selected || !deck) return
     if (how === 'html') {
       void window.sitka.saveTextFile(
         `${safeName(deck.title)}.html`,
-        deckPage(deck.title, deck.subtitle, deck.slides)
+        deckPage(deck.title, deck.subtitle, deck.slides, selected.template)
       )
-    } else saveBytes(`${safeName(deck.title)}.pdf`, deckToPdf(deck.title, deck.subtitle, deck.slides))
+    } else if (how === 'pptx') saveBytes(`${safeName(deck.title)}.pptx`, deckToPptx(deck.title, deck.subtitle, deck.slides, selected.template))
+    else saveBytes(`${safeName(deck.title)}.pdf`, deckToPdf(deck.title, deck.subtitle, deck.slides, selected.template))
   }
   const exportCode = (): void => {
     if (!code) return
@@ -259,7 +318,7 @@ export default function CreateView({
     setSaving(false)
     if (!selected) return
     if (selected.kind === 'document') exportDoc(formatId as 'md' | 'word' | 'pdf')
-    else if (selected.kind === 'presentation') exportDeck(formatId as 'html' | 'pdf')
+    else if (selected.kind === 'presentation') exportDeck(formatId as 'html' | 'pdf' | 'pptx')
     else exportCode()
   }
 
@@ -322,6 +381,14 @@ export default function CreateView({
                 </button>
               ))}
             </div>
+
+            {kind !== 'code' && (
+              <StylePicker
+                kind={kind}
+                value={kind === 'document' ? docStyle : deckStyle}
+                onChange={(id) => (kind === 'document' ? setDocStyle(id) : setDeckStyle(id))}
+              />
+            )}
 
             <textarea
               className="input create-prompt"
@@ -421,9 +488,13 @@ export default function CreateView({
               </div>
             </div>
 
+            {selected.kind !== 'code' && (
+              <StylePicker compact kind={selected.kind} value={selected.template ?? (selected.kind === 'document' ? 'editorial' : 'mono')} onChange={restyle} />
+            )}
+
             <div className="create-body">
               {selected.kind === 'document' && (
-                <div className="doc-page">
+                <div className="doc-page" style={docPageStyle(selected.template)}>
                   <AiText text={selected.content} onSeek={seekFor} />
                 </div>
               )}
@@ -432,7 +503,7 @@ export default function CreateView({
                 (deck ? (
                   <div className="deck-grid">
                     {deck.slides.map((s, i) => (
-                      <button key={i} className="deck-card" onClick={() => setPresentAt(i)}>
+                      <button key={i} className="deck-card" style={deckCardStyle(selected.template, i === 0)} onClick={() => setPresentAt(i)}>
                         <span className="deck-card-n">{i + 1}</span>
                         <span className="deck-card-title">{s.title}</span>
                         {i === 0 && deck.subtitle && (
@@ -474,7 +545,11 @@ export default function CreateView({
                         </button>
                       </div>
                       <pre className="code-pre">
-                        <code>{f.code}</code>
+                        <code>
+                          {highlight(f.code, f.lang || f.name.split('.').pop() || '').map((tk, k) =>
+                            tk.kind === 'plain' ? tk.text : <span key={k} className={`tk-${tk.kind}`}>{tk.text}</span>
+                          )}
+                        </code>
                       </pre>
                     </div>
                   ))}
@@ -515,7 +590,7 @@ export default function CreateView({
       </div>
 
       {presentAt !== null && deck && (
-        <div className="present" onClick={(e) => {
+        <div className="present" style={presentStyle(selected?.template)} onClick={(e) => {
           const x = (e as React.MouseEvent).clientX
           setPresentAt((i) => {
             const n = i ?? 0
