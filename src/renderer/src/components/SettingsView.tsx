@@ -426,6 +426,23 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
             </Row>
           )}
         </div>
+
+        <div className="section-title">Get in touch</div>
+        <div className="card">
+          <Row title="Talk to us" desc="A question, a problem, an idea for what Sitka should do next. A person reads every message.">
+            <div className="contact-ways">
+              <a className="btn btn-ghost btn-sm" href="mailto:magumisekelvin8@gmail.com">
+                magumisekelvin8@gmail.com
+              </a>
+              <a className="btn btn-ghost btn-sm" href="tel:+256759055133">
+                +256 759 055 133
+              </a>
+              <a className="btn btn-ghost btn-sm" href="https://wa.me/256759055133" target="_blank" rel="noreferrer">
+                WhatsApp
+              </a>
+            </div>
+          </Row>
+        </div>
       </div>
     </div>
   )
