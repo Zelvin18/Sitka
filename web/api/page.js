@@ -46,7 +46,13 @@ export default async function handler(req, res) {
     (kind === 'event'
       ? 'Join live: captions in your language, ask questions privately, and keep the recap.'
       : 'The recording, the moments that mattered, and Sitka to ask about any of it.')
-  const image = info?.hasThumb ? `${origin}/api/thumb?id=${encodeURIComponent(id)}` : `${origin}/og-default.png`
+  const image = info?.hasThumb
+    ? `${origin}/api/thumb?id=${encodeURIComponent(id)}`
+    : info?.image
+      ? info.image.startsWith('/')
+        ? `${origin}${info.image}`
+        : info.image
+      : `${origin}/og-default.png`
   const url = `${origin}/${kind === 'event' ? 'e' : 'r'}/${encodeURIComponent(id)}`
 
   const meta = [
@@ -58,8 +64,13 @@ export default async function handler(req, res) {
     `<meta property="og:description" content="${esc(description)}">`,
     `<meta property="og:url" content="${esc(url)}">`,
     `<meta property="og:image" content="${esc(image)}">`,
-    `<meta property="og:image:width" content="${info?.hasThumb ? 480 : 1200}">`,
-    `<meta property="og:image:height" content="${info?.hasThumb ? 270 : 630}">`,
+    // a host's banner is whatever size they chose: its size is not claimed
+    ...(info?.image && !info.image.startsWith('/')
+      ? []
+      : [
+          `<meta property="og:image:width" content="${info?.hasThumb ? 480 : 1200}">`,
+          `<meta property="og:image:height" content="${info?.hasThumb ? 270 : 630}">`
+        ]),
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${esc(title)}">`,
     `<meta name="twitter:description" content="${esc(description)}">`,
@@ -104,7 +115,9 @@ async function describe(kind, id) {
     return m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : m > 0 ? `${m} min` : ''
   }
   if (kind === 'event') {
-    const ev = await get(`events?id=eq.${id}&select=title,status,starts_at,replay`)
+    const ev =
+      (await get(`events?id=eq.${id}&select=title,status,starts_at,replay,banner`)) ||
+      (await get(`events?id=eq.${id}&select=title,status,starts_at,replay`))
     if (!ev) return null
     const rp = ev.replay || {}
     if (rp.enabled) {
@@ -114,18 +127,21 @@ async function describe(kind, id) {
         hasThumb: false
       }
     }
+    // An invitation, not a recap: the words and the picture both say "come".
+    // The host's banner is the picture when there is one.
     const when = ev.starts_at
       ? new Date(ev.starts_at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : ''
     return {
-      title: ev.title,
+      title: `${ev.title} — live on Sitka`,
       description:
         ev.status === 'live'
-          ? 'Live now on Sitka. Tap to join: captions in your language, questions answered privately.'
+          ? "Live now — tap to join. Every word in your language, the speaker's screen, and your own questions answered privately."
           : when
-            ? `${when}. Join on Sitka for live captions and your own questions.`
-            : 'Join on Sitka for live captions and your own questions.',
-      hasThumb: false
+            ? `${when} — tap to join. Every word in your language, the speaker's screen, and your own questions answered privately.`
+            : "Tap to join. Every word in your language, the speaker's screen, and your own questions answered privately.",
+      hasThumb: false,
+      image: typeof ev.banner === 'string' && /^https:\/\//.test(ev.banner) ? ev.banner : '/og-event.png'
     }
   }
   // the picture column arrives with supabase/wave14.sql; before that script
