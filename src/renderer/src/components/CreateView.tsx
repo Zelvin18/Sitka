@@ -25,6 +25,7 @@ import {
   IconCopy,
   IconDoc,
   IconDownload,
+  IconExpand,
   IconShare,
   IconPlus,
   IconSlides,
@@ -136,7 +137,7 @@ function docPageStyle(id?: string): React.CSSProperties {
     ['--doc-muted' as string]: toHex(t.muted),
     ['--doc-rule' as string]: toHex(t.rule),
     ['--doc-font' as string]: t.serif ? 'Georgia, "Times New Roman", serif' : 'inherit',
-    background: t.page ? toHex(t.page) : undefined,
+    background: t.page ? toHex(t.page) : '#ffffff',
     color: toHex(t.ink)
   }
 }
@@ -196,11 +197,33 @@ export default function CreateView({
     void refresh()
   }, [refresh])
 
-  const recent = useMemo(
-    () => sessions.filter((s) => s.status === 'complete').slice(0, 10),
-    [sessions]
-  )
+  const complete = useMemo(() => sessions.filter((s) => s.status === 'complete'), [sessions])
+  // the latest few are offered as chips; every chosen one stays a chip; the rest wait behind a chooser
+  const recent = useMemo(() => {
+    const latest = complete.slice(0, 5)
+    const chosenOnes = complete.filter((s) => chosen.has(s.id) && !latest.some((l) => l.id === s.id))
+    return [...latest, ...chosenOnes]
+  }, [complete, chosen])
+  const [chooserOpen, setChooserOpen] = useState(false)
+  const [chooserFilter, setChooserFilter] = useState('')
+  const toggleChosen = (id: string): void =>
+    setChosen((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
+  // the finished document across the whole screen, with a way out
+  const [viewing, setViewing] = useState(false)
+  useEffect(() => {
+    if (!viewing) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setViewing(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewing])
   // the making page: shown in place of the form (or the result) while
   // something is made, and until the maker opens or downloads it
   const [designing, setDesigning] = useState<{ kind: CreationKind; made: Creation | null } | null>(null)
@@ -250,7 +273,11 @@ export default function CreateView({
     }
   }
   const openMade = (): void => {
-    if (designing?.made) setSelected(designing.made)
+    if (designing?.made) {
+      setSelected(designing.made)
+      if (designing.made.kind === 'document' && window.innerWidth < 860) setViewing(true)
+      if (designing.made.kind === 'presentation' && window.innerWidth < 860) setPresentAt(0)
+    }
     setDesigning(null)
   }
   const downloadMade = (): void => {
@@ -399,6 +426,8 @@ export default function CreateView({
               onClick={() => {
                 setSelected(c)
                 setError(null)
+                setDesigning(null)
+                if (c.kind === 'document' && window.innerWidth < 860) setViewing(true)
               }}
             >
               <span className="create-item-icon">{kindIcon(c.kind, 14)}</span>
@@ -461,27 +490,28 @@ export default function CreateView({
               }}
             />
 
-            {recent.length > 0 && (
+            {complete.length > 0 && (
               <div className="create-ground">
-                <div className="create-ground-label">Ground it in your sessions</div>
+                <div className="create-ground-label">
+                  Ground it in your sessions
+                  {chosen.size > 0 && <span className="setup-optional">{chosen.size} chosen</span>}
+                </div>
                 <div className="create-chips">
                   {recent.map((s) => (
                     <button
                       key={s.id}
                       className={`create-chip${chosen.has(s.id) ? ' on' : ''}`}
-                      onClick={() =>
-                        setChosen((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(s.id)) next.delete(s.id)
-                          else next.add(s.id)
-                          return next
-                        })
-                      }
+                      onClick={() => toggleChosen(s.id)}
                       title={s.title}
                     >
                       {s.title}
                     </button>
                   ))}
+                  {complete.length > recent.length && (
+                    <button className="create-chip more" onClick={() => setChooserOpen(true)}>
+                      Choose from all {complete.length}…
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -532,6 +562,12 @@ export default function CreateView({
                   <button className="btn btn-ghost btn-sm" onClick={() => copy(selected.content)}>
                     <IconCopy size={13} />
                     {copied ? 'Copied' : 'Copy'}
+                  </button>
+                )}
+                {selected.kind === 'document' && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setViewing(true)} title="Read it across the whole screen">
+                    <IconExpand size={13} />
+                    Full screen
                   </button>
                 )}
                 {selected.kind !== 'code' && canShareFiles() && (
@@ -684,6 +720,9 @@ export default function CreateView({
           {showNotes && deck.slides[presentAt].notes && (
             <div className="present-notes">{deck.slides[presentAt].notes}</div>
           )}
+          <button className="viewer-close present-close" aria-label="Close" onClick={(e) => { e.stopPropagation(); setPresentAt(null) }}>
+            ×
+          </button>
           <div className="present-bar" onClick={(e) => e.stopPropagation()}>
             <span>
               {presentAt + 1} / {deck.slides.length}
@@ -694,6 +733,73 @@ export default function CreateView({
             <button className="btn btn-ghost btn-sm" onClick={() => setPresentAt(null)}>
               Exit
             </button>
+          </div>
+        </div>
+      )}
+
+      {chooserOpen && (
+        <div className="dialog-overlay" onMouseDown={() => setChooserOpen(false)}>
+          <div className="dialog chooser" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="dialog-title">Ground it in your sessions</div>
+            <input
+              className="input"
+              placeholder="Find a session…"
+              value={chooserFilter}
+              autoFocus={window.innerWidth >= 860}
+              onChange={(e) => setChooserFilter(e.target.value)}
+            />
+            <div className="chooser-list">
+              {complete
+                .filter((s) => !chooserFilter.trim() || s.title.toLowerCase().includes(chooserFilter.trim().toLowerCase()))
+                .map((s) => (
+                  <label key={s.id} className={`chooser-row${chosen.has(s.id) ? ' on' : ''}`}>
+                    <input type="checkbox" checked={chosen.has(s.id)} onChange={() => toggleChosen(s.id)} />
+                    <span className="chooser-title">{s.title}</span>
+                    <span className="chooser-date">{formatDate(s.createdAt)}</span>
+                  </label>
+                ))}
+            </div>
+            <div className="dialog-actions">
+              {chosen.size > 0 && (
+                <button className="btn btn-ghost" onClick={() => setChosen(new Set())}>
+                  Clear
+                </button>
+              )}
+              <button className="btn btn-primary" onClick={() => setChooserOpen(false)}>
+                Done{chosen.size > 0 ? ` · ${chosen.size}` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewing && selected && selected.kind === 'document' && (
+        <div className="viewer" role="dialog" aria-label={selected.title}>
+          <div className="viewer-bar">
+            <span className="viewer-title">{selected.title}</span>
+            <div className="viewer-tools">
+              {canShareFiles() && (
+                <button className="btn btn-ghost btn-sm" onClick={() => void shareMade()}>
+                  <IconShare size={13} />
+                  Share
+                </button>
+              )}
+              <button className="btn btn-sm" onClick={() => setSaving(true)}>
+                <IconDownload size={13} />
+                Download
+              </button>
+              <button className="viewer-close" aria-label="Close" onClick={() => setViewing(false)}>
+                ×
+              </button>
+            </div>
+          </div>
+          <div className="viewer-styles">
+            <StylePicker compact kind="document" value={selected.template ?? 'editorial'} onChange={restyle} />
+          </div>
+          <div className="viewer-body">
+            <div className={`doc-page lay-${docTemplate(selected.template).layout}`} style={docPageStyle(selected.template)}>
+              <AiText text={selected.content} onSeek={seekFor} />
+            </div>
           </div>
         </div>
       )}

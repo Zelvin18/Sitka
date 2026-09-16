@@ -388,3 +388,13 @@ export const IconPhoto = (p: IconProps) =>
       <circle cx="12" cy="13.5" r="3" />
     </>
   )
+
+/** four corners: the full screen */
+export const IconExpand = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+    </>
+  )

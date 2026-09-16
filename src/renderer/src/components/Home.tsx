@@ -210,18 +210,13 @@ export default function Home({
                   ) : (
                     <span className="lib-duration">{formatDuration(s.durationMs)}</span>
                   )}
-                  {s.status === 'complete' &&
-                    (s.hosted || (s.kind && s.kind !== 'other')) && (
-                      <span className="lib-badge">
-                        {s.hosted ? '● Hosted' : s.kind}
-                      </span>
+                  <span className="lib-badges">
+                    {s.status === 'complete' && (s.hosted || (s.kind && s.kind !== 'other')) && (
+                      <span className="lib-badge">{s.hosted ? '● Hosted' : s.kind}</span>
                     )}
-                  {s.space && (
-                    <span className="lib-badge lib-badge-space">
-                      {s.space === 'business' ? 'Business' : 'Education'}
-                    </span>
-                  )}
-                  {s.sample && <span className="lib-badge lib-badge-sample">Sample</span>}
+                    {s.space && <span className="lib-badge lib-badge-space">{s.space === 'business' ? 'Business' : 'Education'}</span>}
+                    {s.sample && <span className="lib-badge lib-badge-sample">Sample</span>}
+                  </span>
                   <button
                     className="lib-delete"
                     title="Delete session"

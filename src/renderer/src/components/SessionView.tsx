@@ -60,6 +60,14 @@ export default function SessionView({
   const [data, setData] = useState<SessionData | null>(null)
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoError, setVideoError] = useState(false)
+  /** how the recording was being played when it failed, for the message and the report */
+  const diagRef = useRef('')
+  const failWith = (why: string): void => {
+    diagRef.current = why
+    const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+    report?.('session-player', why)
+    setVideoError(true)
+  }
   // On the website the recording is fetched from the cloud, which can be a
   // long download on a phone: it waits for a tap (or a jump to a moment).
   // On the desktop it is a local file and loads at once.
@@ -242,6 +250,7 @@ export default function SessionView({
         const url = await window.sitka.videoUrl(sessionId)
         if (cancelled) return
         if (url) {
+          diagRef.current = 'the whole file'
           setVideoSrc(url)
           return
         }
@@ -251,15 +260,17 @@ export default function SessionView({
         if (parts.length > 0 && hasStreamingEngine()) {
           streamPartsRef.current = parts
           streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
+          diagRef.current = `a stream of ${parts.length} part${parts.length === 1 ? '' : 's'}`
           setVideoSrc('progressive')
           return
         }
         const bytes = await window.sitka.readVideo(sessionId)
         if (cancelled) return
         if (!bytes || bytes.byteLength === 0) {
-          setVideoError(true)
+          failWith(parts.length === 0 ? 'no recording was found in the cloud or on this device' : 'the file could not be read')
           return
         }
+        diagRef.current = `the whole file in memory (${mediaType(bytes.subarray(0, 12))}, ${(bytes.byteLength / 1048576).toFixed(1)} MB)`
         const blob = new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })
         objectUrl = URL.createObjectURL(blob)
         setVideoSrc(objectUrl)
@@ -600,7 +611,7 @@ export default function SessionView({
               </button>
             )}
             {videoSrc && videoSrc !== 'progressive' && (
-              <a className="btn btn-ghost btn-sm" href={videoSrc} download={`${meta.title.replace(/[^\w-]+/g, '-')}.webm`}>
+              <a className="btn btn-ghost btn-sm" href={videoSrc} download={`${meta.title.replace(/[^\w-]+/g, '-')}.${meta.mime === 'video/mp4' ? 'mp4' : 'webm'}`}>
                 Save a copy
               </a>
             )}
@@ -668,11 +679,12 @@ export default function SessionView({
                 onLoadedData={() => setVideoLive(true)}
                 onPlaying={() => setVideoLive(true)}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                onError={() => {
+                onError={(e) => {
                   // The link did not open: expired, gone, or refused. Never a
                   // spinner for good: fall back to the parts, then to the file.
                   if (videoSrc?.startsWith('blob:')) {
-                    setVideoError(true)
+                    const code = (e.currentTarget as HTMLVideoElement).error?.code
+                    failWith(`${diagRef.current} would not play (code ${code ?? '?'})`)
                     return
                   }
                   if (videoSrc === 'progressive') {
@@ -779,7 +791,25 @@ export default function SessionView({
               {meta.readOnly ? (
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
-                'Could not load this recording.'
+                <div className="video-failed">
+                  <div>Could not play this recording.</div>
+                  {diagRef.current && <div className="video-failed-why">Tried {diagRef.current}.</div>}
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() =>
+                      void window.sitka.readVideo(sessionId).then((bytes) => {
+                        if (!bytes || bytes.byteLength === 0) return
+                        const kind = mediaType(bytes.subarray(0, 12))
+                        const copy = new ArrayBuffer(bytes.byteLength)
+                        new Uint8Array(copy).set(bytes)
+                        void window.sitka.saveBinaryFile(`${meta.title.replace(/[^\w\- ]+/g, '').trim() || 'recording'}.${kind === 'video/mp4' ? 'mp4' : 'webm'}`, copy)
+                      })
+                    }
+                  >
+                    Download the file
+                  </button>
+                </div>
               ) : !videoWanted ? (
                 <button
                   type="button"
