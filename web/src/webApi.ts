@@ -2427,6 +2427,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       )
       return urls.length === names.length ? urls : []
     },
+    listVideoPartsSized: async (id: string) => {
+      const listing = await store.list(`${user.id}/${id}`)
+      const objs = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).sort((a, b) => (a.name < b.name ? -1 : 1))
+      if (objs.length === 0) return []
+      if ((await localParts(id)).length > 0) return []
+      const urls = await store.urls(objs.map((o) => `${user.id}/${id}/${o.name}`), listing.where)
+      const out = objs.map((o, i) => ({ url: urls[i] ?? '', size: Number(o.size ?? 0) }))
+      return out.every((p) => p.url && p.size > 0) ? out : []
+    },
 
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null

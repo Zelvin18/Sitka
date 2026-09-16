@@ -108,6 +108,8 @@ const api = {
     ipcRenderer.invoke('session:readVideo', id, file),
   /** links to the recording's parts, in order, for streaming playback; [] when it must be read whole */
   listVideoParts: (id: string): Promise<string[]> => ipcRenderer.invoke('session:videoParts', id),
+  /** the same parts with their sizes, which lets the player jump about in them */
+  listVideoPartsSized: (id: string): Promise<{ url: string; size: number }[]> => ipcRenderer.invoke('session:videoPartsSized', id),
   /** a link to the recording as one whole file, playable natively; null when there is none yet */
   videoUrl: (id: string): Promise<string | null> => ipcRenderer.invoke('session:videoUrl', id),
   /** re-record an older WebM recording as MP4 so phones can play it; progress arrives on window 'sitka:convert' */

@@ -13,7 +13,10 @@ import { clamp, usePersistedBool, usePersistedNumber, useRemembered } from '../l
 import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
 import { IconPlay } from '../lib/icons'
-import { playProgressively } from '@shared/progressive'
+import { playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
+
+/** MediaSource, or Safari's managed one on iPhone */
+const hasStreamingEngine = (): boolean => typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -242,10 +245,12 @@ export default function SessionView({
           setVideoSrc(url)
           return
         }
-        const parts = await window.sitka.listVideoParts(sessionId)
+        const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
+        const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId)
         if (cancelled) return
-        if (parts.length > 0 && typeof MediaSource !== 'undefined') {
+        if (parts.length > 0 && hasStreamingEngine()) {
           streamPartsRef.current = parts
+          streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
           setVideoSrc('progressive')
           return
         }
@@ -279,22 +284,30 @@ export default function SessionView({
   // Streaming: once the player is mounted, feed it the parts in order. The
   // first plays as soon as it lands; the rest follow while it plays.
   const streamPartsRef = useRef<string[]>([])
+  const streamSizesRef = useRef<number[] | null>(null)
   useEffect(() => {
     if (videoSrc !== 'progressive') return undefined
     const v = videoRef.current
     const parts = streamPartsRef.current
+    const sizes = streamSizesRef.current
     if (!v || parts.length === 0) return undefined
     let cancelled = false
-    void playProgressively(
-      v,
-      parts.length,
-      async (i) => {
-        const r = await fetch(parts[i], { cache: 'no-store' })
-        if (!r.ok) throw new Error(`part ${i}: ${r.status}`)
-        return r.arrayBuffer()
-      },
-      { durationSec: data?.meta.durationMs ? data.meta.durationMs / 1000 : undefined, lookahead: 3 }
-    ).then((ok) => {
+    const durationSec = data?.meta.durationMs ? data.meta.durationMs / 1000 : undefined
+    // with sizes the parts are one stream: a quick start, jumps served from
+    // where they land, a buffer that lets go of what was watched
+    const run = sizes
+      ? streamMedia(v, sourceFromParts(parts.map((url, i) => ({ url, size: sizes[i] }))), { durationSec })
+      : playProgressively(
+          v,
+          parts.length,
+          async (i) => {
+            const r = await fetch(parts[i], { cache: 'no-store' })
+            if (!r.ok) throw new Error(`part ${i}: ${r.status}`)
+            return r.arrayBuffer()
+          },
+          { durationSec, lookahead: 3 }
+        )
+    void run.then((ok) => {
       if (cancelled) return
       if (!ok) {
         // this file cannot be streamed: read it whole instead
@@ -649,9 +662,11 @@ export default function SessionView({
                     return
                   }
                   void (async () => {
-                    const parts = await window.sitka.listVideoParts(sessionId).catch(() => [])
-                    if (parts.length > 0 && typeof MediaSource !== 'undefined') {
+                    const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
+                    const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId).catch(() => [])
+                    if (parts.length > 0 && hasStreamingEngine()) {
                       streamPartsRef.current = parts
+                      streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
                       setVideoSrc('progressive')
                       return
                     }

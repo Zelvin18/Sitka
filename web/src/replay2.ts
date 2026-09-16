@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { installFocusGuard } from '../../src/shared/focusGuard'
-import { canStream, mediaType, playProgressively, sniffWebmMime } from '../../src/shared/progressive'
+import { canStream, mediaType, playProgressively, sniffWebmMime, sourceFromParts, sourceFromUrl, streamMedia } from '../../src/shared/progressive'
 import { isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore } from './store'
 import { downloadBytes, fileName, notesPdf } from './notesFile'
@@ -321,17 +321,13 @@ async function streamWhole(v: HTMLVideoElement, url: string, knownSize?: number)
     if (!fragmented) return false
     const mime = sniffWebmMime(head)
     if (!mime || !canStream(mime)) return false
-    const slices = Math.ceil(size / SLICE)
-    const fetchSlice = (i: number): Promise<ArrayBuffer> => fetchRange(url, i * SLICE, Math.min(size, (i + 1) * SLICE) - 1)
-    const ok = await playProgressively(v, slices, fetchSlice, {
+    v.hidden = false
+    return await streamMedia(v, sourceFromUrl(url, size), {
       durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
-      lookahead: 3,
-      onProgress: (n, total) => {
-        if (n < total) el('playsub').textContent = `Ready · ${Math.round((n / total) * 100)}% in`
-        else el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+      onProgress: (f) => {
+        el('playsub').textContent = f < 0.995 ? `${data.durationMs ? fmtLen(data.durationMs) : 'Ready'} · ${Math.round(f * 100)}% in` : data.durationMs ? fmtLen(data.durationMs) : 'Ready'
       }
     })
-    return ok
   } catch (err) {
     console.warn('[recap] could not stream the whole file in slices', err)
     return false
@@ -403,14 +399,26 @@ function loadMedia(): Promise<boolean> {
           return r.arrayBuffer()
         }
         v.hidden = false
-        const streamed = await playProgressively(v, paths.length, fetchPart, {
-          durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
-          lookahead: 3,
-          onProgress: (n, total) => {
-            if (n < total) el('playsub').textContent = `Ready · ${n} of ${total} parts in`
-            else el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
-          }
-        })
+        // With every part's size known, the parts are one stream: the first
+        // second within a second, jumps served from where they land, and a
+        // buffer that lets go of what has been watched. Otherwise the parts
+        // are appended in order, as before.
+        const sized = found.partSizes && found.partSizes.length === paths.length
+        const streamed = sized
+          ? await streamMedia(v, sourceFromParts(paths.map((url, i) => ({ url, size: found.partSizes![i] }))), {
+              durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
+              onProgress: (f) => {
+                el('playsub').textContent = f < 0.995 ? `${data.durationMs ? fmtLen(data.durationMs) : 'Ready'} · ${Math.round(f * 100)}% in` : data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+              }
+            })
+          : await playProgressively(v, paths.length, fetchPart, {
+              durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
+              lookahead: 3,
+              onProgress: (n, total) => {
+                if (n < total) el('playsub').textContent = `Ready · ${n} of ${total} parts in`
+                else el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+              }
+            })
         if (streamed) {
           mediaReady = true
           el('stage').classList.add('hasvideo')

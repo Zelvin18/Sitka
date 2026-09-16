@@ -1,18 +1,34 @@
 /// <reference lib="dom" />
 /**
- * Progressive playback of a recording stored as parts. The first part is
- * playing within seconds; the rest arrive while it plays. Built on Media
- * Source Extensions; a browser without them (or a file it cannot stream)
- * falls back to the caller, which stitches the whole file as before.
+ * Playback of a recording stored in the cloud, the way a video site does it:
+ * the first second of picture within a second or two, whatever the length;
+ * the rest fetched behind the playhead, never all at once; a jump to any
+ * minute served from that minute, not from the beginning; and a buffer that
+ * lets go of what has been watched so a phone's memory is never exceeded.
+ *
+ * Built on Media Source Extensions (Safari's ManagedMediaSource on iPhone).
+ * The recorder writes its files in fragments that each carry their own
+ * timestamp (MP4 moof/mdat pairs, WebM clusters), which is exactly what lets
+ * a fragment fetched from the middle of the file be shown at the right time.
+ * A byte position for a moment is estimated from the file's size and
+ * length, then snapped to the next fragment boundary found in the bytes.
+ *
+ * A browser without the engine, or a file it cannot stream, falls back to the
+ * caller, which stitches the whole file as before.
  */
 
-export interface ProgressiveOptions {
+export interface ByteSource {
+  /** total bytes, when known: needed for jumping ahead */
+  size: number | null
+  /** the bytes [from, to] inclusive, absolute positions */
+  range(from: number, to: number, signal?: AbortSignal): Promise<ArrayBuffer>
+}
+
+export interface StreamOptions {
   /** the recording's length in seconds, when known, so the timeline shows at once */
   durationSec?: number
-  /** how many parts to fetch ahead of the one being appended */
-  lookahead?: number
-  /** called as parts land, for a progress line */
-  onProgress?: (done: number, total: number) => void
+  /** called as bytes land, for a progress line: 0..1 of the file fetched so far */
+  onProgress?: (fraction: number) => void
 }
 
 const isEbml = (h: Uint8Array): boolean => h[0] === 0x1a && h[1] === 0x45 && h[2] === 0xdf && h[3] === 0xa3
@@ -27,7 +43,6 @@ export function mediaType(head: Uint8Array): 'video/webm' | 'video/mp4' | 'appli
 
 /** The MIME type MSE needs, read off the first bytes of the file. */
 export function sniffWebmMime(head: Uint8Array): string | null {
-  // MP4 (H.264/AAC): the format every phone streams natively
   if (isMp4(head)) {
     const t = new TextDecoder('latin1').decode(head.subarray(0, Math.min(head.length, 200000)))
     const hasVideo = t.includes('avc1') || t.includes('avc3') || t.includes('hvc1')
@@ -39,10 +54,7 @@ export function sniffWebmMime(head: Uint8Array): string | null {
         : ['video/mp4']
     return tries.find((x) => canStream(x)) ?? null
   }
-  // WebM: the EBML magic first, then the codec ids the muxer wrote into the Tracks.
   if (!isEbml(head)) return null
-  // Browsers spell the codecs differently (Chrome "vp9", Safari "vp09.…"),
-  // so the first spelling this browser accepts is the one used.
   const text = new TextDecoder('latin1').decode(head.subarray(0, Math.min(head.length, 200000)))
   const videos = text.includes('V_VP9')
     ? ['vp9', 'vp09.00.10.08', 'vp09.00.31.08']
@@ -76,10 +88,400 @@ export function canStream(mime: string): boolean {
   return Boolean(MS && MS.isTypeSupported && MS.isTypeSupported(mime))
 }
 
+// ---------- sources ----------
+
+/** one file that honours byte ranges */
+export function sourceFromUrl(url: string, size: number): ByteSource {
+  return {
+    size,
+    async range(from, to, signal) {
+      const r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` }, signal })
+      if (r.status !== 206) throw new Error(`range refused (${r.status})`)
+      return r.arrayBuffer()
+    }
+  }
+}
+
+/** parts laid end to end, each honouring byte ranges; sizes must be known */
+export function sourceFromParts(parts: { url: string; size: number }[]): ByteSource {
+  const starts: number[] = []
+  let total = 0
+  for (const p of parts) {
+    starts.push(total)
+    total += p.size
+  }
+  return {
+    size: total,
+    async range(from, to, signal) {
+      const pieces: ArrayBuffer[] = []
+      for (let i = 0; i < parts.length; i++) {
+        const s = starts[i]
+        const e = s + parts[i].size - 1
+        if (e < from || s > to) continue
+        const a = Math.max(from, s) - s
+        const b = Math.min(to, e) - s
+        const whole = a === 0 && b === parts[i].size - 1
+        const r = await fetch(parts[i].url, whole ? { signal } : { headers: { Range: `bytes=${a}-${b}` }, signal })
+        if (!r.ok) throw new Error(`part ${i}: ${r.status}`)
+        pieces.push(await r.arrayBuffer())
+      }
+      if (pieces.length === 1) return pieces[0]
+      const out = new Uint8Array(pieces.reduce((n, p) => n + p.byteLength, 0))
+      let at = 0
+      for (const p of pieces) {
+        out.set(new Uint8Array(p), at)
+        at += p.byteLength
+      }
+      return out.buffer
+    }
+  }
+}
+
+// ---------- fragment boundaries ----------
+
+/** the offset of the first fragment that begins inside these bytes, or -1 */
+function fragmentAt(bytes: Uint8Array, kind: 'video/mp4' | 'video/webm'): number {
+  if (kind === 'video/mp4') {
+    // "moof" is preceded by its 4-byte size; the box begins there
+    for (let i = 4; i + 4 <= bytes.length; i++) {
+      if (bytes[i] === 0x6d && bytes[i + 1] === 0x6f && bytes[i + 2] === 0x6f && bytes[i + 3] === 0x66) {
+        const size = ((bytes[i - 4] << 24) | (bytes[i - 3] << 16) | (bytes[i - 2] << 8) | bytes[i - 1]) >>> 0
+        if (size >= 16 && size < 64 * 1024 * 1024) return i - 4
+      }
+    }
+    return -1
+  }
+  // a WebM Cluster begins with its id 1F 43 B6 75
+  for (let i = 0; i + 4 <= bytes.length; i++) {
+    if (bytes[i] === 0x1f && bytes[i + 1] === 0x43 && bytes[i + 2] === 0xb6 && bytes[i + 3] === 0x75) return i
+  }
+  return -1
+}
+
+// ---------- the engine ----------
+
+const FIRST = 1 * 1024 * 1024
+const SLICE_MAX = 8 * 1024 * 1024
+/** how far ahead of the playhead to keep fetching, in seconds of buffered media */
+const AHEAD_SEC = 480
+/** how much behind the playhead to keep before letting go */
+const BEHIND_SEC = 45
+
+const buffered = (v: HTMLVideoElement, t: number): boolean => {
+  const b = v.buffered
+  for (let i = 0; i < b.length; i++) if (t >= b.start(i) - 0.3 && t < b.end(i) - 0.2) return true
+  return false
+}
+const bufferedEndFrom = (v: HTMLVideoElement, t: number): number => {
+  const b = v.buffered
+  for (let i = 0; i < b.length; i++) if (t >= b.start(i) - 0.3 && t <= b.end(i)) return b.end(i)
+  return t
+}
+
 /**
- * Stream `parts` (fetched in order by `fetchPart`) into `video`. Resolves true
- * once everything has been appended, false if streaming was not possible —
- * in which case nothing has been attached and the caller may stitch instead.
+ * Stream `source` into `video`. Resolves true once streaming has begun (it
+ * carries on in the background for as long as the element lives), false if
+ * streaming was not possible here, in which case nothing has been attached
+ * and the caller may stitch instead.
+ */
+export async function streamMedia(video: HTMLVideoElement, source: ByteSource, opts: StreamOptions = {}): Promise<boolean> {
+  const MS = engine()
+  if (!MS || source.size === null || source.size < 1024) return false
+  const size = source.size
+
+  // the head decides whether this file can be streamed at all, and is the first thing appended
+  let head: ArrayBuffer
+  try {
+    head = await source.range(0, Math.min(size, FIRST) - 1)
+  } catch {
+    return false
+  }
+  const headBytes = new Uint8Array(head)
+  const kind = mediaType(headBytes)
+  if (kind === 'application/octet-stream') return false
+  const mime = sniffWebmMime(headBytes)
+  if (!mime || !canStream(mime)) return false
+
+  ;(video as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true
+  const ms = new MS()
+  const url = URL.createObjectURL(ms)
+  await new Promise<void>((resolve, reject) => {
+    ms.addEventListener('sourceopen', () => resolve(), { once: true })
+    video.addEventListener('error', () => reject(new Error('media error')), { once: true })
+    setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
+    video.src = url
+  }).catch(() => undefined)
+  if (ms.readyState !== 'open') {
+    URL.revokeObjectURL(url)
+    return false
+  }
+  let sb: SourceBuffer
+  try {
+    sb = ms.addSourceBuffer(mime)
+  } catch {
+    return false
+  }
+  const duration = opts.durationSec && Number.isFinite(opts.durationSec) && opts.durationSec > 0 ? opts.durationSec : null
+  if (duration) {
+    try {
+      ms.duration = duration
+    } catch {
+      /* set once data is in */
+    }
+  }
+
+  const append = (buf: ArrayBuffer): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const onEnd = (): void => {
+        sb.removeEventListener('updateend', onEnd)
+        sb.removeEventListener('error', onErr)
+        resolve()
+      }
+      const onErr = (): void => {
+        sb.removeEventListener('updateend', onEnd)
+        sb.removeEventListener('error', onErr)
+        reject(new Error('append failed'))
+      }
+      sb.addEventListener('updateend', onEnd)
+      sb.addEventListener('error', onErr)
+      try {
+        sb.appendBuffer(buf)
+      } catch (e) {
+        sb.removeEventListener('updateend', onEnd)
+        sb.removeEventListener('error', onErr)
+        reject(e)
+      }
+    })
+  const remove = (from: number, to: number): Promise<void> =>
+    new Promise((resolve) => {
+      if (sb.updating || to <= from) {
+        resolve()
+        return
+      }
+      const onEnd = (): void => {
+        sb.removeEventListener('updateend', onEnd)
+        resolve()
+      }
+      sb.addEventListener('updateend', onEnd)
+      try {
+        sb.remove(from, to)
+      } catch {
+        sb.removeEventListener('updateend', onEnd)
+        resolve()
+      }
+    })
+  /** let go of what has been watched, and far-ahead ranges from an old jump, then try again */
+  const appendWithRoom = async (buf: ArrayBuffer): Promise<void> => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await append(buf)
+        return
+      } catch (e) {
+        const quota = e instanceof Error && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))
+        if (!quota) throw e
+        const t = video.currentTime
+        const b = video.buffered
+        // behind the playhead first, then anything more than the window ahead
+        await remove(0, Math.max(0, t - BEHIND_SEC))
+        for (let i = 0; i < b.length; i++) {
+          if (b.start(i) > t + AHEAD_SEC) await remove(b.start(i), b.end(i))
+        }
+        if (attempt >= 2) await new Promise((r) => setTimeout(r, 1500))
+      }
+    }
+    throw new Error('no room in the buffer')
+  }
+
+  // ---- the download: from the cursor, in slices that grow, only as far ahead as the window ----
+  let cursor = 0
+  let sliceLen = FIRST
+  let controller: AbortController | null = null
+  let generation = 0
+  let alive = true
+  const stop = (): void => {
+    alive = false
+    controller?.abort()
+  }
+  video.addEventListener('emptied', stop, { once: true })
+
+  const bytesToTime = (b: number): number => (duration ? (b / size) * duration : 0)
+  const timeToBytes = (t: number): number => (duration ? Math.floor((t / duration) * size) : 0)
+
+  const wait = (ms_: number): Promise<void> => new Promise((r) => setTimeout(r, ms_))
+
+  /**
+   * Put the cursor at the fragment that begins just before moment `t`: an
+   * estimate from the file's size and length, snapped to a fragment boundary
+   * found in the bytes, checked against where the appended fragment landed
+   * on the timeline, and walked back when it landed too late.
+   */
+  const jumpTo = async (t: number): Promise<void> => {
+    let target = Math.max(0, timeToBytes(t) - 1.5 * 1024 * 1024)
+    for (let attempt = 0; attempt < 5 && alive; attempt++) {
+      const probeEnd = Math.min(size, target + 1.5 * 1024 * 1024) - 1
+      let probe: ArrayBuffer
+      try {
+        probe = await source.range(target, probeEnd)
+      } catch {
+        return
+      }
+      const at = fragmentAt(new Uint8Array(probe), kind)
+      if (at < 0) {
+        target = Math.min(size - 1, target + 1.5 * 1024 * 1024)
+        continue
+      }
+      const start = target + at
+      const before: number[] = []
+      for (let i = 0; i < video.buffered.length; i++) before.push(video.buffered.start(i))
+      const first = await source.range(start, Math.min(size, start + 2 * 1024 * 1024) - 1)
+      // the parser must start this fragment clean, not as a continuation
+      if (ms.readyState === 'open') {
+        try {
+          sb.abort()
+        } catch {
+          /* nothing in flight */
+        }
+      }
+      await appendWithRoom(first)
+      const b = video.buffered
+      let newStart = -1
+      for (let i = 0; i < b.length; i++) {
+        if (!before.some((x) => Math.abs(x - b.start(i)) < 0.1)) newStart = b.start(i)
+      }
+      if (buffered(video, t) || start === 0 || newStart < 0 || newStart <= t) {
+        cursor = start + first.byteLength
+        sliceLen = 2 * 1024 * 1024
+        return
+      }
+      // it landed after the moment (a slower stretch of the recording): step back further
+      target = Math.max(0, target - 4 * 1024 * 1024)
+    }
+  }
+
+  /** the first hole in what is buffered, preferring one ahead of the playhead */
+  const firstGap = (): number | null => {
+    if (!duration) return null
+    const b = video.buffered
+    const gaps: number[] = []
+    let prevEnd = 0
+    for (let i = 0; i < b.length; i++) {
+      if (b.start(i) - prevEnd > 1.5) gaps.push(prevEnd)
+      prevEnd = Math.max(prevEnd, b.end(i))
+    }
+    if (duration - prevEnd > 2.5) gaps.push(prevEnd)
+    // only what the playhead will reach soon: the browser lets go of data far
+    // from it anyway, and would only be handed the same bytes again
+    const t = video.currentTime
+    return gaps.find((g) => g >= t - 1 && g < t + AHEAD_SEC) ?? null
+  }
+
+  let seeking = false
+  let fills = 0
+  const loop = async (): Promise<void> => {
+    await appendWithRoom(head).catch(() => undefined)
+    cursor = head.byteLength
+    opts.onProgress?.(cursor / size)
+    while (alive) {
+      if (cursor >= size) {
+        // the end of the file: fill the holes a jump left behind, from the
+        // playhead forward; when there are none, the stream is complete
+        const gap = fills < 400 && !seeking ? firstGap() : null
+        if (gap !== null) {
+          fills++
+          seeking = true
+          generation++
+          await jumpTo(gap + 0.05)
+          seeking = false
+          await wait(300)
+          continue
+        }
+        if (ms.readyState === 'open' && !sb.updating) {
+          try {
+            ms.endOfStream()
+          } catch {
+            /* already ended */
+          }
+        }
+        await wait(500)
+        continue
+      }
+      // no further ahead than the window: a phone's memory, and its data, are finite
+      if (duration) {
+        const ahead = bufferedEndFrom(video, video.currentTime) - video.currentTime
+        const cursorAhead = bytesToTime(cursor) - video.currentTime
+        if (ahead > AHEAD_SEC && cursorAhead > AHEAD_SEC) {
+          await wait(1000)
+          continue
+        }
+      }
+      if (seeking) {
+        await wait(100)
+        continue
+      }
+      const gen = generation
+      const from = cursor
+      const to = Math.min(size, from + sliceLen) - 1
+      controller = new AbortController()
+      let buf: ArrayBuffer
+      try {
+        buf = await source.range(from, to, controller.signal)
+      } catch {
+        if (!alive) return
+        if (gen !== generation) continue // a jump moved the cursor: this slice is not wanted
+        await wait(1200)
+        continue
+      }
+      if (!alive || gen !== generation) continue
+      try {
+        await appendWithRoom(buf)
+      } catch (err) {
+        console.warn('[stream] append stopped', err)
+        return
+      }
+      if (gen !== generation) continue
+      cursor = to + 1
+      sliceLen = Math.min(SLICE_MAX, sliceLen * 2)
+      opts.onProgress?.(Math.min(1, cursor / size))
+    }
+  }
+
+  // ---- a jump: the playhead lands where nothing is buffered, or playback runs out of buffer ----
+  const onSeek = async (): Promise<void> => {
+    if (!alive || !duration || seeking) return
+    const t = video.currentTime
+    if (buffered(video, t)) return
+    // the sequential fetch is about to reach it anyway: let it
+    const cursorTime = bytesToTime(cursor)
+    if (cursor < size && t >= cursorTime && t < cursorTime + 20) return
+    seeking = true
+    generation++
+    controller?.abort()
+    try {
+      await jumpTo(t)
+    } finally {
+      seeking = false
+    }
+  }
+  video.addEventListener('waiting', () => void onSeek())
+  video.addEventListener('seeking', () => void onSeek())
+
+  void loop()
+  return true
+}
+
+// ---------- the older door ----------
+
+export interface ProgressiveOptions {
+  durationSec?: number
+  lookahead?: number
+  onProgress?: (done: number, total: number) => void
+}
+
+/**
+ * Parts fetched one after another and appended in order, for callers that
+ * only have the parts as links. The new engine, with its jumps and its
+ * window, wants sizes; this keeps the old promise: true once everything is
+ * appended, false if streaming is not possible.
  */
 export async function playProgressively(
   video: HTMLVideoElement,
@@ -90,22 +492,15 @@ export async function playProgressively(
   const MS = engine()
   if (count === 0 || !MS) return false
   const lookahead = Math.max(1, opts.lookahead ?? 2)
-
-  // the first part decides whether this file can be streamed at all
   const first = await fetchPart(0)
   const mime = sniffWebmMime(new Uint8Array(first))
   if (!mime || !canStream(mime)) return false
-
-  // Safari's managed source insists the element will not hand playback to
-  // another device; harmless everywhere else
   ;(video as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true
   const ms = new MS()
   const url = URL.createObjectURL(ms)
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
-    // a browser that never opens the source (an element not yet in the page,
-    // a managed source that stays quiet) is given a few seconds, not forever
     setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
     video.src = url
   }).catch(() => undefined)
@@ -113,7 +508,6 @@ export async function playProgressively(
     URL.revokeObjectURL(url)
     return false
   }
-
   let sb: SourceBuffer
   try {
     sb = ms.addSourceBuffer(mime)
@@ -148,11 +542,7 @@ export async function playProgressively(
         void e
       }
     })
-
-  // parts are fetched a little ahead and appended strictly in order
   const pending = new Map<number, Promise<ArrayBuffer>>()
-  // a part that fails is asked for again, twice, before the stream gives up:
-  // one refused link must not end a lecture at the two-thirds mark
   const fetchTwice = async (i: number): Promise<ArrayBuffer> => {
     let last: unknown
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -179,8 +569,26 @@ export async function playProgressively(
       for (let k = i + 1; k <= Math.min(count - 1, i + lookahead); k++) void fetchAt(k).catch(() => undefined)
       const buf = await fetchAt(i)
       pending.delete(i)
-      if (ms.readyState !== 'open') return true // the element was torn down mid-way
-      await append(buf)
+      if (ms.readyState !== 'open') return true
+      try {
+        await append(buf)
+      } catch {
+        // a full buffer: let go of what has been watched and try once more
+        const t = video.currentTime
+        await new Promise<void>((resolve) => {
+          if (sb.updating) {
+            resolve()
+            return
+          }
+          sb.addEventListener('updateend', () => resolve(), { once: true })
+          try {
+            sb.remove(0, Math.max(0, t - 30))
+          } catch {
+            resolve()
+          }
+        })
+        await append(buf)
+      }
       opts.onProgress?.(i + 1, count)
     }
     if (ms.readyState === 'open') {
@@ -193,8 +601,6 @@ export async function playProgressively(
     return true
   } catch (err) {
     console.warn('[progressive] streaming stopped', err)
-    // whatever was appended keeps playing; the caller may not stitch over it,
-    // but the stop is written down so it shows in the operations view
     const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
     report?.(location.pathname, 'streaming stopped: ' + (err instanceof Error ? err.message : String(err)))
     return true

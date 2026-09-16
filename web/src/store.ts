@@ -32,6 +32,8 @@ export interface Media {
   /** bytes of the whole file, when the store reports it */
   wholeSize?: number
   parts: string[]
+  /** bytes of each part, in the same order, when the store reports them */
+  partSizes?: number[]
 }
 
 /** A bucket served straight from Cloudflare's edge, when one is set up. */
@@ -216,10 +218,18 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       where: Where | 'none'
       whole: string | null
       wholeSize?: number
-      parts: { url: string }[]
+      parts: { url: string; size?: number }[]
     }>('media', { owner, session })
     if (res && res.where !== 'none') {
-      return { where: 'r2', whole: res.whole, wholeSize: res.wholeSize, parts: (res.parts ?? []).map((p) => p.url) }
+      const parts = res.parts ?? []
+      const sizes = parts.map((p) => Number(p.size ?? 0))
+      return {
+        where: 'r2',
+        whole: res.whole,
+        wholeSize: res.wholeSize,
+        parts: parts.map((p) => p.url),
+        partSizes: sizes.every((n) => n > 0) ? sizes : undefined
+      }
     }
     const dir = `${owner}/${session}`
     const objects = await listIn(dir, 'sb')
@@ -231,7 +241,8 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     const parts = names.length > 0 ? await sbUrls(names.map((n) => `${dir}/${n}`)) : []
     const whole = one?.signedUrl ?? null
     if (!whole && parts.length === 0) return { where: 'none', whole: null, parts: [] }
-    return { where: 'sb', whole, parts: parts.filter(Boolean) }
+    const sizes = names.map((n) => objects.find((o) => o.name === n)?.size ?? 0)
+    return { where: 'sb', whole, parts: parts.filter(Boolean), partSizes: sizes.every((n) => n > 0) && parts.every(Boolean) ? sizes : undefined }
   }
 
   // ---------- the operations ----------

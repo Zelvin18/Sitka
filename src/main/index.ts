@@ -1205,6 +1205,7 @@ function registerIpc(): void {
   // The desktop keeps one local file per recording: nothing to stream in parts,
   // and no cloud link; the file is read whole from disk, which is instant.
   ipcMain.handle('session:videoParts', () => [])
+  ipcMain.handle('session:videoPartsSized', () => [])
   ipcMain.handle('session:videoUrl', () => null)
   // desktop recordings are local files; phones reach only what the website stores
   ipcMain.handle('session:convertForPhones', () => ({
