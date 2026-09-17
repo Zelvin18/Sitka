@@ -12470,9 +12470,31 @@ video {
 .welcome-hero {
   position: relative;
   padding: 40px 36px 30px;
-  background: #0f0f11;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   color: #f4f4f6;
   overflow: hidden;
+  /* the lecture theatre at dusk, its left kept dark for the words; a veil
+     from the left and a fade at the foot so the name reads on any crop.
+     Where the picture is not served (the desktop app) the colour stands. */
+  background-color: #0f0f11;
+  background-image:
+    linear-gradient(to right, rgba(10, 10, 12, 0.88) 0%, rgba(10, 10, 12, 0.55) 45%, rgba(10, 10, 12, 0.12) 100%),
+    linear-gradient(to top, rgba(10, 10, 12, 0.7) 0%, rgba(10, 10, 12, 0) 45%),
+    url('/welcome-hero.png');
+  background-size: cover, cover, cover;
+  background-position: center, center, 62% 50%;
+  background-repeat: no-repeat;
+}
+.welcome-hero .welcome-title,
+.welcome-hero .welcome-sub {
+  position: relative;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
+}
+.welcome-hero .welcome-sub {
+  color: #d6d6dc;
 }
 .welcome-glow {
   position: absolute;
@@ -12554,11 +12576,29 @@ video {
   min-width: 170px;
 }
 @media (max-width: 560px) {
+  .welcome-overlay {
+    padding: 10px;
+    align-items: flex-end;
+  }
+  .welcome {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    border-radius: 20px;
+  }
+  /* a taller band on a phone, the phone-on-the-desk and the screen kept in view */
   .welcome-hero {
-    padding: 30px 22px 22px;
+    padding: 34px 22px 22px;
+    min-height: 250px;
+    background-position: center, center, 74% 55%;
   }
   .welcome-title {
-    font-size: 27px;
+    font-size: 28px;
+  }
+  .welcome-sub {
+    font-size: 14px;
+  }
+  .welcome-mark {
+    margin-bottom: 12px;
   }
   .welcome-body {
     padding: 16px 14px 18px;
