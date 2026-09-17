@@ -59,6 +59,7 @@ export default async function handler(req, res) {
     if (op === 'list') return await listFolder(res, cfg, owner, body)
     if (op === 'media') return await mediaLinks(res, cfg, owner, body)
     if (op === 'del') return await removeKeys(res, cfg, owner, body)
+    if (op === 'usage') return await usage(res, cfg, token)
     return res.status(400).json({ error: 'Unknown operation.' })
   } catch (err) {
     console.error('storage', op, err)
@@ -201,6 +202,45 @@ async function mediaLinks(res, cfg, owner, body) {
     parts,
     expiresIn: READ_SECS
   })
+}
+
+/**
+ * How much of Cloudflare the recordings take, for the owners' dashboard:
+ * everything in the bucket, and the largest folders (one per account). Only
+ * someone the database lists as an admin is answered.
+ */
+async function usage(res, cfg, token) {
+  if (!token) return res.status(401).json({ error: 'Sign in first.' })
+  let admin = false
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/is_admin`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+    admin = r.ok && (await r.json()) === true
+  } catch {
+    admin = false
+  }
+  if (!admin) return res.status(403).json({ error: 'Not allowed.' })
+  const objects = await r2List(cfg, '')
+  let total = 0
+  let recordings = 0
+  const byOwner = new Map()
+  for (const o of objects) {
+    total += o.size
+    const owner = o.key.split('/')[0]
+    if (UUID.test(owner)) {
+      byOwner.set(owner, (byOwner.get(owner) || 0) + o.size)
+      if (/\.webm$/.test(o.key) && !/-slides\//.test(o.key)) recordings++
+    }
+  }
+  const owners = [...byOwner.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([owner, bytes]) => ({ owner, bytes }))
+  res.setHeader('Cache-Control', 'no-store')
+  return res.status(200).json({ bytes: total, objects: objects.length, files: recordings, accounts: byOwner.size, owners })
 }
 
 async function removeKeys(res, cfg, owner, body) {

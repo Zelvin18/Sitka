@@ -389,6 +389,64 @@ function renderReliability(o: Overview, errs: ErrRow[]): void {
         )
         .join('')
     : '<div class="calm">No errors reported. The crash guard and the save banner report here when something goes wrong for someone.</div>'
+  paintStorage()
+}
+
+// ---------- what the recordings take in Cloudflare ----------
+// R2's free allowance is 10 GB; the card shows how much of it is used, and
+// says so in colour as it fills. Beyond the allowance R2 charges by the GB.
+const R2_FREE_GB = 10
+interface StorageUsage {
+  bytes: number
+  objects: number
+  files: number
+  accounts: number
+  owners: { owner: string; bytes: number }[]
+}
+let storageUsage: StorageUsage | null = null
+let storageError = ''
+const fmtBytes = (b: number): string => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${Math.round(b / 1e3)} KB`)
+async function renderStorage(): Promise<void> {
+  try {
+    const { data } = await sb.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) return
+    const r = await fetch('/api/storage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ op: 'usage' })
+    })
+    if (!r.ok) {
+      storageError = r.status === 501 ? 'Cloudflare is not set up on this deployment' : `could not be read (${r.status})`
+      storageUsage = null
+    } else {
+      storageUsage = (await r.json()) as StorageUsage
+      storageError = ''
+    }
+  } catch {
+    storageError = 'could not be read'
+  }
+  paintStorage()
+}
+function paintStorage(): void {
+  const host = document.getElementById('rel-kpis')
+  if (!host) return
+  let card = document.getElementById('storage-kpi')
+  if (!card) {
+    card = document.createElement('div')
+    card.id = 'storage-kpi'
+    card.className = 'card kpi'
+    host.appendChild(card)
+  }
+  if (!storageUsage) {
+    card.innerHTML = `<span class="k-label">Recordings in Cloudflare</span><span class="k-value">…</span><span class="k-delta">${esc(storageError || 'counting')}</span>`
+    return
+  }
+  const u = storageUsage
+  const pct = Math.min(999, Math.round((u.bytes / (R2_FREE_GB * 1e9)) * 100))
+  const tone = pct >= 90 ? '#d0524a' : pct >= 70 ? '#c98a1a' : 'inherit'
+  const top = u.owners[0] ? ` · largest account ${fmtBytes(u.owners[0].bytes)}` : ''
+  card.innerHTML = `<span class="k-label">Recordings in Cloudflare</span><span class="k-value" style="color:${tone}">${fmtBytes(u.bytes)}</span><span class="k-delta">${pct}% of the free ${R2_FREE_GB} GB · ${fmtInt(u.files)} files across ${fmtInt(u.accounts)} accounts${esc(top)}</span>`
 }
 
 function shortUa(ua: string): string {
@@ -459,6 +517,7 @@ async function loadAll(): Promise<void> {
   loading = true
   el('refresh').classList.add('busy')
   try {
+    void renderStorage()
     const [o, series, cohorts, errs, live, ppl] = await Promise.all([
       rpc<Overview>('admin_overview', { days }),
       rpc<DayRow[]>('admin_series', { days }),

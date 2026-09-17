@@ -64,8 +64,6 @@ export default function SessionView({
   const [videoError, setVideoError] = useState(false)
   /** the recording handed to the browser's own player, when ours could not play it */
   const [nativeSrc, setNativeSrc] = useState<string | null>(null)
-  /** a start that took long, said under the player so the owner can read why on the device itself */
-  const [slowNote, setSlowNote] = useState('')
   /** how the recording was being played when it failed, for the message and the report */
   const diagRef = useRef('')
   // The first frame, and how long it took by which way, goes to the ops view
@@ -88,7 +86,6 @@ export default function SessionView({
       const passed = ladderRef.current.tried.length ? ` · passed over: ${ladderRef.current.tried.join('; ')}` : ''
       const stream = streamNoteRef.current ? ` · stream said: ${streamNoteRef.current}` : ''
       report?.('session-player-slow', `${Math.round(ms / 1000)} s to the first frame by ${diagRef.current}${passed}${stream} · ${navigator.userAgent.slice(0, 90)}`)
-      setSlowNote(`Took ${Math.round(ms / 1000)} s by ${diagRef.current}${passed}${stream}.`)
     }
   }
   const failWith = (why: string): void => {
@@ -1197,7 +1194,6 @@ export default function SessionView({
             </div>
           )}
         </div>
-        {slowNote && <div className="video-slow-note">{slowNote}</div>}
         <Splitter
           direction="horizontal"
           onMove={(_x, y) => {
