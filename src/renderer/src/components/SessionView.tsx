@@ -1081,7 +1081,13 @@ export default function SessionView({
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
                 <div className="video-failed">
-                  <div>Could not play this recording.</div>
+                  <div>{meta.recordingPending ? 'This recording has not reached the cloud yet.' : 'Could not play this recording.'}</div>
+                  {meta.recordingPending && (
+                    <div className="video-failed-why">
+                      It is still on the device that recorded it. Open Sitca there and press Upload now.
+                      {meta.uploadError ? ` The cloud said: ${meta.uploadError}` : ''}
+                    </div>
+                  )}
                   {diagRef.current && <div className="video-failed-why">Tried {diagRef.current}.</div>}
                   <button
                     type="button"

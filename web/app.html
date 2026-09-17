@@ -102,6 +102,8 @@
 .gterms{text-align:center;font-size:12px;color:var(--t3);margin-top:18px;line-height:1.5}
 .gterms a{color:var(--t2)}
 .gwait{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--t2);font-size:14px;font-weight:600}
+#gate{transition:opacity .35s ease}
+#gate.gone{opacity:0;pointer-events:none}
 .gwait .mark{width:18px;height:18px}
 .lw{animation:lw .4s ease}
 @keyframes lw{from{opacity:0;transform:translateY(4px)}}
@@ -170,7 +172,7 @@
       <div class="gswitch" id="gswitch">New to Sitca? <button type="button" id="gto-up">Create an account</button></div>
       <div class="gterms hidden" id="gterms">By creating an account you agree to the <a href="/legal">terms and privacy policy</a>.</div>
     </div>
-    <div class="gcard hidden" id="gateload"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span data-words="Opening your workspace|Gathering your sessions|Almost there">Opening your workspace</span></div></div>
+    <div class="gcard hidden" id="gateload"><div class="gwait"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span>Opening your workspace</span></div></div>
   </main>
 </div>
 <div id="root"></div>

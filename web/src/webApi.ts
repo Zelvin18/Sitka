@@ -818,6 +818,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const memParts = new Map<string, ArrayBuffer[]>()
   /** sessions whose upload has failed at least once since it last succeeded */
   const uploadTrouble = new Set<string>()
+  /** the cloud's last word on a failed upload, per session, for the page to show */
+  const lastUploadError = new Map<string, string>()
   // Closing the tab while a recording is still going up would strand the last
   // parts on this device. The browser asks first, the way it does mid-session.
   window.addEventListener('beforeunload', (e) => {
@@ -858,6 +860,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const { error } = await store.upload(partPath(p.sessionId, p.partNo), blob, kind)
     if (error) {
       console.error('Sitca: part upload failed', p.sessionId, p.partNo, error)
+      lastUploadError.set(p.sessionId, error.slice(0, 160))
       // said once per session, so a blocked network shows up in the operations view
       if (!uploadTrouble.has(p.sessionId)) {
         uploadTrouble.add(p.sessionId)
@@ -2803,9 +2806,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         // Anything the cloud refused stays on this device and keeps retrying;
         // the session says so until the last part lands.
         let left = await retryPendingUploads(id)
-        if (left < 0) left = (await localParts(id)).length
-        if (left > 0) d.meta.recordingPending = true
-        else delete d.meta.recordingPending
+        if (left < 0) {
+          // another retry was already running: wait for it rather than trust a
+          // count that misses parts kept only in memory (a phone whose store
+          // would not open), which is how a failed upload once passed unseen
+          for (let i = 0; i < 60 && pendingBusy; i++) await sleep(500)
+          left = await retryPendingUploads(id)
+          if (left < 0) left = (await localParts(id)).length
+        }
+        // parts that never made it into the device's store are pending too
+        for (const key of memParts.keys()) if (key.startsWith(id + ':')) left++
+        if (left > 0) {
+          d.meta.recordingPending = true
+          const why = lastUploadError.get(id)
+          if (why) d.meta.uploadError = why
+          // said out loud: a phone that records but cannot upload is a fault, not a wait
+          reportError(location.pathname, `recording not uploaded: ${left} part${left === 1 ? '' : 's'} still on this device${why ? ` · ${why}` : ''} · ${navigator.userAgent.slice(0, 80)}`)
+        } else {
+          delete d.meta.recordingPending
+          delete d.meta.uploadError
+        }
         // every part is up: join them into the one whole file players start fastest from
         if (left === 0) void consolidateRecording(id)
       }

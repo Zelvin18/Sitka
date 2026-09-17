@@ -96,6 +96,8 @@ export interface SessionMeta {
   spaceId?: string
   /** part of the recording is still on this device, waiting to upload */
   recordingPending?: boolean
+  /** why the last upload from this device failed, in the cloud's words, so the page can say */
+  uploadError?: string
   /** true when opened from a space you do not own: read-only, recording stays with its owner */
   readOnly?: boolean
 }

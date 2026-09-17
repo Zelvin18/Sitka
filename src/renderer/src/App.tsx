@@ -223,6 +223,7 @@ export default function App(): React.JSX.Element {
     let base = 0
     let active = false
     let horizontal = false
+    let inSidebar = false
     const clamp = (v: number): number => Math.max(0, Math.min(drawerWidth(), v))
     const onStart = (e: TouchEvent): void => {
       if (!isPhone() || e.touches.length !== 1) return
@@ -232,6 +233,7 @@ export default function App(): React.JSX.Element {
       sx = e.touches[0].clientX
       sy = e.touches[0].clientY
       base = sidebarOpenRef.current ? drawerWidth() : 0
+      inSidebar = Boolean(t.closest('.sidebar'))
       active = true
       horizontal = false
     }
@@ -240,9 +242,19 @@ export default function App(): React.JSX.Element {
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
       if (!horizontal) {
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+        // A finger that wobbles a little while tapping is a tap, not a drag:
+        // the gesture begins only once it has clearly gone sideways. In the
+        // sidebar itself only a swipe back to the left is a drawer gesture —
+        // its rows are there to be tapped.
+        const threshold = inSidebar ? 28 : 14
+        if (Math.abs(dx) < threshold && Math.abs(dy) < 10) return
         if (Math.abs(dy) > Math.abs(dx)) {
           active = false // a scroll, not a drawer gesture
+          return
+        }
+        if (Math.abs(dx) < threshold) return
+        if (inSidebar && dx > 0) {
+          active = false // a sideways wobble to the right inside the sidebar is still a tap
           return
         }
         horizontal = true

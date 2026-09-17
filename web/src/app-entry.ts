@@ -123,21 +123,40 @@ async function launch(): Promise<void> {
     el('gateload').appendChild(b)
     report(`slow open: 20s and still ${stage}`)
   }, 20000)
+  // The opening is told as it happens, and takes a steady three seconds:
+  // long enough to read, and the workspace is laid out underneath meanwhile,
+  // so what appears when the curtain lifts is complete.
+  const say = (words: string): void => {
+    const w = el('gateload').querySelector('span')
+    if (w) {
+      w.textContent = words
+      w.classList.remove('lw')
+      void (w as HTMLElement).offsetWidth
+      w.classList.add('lw')
+    }
+  }
   try {
     const { installWebApi } = await webApiModule
     stage = 'connecting to your account'
+    say('Signing you in')
     await installWebApi(sb)
     resolveReady()
     stage = 'loading the workspace'
+    say('Gathering your sessions')
     await rendererModule
     window.clearTimeout(slow)
     sessionStorage.removeItem(RELOADED)
     const took = Date.now() - began
     if (took > 8000) report(`open took ${Math.round(took / 1000)}s`)
+    say('Putting everything in place')
+    await new Promise<void>((r) => setTimeout(r, Math.max(0, 3000 - (Date.now() - began))))
     // The sign-in form leaves the page entirely. Left in the document, hidden,
     // it still counts as a login form: an iPhone would offer to fill the
     // password into it at odd moments, keyboard and all.
-    el('gate').remove()
+    const gate = el('gate')
+    gate.classList.add('gone')
+    await new Promise<void>((r) => setTimeout(r, 380))
+    gate.remove()
   } catch (err) {
     window.clearTimeout(slow)
     const msg = err instanceof Error ? err.message : String(err)
