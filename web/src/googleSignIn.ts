@@ -46,7 +46,8 @@ function provider(mod: AuthMod): import('firebase/auth').GoogleAuthProvider {
   const p = new mod.GoogleAuthProvider()
   p.addScope('email')
   p.addScope('profile')
-  p.setCustomParameters({ prompt: 'select_account' })
+  // no forced account chooser: one signed-in account that has used Sitca
+  // before goes straight through; Google asks only when there are several
   return p
 }
 
