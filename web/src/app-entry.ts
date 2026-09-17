@@ -39,7 +39,19 @@ const googleModule = import('./googleSignIn')
  * along from Google, so there is nothing to type.
  */
 async function supabaseFromGoogle(token: string): Promise<boolean> {
-  const { error } = await sb.auth.signInWithIdToken({ provider: 'google', token })
+  const { data, error } = await sb.auth.signInWithIdToken({ provider: 'google', token })
+  if (!error && data.user) {
+    // An account that began with a password has no name on its profile even
+    // after Google vouches for it; Google's name is kept in the account's
+    // identity record, and is copied across once so nobody is asked to type it.
+    const meta = (data.user.user_metadata ?? {}) as { full_name?: string; name?: string }
+    if (!(meta.full_name || meta.name || '').trim()) {
+      const google = (data.user.identities ?? []).find((i) => i.provider === 'google')
+      const idata = (google?.identity_data ?? {}) as { full_name?: string; name?: string }
+      const given = (idata.full_name || idata.name || '').trim()
+      if (given) await sb.auth.updateUser({ data: { full_name: given } }).catch(() => undefined)
+    }
+  }
   if (error) {
     const m = error.message
     el('gerr').textContent = /provider is not enabled|Unsupported provider/i.test(m)

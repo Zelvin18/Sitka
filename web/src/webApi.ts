@@ -1194,7 +1194,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   /** the person's given name, for prompts that speak to them */
   const person = (): string => {
     const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
-    return personNote(meta.full_name || meta.name || '')
+    const g = (user.identities ?? []).find((i) => i.provider === 'google')
+    const idata = (g?.identity_data ?? {}) as { full_name?: string; name?: string }
+    return personNote(meta.full_name || meta.name || idata.full_name || idata.name || '')
   }
 
   // ---------- ask prompts (mirrors the desktop ai.ts) ----------
@@ -2111,7 +2113,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     getSettings: async () => getSettings(),
     getProfile: async () => {
       const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string; welcomed_at?: string }
-      const given = (meta.full_name || meta.name || '').trim()
+      let given = (meta.full_name || meta.name || '').trim()
+      if (!given) {
+        // signed in with Google: the name Google vouched for counts as given
+        const g = (user.identities ?? []).find((i) => i.provider === 'google')
+        const idata = (g?.identity_data ?? {}) as { full_name?: string; name?: string }
+        given = (idata.full_name || idata.name || '').trim()
+      }
       const name = given || user.email?.split('@')[0] || 'You'
       return { name, email: user.email ?? undefined, cloud: true, needsName: !given, needsWelcome: !meta.welcomed_at }
     },

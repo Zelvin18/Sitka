@@ -477,7 +477,9 @@ export default function App(): React.JSX.Element {
             void window.sitka.markWelcomed().catch(() => undefined)
           }}
         />
-      ) : (
+      ) : welcomePending ? null : (
+        // asked only once it is settled that no welcome card is coming, so
+        // the question is never flashed and then swept away by the card
         <NamePrompt />
       )}
       {(sidebarOpen || phone) && (
