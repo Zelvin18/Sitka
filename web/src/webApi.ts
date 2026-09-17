@@ -393,7 +393,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       end: Number((s as { end?: number }).end) || (Number(s.start) || 0) + 5,
       text: String(s.text || '')
     }))
-    return { meta: savedMeta(r, new Date().toISOString()), segments, chat: [], notes: null, study: null, marks: [], report: null }
+    // the student's own work on it — notes, study pack, chat — kept on their row
+    const { data: mine } = await sb.from('saved_recaps').select('notes,study,chat').eq('user_id', user.id).eq('recap_id', id).maybeSingle()
+    const work = (mine as { notes?: SessionNotes | null; study?: StudyPack | null; chat?: ChatMessage[] | null } | null) ?? null
+    return {
+      meta: savedMeta(r, new Date().toISOString()),
+      segments,
+      chat: Array.isArray(work?.chat) ? work!.chat! : [],
+      notes: work?.notes ?? null,
+      study: work?.study ?? null,
+      marks: [],
+      report: null
+    }
+  }
+  /** notes, study pack or chat written for a session: to its row if it is ours, to the kept recap's row if not */
+  async function patchWork(id: string, own: boolean, patch: { notes?: SessionNotes; study?: StudyPack; chat?: ChatMessage[] }): Promise<void> {
+    if (own) {
+      await patchSession(id, patch)
+      return
+    }
+    await sb.from('saved_recaps').update(patch).eq('user_id', user.id).eq('recap_id', id)
   }
   /** a kept recap's recording, by the recorder's folder */
   async function savedMedia(id: string): Promise<{ whole: string | null; wholeSize?: number; parts: { url: string; size: number }[] } | null> {
@@ -2616,7 +2635,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     saveChat: async (id, chat) => {
       const d = await loadSession(id)
       if (d) d.chat = chat
-      await patchSession(id, { chat })
+      // a kept recap's conversation is the student's own, on their row
+      await patchWork(id, Boolean(d), { chat })
     },
 
     appendChunk: async (id, chunk) => {
@@ -4020,7 +4040,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     updateNotes: async (id: string) => {
       if (!hasChatKey()) return { error: 'missing-key' }
       try {
-        const d = await loadSession(id)
+        const ownD = await loadSession(id)
+        const d = ownD ?? (await loadSavedRecap(id))
         if (!d || d.segments.length === 0) return { notes: d?.notes ?? null }
         const system = [
           'You maintain live, organized notes for a session (lecture, meeting, or presentation) as it happens.',
@@ -4049,7 +4070,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           updatedAt: Date.now()
         }
         d.notes = notes
-        await patchSession(id, { notes })
+        await patchWork(id, Boolean(ownD), { notes })
         return { notes }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -4059,7 +4080,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     generateStudy: async (id: string) => {
       if (!hasChatKey()) return { error: 'missing-key' }
       try {
-        const d = await loadSession(id)
+        const ownD = await loadSession(id)
+        const d = ownD ?? (await loadSavedRecap(id))
         if (!d || d.segments.length < 3) return { error: 'Not enough transcript to build a study pack.' }
         const system = [
           'Build a study pack from this session transcript.',
@@ -4090,7 +4112,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           generatedAt: Date.now()
         }
         d.study = study
-        await patchSession(id, { study })
+        await patchWork(id, Boolean(ownD), { study })
         return { study }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }

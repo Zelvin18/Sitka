@@ -10,6 +10,11 @@ create table if not exists public.saved_recaps (
   primary key (user_id, recap_id)
 );
 
+-- the student's own work on a kept recap: their notes, study pack and chat
+alter table public.saved_recaps add column if not exists notes jsonb;
+alter table public.saved_recaps add column if not exists study jsonb;
+alter table public.saved_recaps add column if not exists chat jsonb;
+
 alter table public.saved_recaps enable row level security;
 
 drop policy if exists "saved recaps own" on public.saved_recaps;
