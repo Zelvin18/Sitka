@@ -4252,7 +4252,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // A recording joined into one file before this change is still in fragments
   // and still slow to start. On a laptop, with time to spare, each such file is
   // fetched, rewritten and put back, one at a time, largest last.
-  const FLATTEN_AT = 'sitka.flattened-at.' + user.id
+  // (keyed by the sweep's version: a widened sweep runs at once, not after the old one's rest)
+  const FLATTEN_AT = 'sitka.flattened-at.v2.' + user.id
   async function flattenOldRecordings(): Promise<void> {
     if (window.innerWidth < 900) return
     const last = Number(localStorage.getItem(FLATTEN_AT) || 0)

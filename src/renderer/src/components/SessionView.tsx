@@ -70,13 +70,21 @@ export default function SessionView({
     if (firstFrameSentRef.current || !loadStartRef.current) return
     firstFrameSentRef.current = true
     const track = (window as unknown as { sitkaTrack?: (n: string, p: Record<string, unknown>) => void }).sitkaTrack
+    const ms = Date.now() - loadStartRef.current
     track?.('play_first_frame', {
       way: diagRef.current,
-      ms: Date.now() - loadStartRef.current,
+      ms,
       audio: Boolean(data?.meta.audioOnly),
       minutes: Math.round((data?.meta.durationMs || 0) / 60000),
       phone: window.innerWidth < 860
     })
+    // a slow start is written up like a fault, with the ways that were passed over
+    if (ms > 8000) {
+      const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+      const passed = ladderRef.current.tried.length ? ` · passed over: ${ladderRef.current.tried.join('; ')}` : ''
+      const stream = streamNoteRef.current ? ` · stream said: ${streamNoteRef.current}` : ''
+      report?.('session-player-slow', `${Math.round(ms / 1000)} s to the first frame by ${diagRef.current}${passed}${stream} · ${navigator.userAgent.slice(0, 90)}`)
+    }
   }
   const failWith = (why: string): void => {
     diagRef.current = why

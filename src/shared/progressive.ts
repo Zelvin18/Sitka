@@ -223,11 +223,21 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   const ms = new MS()
   const url = URL.createObjectURL(ms)
   let openFailure = ''
+  const w = window as unknown as { ManagedMediaSource?: unknown }
+  const managed = Boolean(w.ManagedMediaSource) && MS === (w.ManagedMediaSource as MSCtor)
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
     setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
-    video.src = url
+    // Safari's managed engine is attached as an object, the way Apple documents
+    // it; the classic engine by its object address
+    if (managed && 'srcObject' in video) {
+      try {
+        ;(video as HTMLVideoElement & { srcObject: unknown }).srcObject = ms
+      } catch {
+        video.src = url
+      }
+    } else video.src = url
   }).catch((e: Error) => {
     openFailure = e.message
   })
@@ -467,8 +477,22 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   }
 
   // ---- a jump: the playhead lands where nothing is buffered, or playback runs out of buffer ----
+  // Safari will not step over a small gap at the start on its own: a buffer
+  // that begins a few frames after zero leaves the playhead waiting at zero.
+  // The playhead is moved to where the sound and picture begin.
+  const nudgeStart = (): boolean => {
+    const b = video.buffered
+    if (!b.length) return false
+    const t = video.currentTime
+    if (t < b.start(0) && b.start(0) - t < 2) {
+      video.currentTime = b.start(0) + 0.05
+      return true
+    }
+    return false
+  }
   const onSeek = async (): Promise<void> => {
     if (!alive || !duration || seeking) return
+    if (nudgeStart()) return
     const t = video.currentTime
     if (buffered(video, t)) return
     // the sequential fetch is about to reach it anyway: let it
@@ -501,6 +525,7 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
     } catch {
       /* already closed */
     }
+    ;(video as HTMLVideoElement & { srcObject: unknown }).srcObject = null
     video.removeAttribute('src')
     video.load()
     URL.revokeObjectURL(url)
@@ -509,11 +534,13 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   if (video.error) {
     note(`the player refused the first piece (code ${video.error.code})`)
     alive = false
+    ;(video as HTMLVideoElement & { srcObject: unknown }).srcObject = null
     video.removeAttribute('src')
     video.load()
     URL.revokeObjectURL(url)
     return false
   }
+  nudgeStart()
   void loop()
   return true
 }
