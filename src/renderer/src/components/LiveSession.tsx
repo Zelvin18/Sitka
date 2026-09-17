@@ -396,6 +396,10 @@ export default function LiveSession({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const sttRecorderRef = useRef<MediaRecorder | null>(null)
+  /** transcriptions still in flight: the end of the session waits for them */
+  const sttPendingRef = useRef<Promise<void>>(Promise.resolve())
+  /** what happened to the captions this session, written up at the end for the ops view */
+  const sttStatsRef = useRef({ pieces: 0, bytes: 0, segments: 0, errors: 0, dropped: 0, rotatedByTimer: 0, heard: 0, container: '' })
   const sttStreamRef = useRef<MediaStream | null>(null)
   const sttChunkStartRef = useRef(0)
   const sttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1079,18 +1083,29 @@ export default function LiveSession({
   const transcribeBlob = useCallback(async (blob: Blob, offsetSec: number): Promise<void> => {
     const id = sessionIdRef.current
     if (!id || blob.size < MIN_AUDIO_BYTES) return
-    const buf = await blob.arrayBuffer()
-    const result = await window.sitka.transcribeChunk(id, buf, offsetSec, blob.type || 'audio/webm')
-    if (result.error) {
-      if (result.error !== 'missing-key') setSttError(result.error)
-      return
-    }
-    if (result.segments && result.segments.length > 0) {
-      setSttError(null)
-      setSegments((prev) =>
-        [...prev, ...result.segments!].sort((a, b) => a.start - b.start)
-      )
-    }
+    const stats = sttStatsRef.current
+    stats.pieces++
+    stats.bytes += blob.size
+    stats.container = blob.type || 'audio/webm'
+    // each piece joins the queue the end of the session waits on
+    const work = (async () => {
+      const buf = await blob.arrayBuffer()
+      const result = await window.sitka.transcribeChunk(id, buf, offsetSec, blob.type || 'audio/webm')
+      if (result.error) {
+        stats.errors++
+        if (result.error !== 'missing-key') setSttError(result.error)
+        return
+      }
+      if (result.segments && result.segments.length > 0) {
+        stats.segments += result.segments.length
+        setSttError(null)
+        setSegments((prev) =>
+          [...prev, ...result.segments!].sort((a, b) => a.start - b.start)
+        )
+      }
+    })()
+    sttPendingRef.current = sttPendingRef.current.then(() => work.catch(() => undefined))
+    await work
   }, [])
 
   const startSttRecorder = useCallback((): void => {
@@ -1118,7 +1133,11 @@ export default function LiveSession({
       // invent something. Three silent chunks in a row and the person is told.
       const peak = chunkPeakRef.current
       chunkPeakRef.current = 0
-      if (peak < SILENCE_RMS) {
+      // a meter that has never heard anything at all (some phones give the
+      // microphone to the recorder alone) is not trusted to call a piece silent
+      const meterDeaf = sttStatsRef.current.heard < 0.0005
+      if (peak < SILENCE_RMS && !meterDeaf) {
+        sttStatsRef.current.dropped++
         silentChunksRef.current++
         if (silentChunksRef.current >= 3) setNoSound((cur) => (cur === 'none' ? cur : 'silent'))
         return
@@ -1147,6 +1166,18 @@ export default function LiveSession({
     }
     rec.start(STT_CHUNK_MS)
     sttRecorderRef.current = rec
+    // A browser that ignores the timeslice (some phones hand over data only
+    // on stop) would never rotate, and never caption: a timer stands in.
+    window.setTimeout(() => {
+      if (rec.state !== 'recording' || rotating || stoppingRef.current) return
+      rotating = true
+      sttStatsRef.current.rotatedByTimer++
+      rec.onstop = () => {
+        flush()
+        if (!stoppingRef.current) startSttRecorder()
+      }
+      rec.stop()
+    }, STT_CHUNK_MS + 2500)
   }, [transcribeBlob])
 
   // ---- start recording ----
@@ -1349,6 +1380,7 @@ export default function LiveSession({
           for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
           const rms = Math.sqrt(sum / buf.length)
           if (rms > chunkPeakRef.current) chunkPeakRef.current = rms
+          if (rms > sttStatsRef.current.heard) sttStatsRef.current.heard = rms
         }, 150)
       }
 
@@ -1364,6 +1396,8 @@ export default function LiveSession({
 
       sessionStartRef.current = Date.now()
       stoppingRef.current = false
+      sttPendingRef.current = Promise.resolve()
+      sttStatsRef.current = { pieces: 0, bytes: 0, segments: 0, errors: 0, dropped: 0, rotatedByTimer: 0, heard: 0, container: '' }
 
       // On the website recordings live in cloud storage: record at a compact
       // bitrate (screens and slides compress very well) so space lasts.
@@ -1488,6 +1522,32 @@ export default function LiveSession({
     setNoSound('')
 
     const durationMs = Date.now() - sessionStartRef.current
+    // the last pieces of speech are still being written down: the session's
+    // end waits for them (within reason), so its title and notes see every word
+    await Promise.race([sttPendingRef.current, new Promise<void>((r) => setTimeout(r, 25000))])
+    {
+      // what became of the captions, for the ops view: every session, so a
+      // phone that records but never captions is seen, not guessed at
+      const s = sttStatsRef.current
+      const track = (window as unknown as { sitkaTrack?: (n: string, p: Record<string, unknown>) => void }).sitkaTrack
+      track?.('captions_summary', {
+        audio: captureMode === 'audio',
+        pieces: s.pieces,
+        kb: Math.round(s.bytes / 1024),
+        segments: s.segments,
+        errors: s.errors,
+        dropped: s.dropped,
+        by_timer: s.rotatedByTimer,
+        heard: Number(s.heard.toFixed(4)),
+        container: s.container,
+        minutes: Math.round(durationMs / 60000),
+        phone: window.innerWidth < 860
+      })
+      if (s.pieces > 0 && s.segments === 0 && durationMs > 20000) {
+        const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+        report?.('captions-empty', `${s.pieces} pieces (${Math.round(s.bytes / 1024)} KB, ${s.container}) sent, ${s.errors} errors, ${s.dropped} dropped as silent, meter peak ${s.heard.toFixed(4)}, ${s.rotatedByTimer} rotated by timer · ${navigator.userAgent.slice(0, 90)}`)
+      }
+    }
     try {
       await window.sitka.finalizeSession(id, durationMs)
     } catch (err) {
