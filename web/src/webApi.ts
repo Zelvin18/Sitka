@@ -383,6 +383,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const at = new Map(((kept as { recap_id: string; created_at: string }[] | null) ?? []).map((k) => [k.recap_id, k.created_at]))
     return ((rows as RecapRow[] | null) ?? []).map((r) => ({ meta: savedMeta(r, at.get(r.id) ?? new Date().toISOString()), row: r }))
   }
+  /** a kept recap as session data, read from its public row: its words, for Ask and the transcript */
+  async function loadSavedRecap(id: string): Promise<SessionData | null> {
+    const { data } = await sb.from('recaps').select('*').eq('id', id).eq('enabled', true).maybeSingle()
+    const r = data as RecapRow | null
+    if (!r) return null
+    const segments = (Array.isArray(r.transcript) ? r.transcript : []).map((s) => ({
+      start: Number(s.start) || 0,
+      end: Number((s as { end?: number }).end) || (Number(s.start) || 0) + 5,
+      text: String(s.text || '')
+    }))
+    return { meta: savedMeta(r, new Date().toISOString()), segments, chat: [], notes: null, study: null, marks: [], report: null }
+  }
   /** a kept recap's recording, by the recorder's folder */
   async function savedMedia(id: string): Promise<{ whole: string | null; wholeSize?: number; parts: { url: string; size: number }[] } | null> {
     let owner = savedOwners.get(id)
@@ -2271,22 +2283,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     getSession: async (id: string) => {
       let d = await loadSession(id)
       if (d) freshLinks(d.meta)
-      if (!d) {
-        // not one of ours: a recap kept from someone else, read from its public row
-        const { data } = await sb.from('recaps').select('*').eq('id', id).eq('enabled', true).maybeSingle()
-        const r = data as RecapRow | null
-        if (r) {
-          d = {
-            meta: savedMeta(r, new Date().toISOString()),
-            segments: Array.isArray(r.transcript) ? r.transcript : [],
-            chat: [],
-            notes: null,
-            study: null,
-            marks: [],
-            report: null
-          }
-        }
-      }
+      // not one of ours: a recap kept from someone else, read from its public row
+      if (!d) d = await loadSavedRecap(id)
       // A shared recap follows its session: opening the session refreshes
       // the recap's title, summary and moments, so an old share never keeps
       // a stale name.
@@ -3033,7 +3031,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         files: req.attachments?.length ?? 0
       })
       try {
-        const d = await loadSession(req.sessionId)
+        // a kept recap answers from its recorder's transcript, like any session
+        const d = (await loadSession(req.sessionId)) ?? (await loadSavedRecap(req.sessionId))
         const segments = d?.segments ?? []
         let system: string
         if (req.host) {
