@@ -42,6 +42,8 @@ const api = {
   getProfile: (): Promise<Profile> => ipcRenderer.invoke('profile:get'),
   /** what the person is called; null when nothing was given */
   setProfileName: (name: string): Promise<Profile | null> => ipcRenderer.invoke('profile:set', name),
+  /** the welcome has been shown: it is not shown again for this account */
+  markWelcomed: (): Promise<void> => ipcRenderer.invoke('profile:welcomed'),
   /** Online: sign out and return to the gate. Desktop: nothing to sign out of. */
   signOut: (): Promise<void> => ipcRenderer.invoke('profile:signOut'),
   setSettings: (s: Settings): Promise<void> => ipcRenderer.invoke('settings:set', s),

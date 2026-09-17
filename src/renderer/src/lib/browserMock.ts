@@ -35,6 +35,7 @@ export function installBrowserMockIfNeeded(): void {
     createSampleSession: async () => null,
     getProfile: async () => ({ name: 'Preview', cloud: false }),
     setProfileName: async (name: string) => ({ name, cloud: false }),
+    markWelcomed: async () => undefined,
     listOrgs: async () => [],
     createOrg: async () => ({ error: 'unavailable in browser preview' }),
     joinOrg: async () => ({ error: 'unavailable in browser preview' }),

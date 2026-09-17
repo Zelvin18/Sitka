@@ -65,10 +65,9 @@ function Row({ title, desc, children, wrap }: { title: string; desc?: string; ch
   )
 }
 
-export default function SettingsView({ settings, onSaved, onOpenSession }: Props): React.JSX.Element {
+export default function SettingsView({ settings, onSaved }: Props): React.JSX.Element {
   const [showTour, setShowTour] = useState(false)
   const closeTour = useCallback(() => setShowTour(false), [])
-  const [sampleBusy, setSampleBusy] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
@@ -111,17 +110,6 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
       if (own) setShowKeys(true)
     }
   }, [settings])
-
-  async function openSample(): Promise<void> {
-    if (sampleBusy || !onOpenSession) return
-    setSampleBusy(true)
-    try {
-      const meta = await window.sitka.createSampleSession()
-      if (meta) onOpenSession(meta.id)
-    } finally {
-      setSampleBusy(false)
-    }
-  }
 
   const base = (): Settings =>
     settings ?? {
@@ -307,7 +295,7 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
         <div className="card">
           <div className="start-row">
             <div className="start-mark">
-              <Mark size={22} live={sampleBusy} />
+              <Mark size={22} />
             </div>
             <div className="start-body">
               <div className="start-title">How Sitka works</div>
@@ -320,11 +308,6 @@ export default function SettingsView({ settings, onSaved, onOpenSession }: Props
                   <IconPlay size={12} strokeWidth={2.2} />
                   Watch the walkthrough
                 </button>
-                {onOpenSession && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => void openSample()} disabled={sampleBusy}>
-                    {sampleBusy ? 'Preparing…' : 'Open the sample lecture'}
-                  </button>
-                )}
               </div>
             </div>
           </div>

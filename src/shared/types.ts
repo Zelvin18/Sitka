@@ -11,6 +11,8 @@ export interface Settings {
   webAppUrl: string
   /** what the person is called, given once; the desktop keeps it here */
   profileName?: string
+  /** when the welcome was shown (the desktop keeps it here) */
+  welcomedAt?: number
   // ---- preferences (optional: older settings files simply lack them) ----
   /** appearance: follow the device, or force light or dark */
   theme?: 'system' | 'light' | 'dark'
@@ -445,6 +447,8 @@ export interface Profile {
   cloud: boolean
   /** true when no name was ever given: the app asks once, so it can be personal */
   needsName?: boolean
+  /** true until the welcome has been shown once for this account */
+  needsWelcome?: boolean
 }
 
 // ---------- session materials: what the user shared so Sitka knows the plan ----------

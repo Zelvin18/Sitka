@@ -25,6 +25,7 @@ import QuickRecord from './components/QuickRecord'
 import CreateView from './components/CreateView'
 import ProfileMenu from './components/ProfileMenu'
 import NamePrompt from './components/NamePrompt'
+import Welcome from './components/Welcome'
 
 type View =
   | { name: 'homepage' }
@@ -158,6 +159,20 @@ export default function App(): React.JSX.Element {
   }, [space])
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
+  // A new account is welcomed once, by name, when its library is still empty.
+  const [welcome, setWelcome] = useState<string | null>(null)
+  const welcomeChecked = useRef(false)
+  useEffect(() => {
+    if (!sessionsLoaded || welcomeChecked.current) return
+    welcomeChecked.current = true
+    if (sessions.some((s) => !s.sample)) return
+    void window.sitka
+      .getProfile()
+      .then((p) => {
+        if (p.needsWelcome) setWelcome(p.name)
+      })
+      .catch(() => undefined)
+  }, [sessionsLoaded, sessions])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>()
@@ -388,7 +403,17 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <NamePrompt />
+      {welcome ? (
+        <Welcome
+          name={welcome}
+          onClose={() => {
+            setWelcome(null)
+            void window.sitka.markWelcomed().catch(() => undefined)
+          }}
+        />
+      ) : (
+        <NamePrompt />
+      )}
       {(sidebarOpen || phone) && (
         <Sidebar
           sessions={sidebarSessions}

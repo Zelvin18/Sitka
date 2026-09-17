@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Props {
   title: string
@@ -24,7 +25,9 @@ export default function ConfirmDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
 
-  return (
+  // Rendered on the document itself: a dialog opened from the sidebar would
+  // otherwise sit under the page beside it.
+  return createPortal(
     <div className="dialog-overlay" onMouseDown={onCancel}>
       <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="dialog-title">{title}</div>
@@ -38,6 +41,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

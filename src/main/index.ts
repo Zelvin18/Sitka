@@ -1004,7 +1004,10 @@ function registerIpc(): void {
         /* some environments hide the user */
       }
     }
-    return { name, cloud: false, needsName: !given }
+    return { name, cloud: false, needsName: !given, needsWelcome: !store.getSettings().welcomedAt }
+  })
+  ipcMain.handle('profile:welcomed', () => {
+    store.setSettings({ ...store.getSettings(), welcomedAt: Date.now() })
   })
   ipcMain.handle('profile:set', (_e, name: string) => {
     const clean = String(name || '').trim().slice(0, 80)

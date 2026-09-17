@@ -1957,10 +1957,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const api: SitkaApi = {
     getSettings: async () => getSettings(),
     getProfile: async () => {
-      const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
+      const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string; welcomed_at?: string }
       const given = (meta.full_name || meta.name || '').trim()
       const name = given || user.email?.split('@')[0] || 'You'
-      return { name, email: user.email ?? undefined, cloud: true, needsName: !given }
+      return { name, email: user.email ?? undefined, cloud: true, needsName: !given, needsWelcome: !meta.welcomed_at }
+    },
+    markWelcomed: async () => {
+      const { data } = await sb.auth.updateUser({ data: { welcomed_at: new Date().toISOString() } })
+      if (data.user) user.user_metadata = data.user.user_metadata
     },
     setProfileName: async (name: string) => {
       const clean = name.trim().slice(0, 80)
@@ -2123,7 +2127,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // one old-style banner moves out per listing; the rest follow on later listings
       const old = rows.find((m) => m.banner && m.banner.startsWith('data:'))
       if (old) moveBannerOut(old)
-      return rows
+      // the sample lecture of earlier versions had no recording to play: it goes
+      for (const m of rows) if (m.sample) void api.deleteSession(m.id).catch(() => undefined)
+      return rows.filter((m) => !m.sample)
     },
 
     getSession: async (id: string) => {
