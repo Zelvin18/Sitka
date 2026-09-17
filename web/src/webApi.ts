@@ -4259,8 +4259,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (Date.now() - last < 6 * 3600 * 1000) return
     if (!(await store.ready())) return
     const { data } = await sb.from('sessions').select('id,meta').order('created_at', { ascending: false })
-    const rows = ((data as { id: string; meta: SessionMeta }[] | null) ?? []).filter(
-      (r) => r.meta.whole && !r.meta.flat && !r.meta.readOnly && !r.meta.sample && r.meta.status === 'complete' && r.meta.mime !== 'video/webm'
+    const all = ((data as { id: string; meta: SessionMeta }[] | null) ?? []).filter(
+      (r) => !r.meta.readOnly && !r.meta.sample && r.meta.status === 'complete'
+    )
+    // a whole file in fragments: rewritten in place
+    const rows = all.filter((r) => r.meta.whole && !r.meta.flat && r.meta.mime !== 'video/webm')
+    // no whole file yet, or one made by the old rewriter: made again from the
+    // parts, so a phone opening it later starts in a second instead of a minute
+    const unmade = all.filter(
+      (r) => !r.meta.whole || (r.meta.mime !== 'video/webm' && (r.meta.rewrite ?? 0) < REWRITE_VERSION)
     )
     let left = 0
     for (const row of rows) {
@@ -4271,6 +4278,19 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       } catch (err) {
         left++
         console.warn('Sitca: could not rewrite a recording yet', row.id, err)
+      }
+    }
+    for (const row of unmade) {
+      if (row.id === recordingState?.id || liveInAnotherTab(row.id)) continue
+      try {
+        const d = cache.get(row.id) ?? (await loadSession(row.id))
+        if (!d) continue
+        d.meta.whole = false
+        await consolidateRecording(row.id)
+        if (!d.meta.whole) left++
+      } catch (err) {
+        left++
+        console.warn('Sitca: could not make a whole file yet', row.id, err)
       }
     }
     if (left === 0) localStorage.setItem(FLATTEN_AT, String(Date.now()))

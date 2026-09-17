@@ -64,6 +64,20 @@ export default function SessionView({
   const [nativeSrc, setNativeSrc] = useState<string | null>(null)
   /** how the recording was being played when it failed, for the message and the report */
   const diagRef = useRef('')
+  // The first frame, and how long it took by which way, goes to the ops view
+  // once per load: the measure of "YouTube fast", phone by phone.
+  const firstFrame = (): void => {
+    if (firstFrameSentRef.current || !loadStartRef.current) return
+    firstFrameSentRef.current = true
+    const track = (window as unknown as { sitkaTrack?: (n: string, p: Record<string, unknown>) => void }).sitkaTrack
+    track?.('play_first_frame', {
+      way: diagRef.current,
+      ms: Date.now() - loadStartRef.current,
+      audio: Boolean(data?.meta.audioOnly),
+      minutes: Math.round((data?.meta.durationMs || 0) / 60000),
+      phone: window.innerWidth < 860
+    })
+  }
   const failWith = (why: string): void => {
     diagRef.current = why
     const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
@@ -80,6 +94,11 @@ export default function SessionView({
   const loadGenRef = useRef(0)
   /** counts the ways tried in this load, so a late watchdog from an earlier way cannot skip the next */
   const wayRef = useRef(0)
+  /** when this load began, and whether its first frame has been reported */
+  const loadStartRef = useRef(0)
+  const firstFrameSentRef = useRef(false)
+  /** why the stream engine declined, if it did */
+  const streamNoteRef = useRef('')
   const objectUrlRef = useRef<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [mediaDuration, setMediaDuration] = useState(0)
@@ -355,6 +374,9 @@ export default function SessionView({
   )
   useEffect(() => {
     const gen = ++loadGenRef.current
+    loadStartRef.current = Date.now()
+    firstFrameSentRef.current = false
+    streamNoteRef.current = ''
     durationFixedRef.current = false
     setVideoSrc(null)
     setVideoError(false)
@@ -412,7 +434,12 @@ export default function SessionView({
     // with sizes the parts are one stream: a quick start, jumps served from
     // where they land, a buffer that lets go of what was watched
     const run = sizes
-      ? streamMedia(v, sourceFromParts(parts.map((url, i) => ({ url, size: sizes[i] }))), { durationSec })
+      ? streamMedia(v, sourceFromParts(parts.map((url, i) => ({ url, size: sizes[i] }))), {
+          durationSec,
+          note: (why) => {
+            streamNoteRef.current = why
+          }
+        })
       : playProgressively(
           v,
           parts.length,
@@ -440,7 +467,7 @@ export default function SessionView({
     }, 10000)
     void run.then((ok) => {
       // this file cannot be streamed: the next way
-      if (!ok) handOver(`${diagRef.current} could not be streamed`)
+      if (!ok) handOver(`${diagRef.current} could not be streamed${streamNoteRef.current ? ` — ${streamNoteRef.current}` : ''}`)
     })
     return () => {
       cancelled = true
@@ -788,7 +815,10 @@ export default function SessionView({
                   onLoadedMetadata()
                 }}
                 onDurationChange={(e) => setMediaDuration(e.currentTarget.duration)}
-                onLoadedData={() => setVideoLive(true)}
+                onLoadedData={() => {
+                  setVideoLive(true)
+                  firstFrame()
+                }}
                 onCanPlay={() => setVideoLive(true)}
                 onPlaying={() => {
                   setVideoLive(true)

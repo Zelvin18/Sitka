@@ -25,6 +25,8 @@ export interface ByteSource {
 }
 
 export interface StreamOptions {
+  /** told why the stream could not be started, for the player's account of it */
+  note?: (why: string) => void
   /** the recording's length in seconds, when known, so the timeline shows at once */
   durationSec?: number
   /** called as bytes land, for a progress line: 0..1 of the file fetched so far */
@@ -186,39 +188,59 @@ const bufferedEndFrom = (v: HTMLVideoElement, t: number): number => {
  */
 export async function streamMedia(video: HTMLVideoElement, source: ByteSource, opts: StreamOptions = {}): Promise<boolean> {
   const MS = engine()
-  if (!MS || source.size === null || source.size < 1024) return false
+  const note = opts.note ?? ((): void => undefined)
+  if (!MS) {
+    note('this browser has no streaming engine')
+    return false
+  }
+  if (source.size === null || source.size < 1024) {
+    note(`the size is not known (${source.size})`)
+    return false
+  }
   const size = source.size
 
   // the head decides whether this file can be streamed at all, and is the first thing appended
   let head: ArrayBuffer
   try {
     head = await source.range(0, Math.min(size, FIRST) - 1)
-  } catch {
+  } catch (e) {
+    note(`the first bytes could not be fetched (${e instanceof Error ? e.message : String(e)})`)
     return false
   }
   const headBytes = new Uint8Array(head)
   const kind = mediaType(headBytes)
-  if (kind === 'application/octet-stream') return false
+  if (kind === 'application/octet-stream') {
+    note('the first bytes are not a recording')
+    return false
+  }
   const mime = sniffWebmMime(headBytes)
-  if (!mime || !canStream(mime)) return false
+  if (!mime || !canStream(mime)) {
+    note(`this browser's engine does not take ${mime || kind}`)
+    return false
+  }
 
   ;(video as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true
   const ms = new MS()
   const url = URL.createObjectURL(ms)
+  let openFailure = ''
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
     setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
     video.src = url
-  }).catch(() => undefined)
+  }).catch((e: Error) => {
+    openFailure = e.message
+  })
   if (ms.readyState !== 'open') {
     URL.revokeObjectURL(url)
+    note(`the engine did not open (${openFailure || ms.readyState})`)
     return false
   }
   let sb: SourceBuffer
   try {
     sb = ms.addSourceBuffer(mime)
-  } catch {
+  } catch (e) {
+    note(`no buffer for ${mime} (${e instanceof Error ? e.message : String(e)})`)
     return false
   }
   const duration = opts.durationSec && Number.isFinite(opts.durationSec) && opts.durationSec > 0 ? opts.durationSec : null
@@ -472,6 +494,7 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
     await appendWithRoom(head)
   } catch (err) {
     console.warn('[stream] this file cannot be streamed here', err)
+    note(`the first piece was refused (${err instanceof Error ? err.message : String(err)})`)
     alive = false
     try {
       if (ms.readyState === 'open') ms.endOfStream()
@@ -484,6 +507,7 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
     return false
   }
   if (video.error) {
+    note(`the player refused the first piece (code ${video.error.code})`)
     alive = false
     video.removeAttribute('src')
     video.load()
