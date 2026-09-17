@@ -12460,6 +12460,107 @@ video {
   word-break: break-word;
 }
 
+/* ============ the sidebar on a phone: places in view, the rest under Explore, a new session at the foot ============ */
+.sidebar-phone {
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-phone .side-section {
+  margin-top: 6px;
+  padding: 0 4px;
+}
+.sidebar-phone .side-item {
+  padding: 10px 10px;
+  font-size: 15px;
+  border-radius: 10px;
+}
+.sidebar-phone .side-explore {
+  position: relative;
+  color: var(--text-2);
+}
+.sidebar-phone .side-explore > svg:first-child {
+  transition: transform 0.18s ease;
+  transform: rotate(-90deg);
+}
+.sidebar-phone .side-explore.open > svg:first-child {
+  transform: rotate(0deg);
+}
+.side-explore-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.sidebar-phone .side-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+  margin: 2px 0 4px;
+  border-left: 1px solid var(--border);
+  margin-left: 18px;
+  animation: fadeIn 0.15s ease;
+}
+.sidebar-phone .side-sub .side-item {
+  padding: 8px 10px;
+  font-size: 14.5px;
+}
+.sidebar-phone .side-sessions {
+  flex: 1;
+  min-height: 0;
+  padding: 0 4px;
+}
+.sidebar-phone .side-sessions .side-item {
+  padding: 9px 10px;
+  font-size: 14.5px;
+}
+.side-bottom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.side-new-bottom {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  border: none;
+  border-radius: 14px;
+  background: var(--text);
+  color: var(--bg);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+.side-new-bottom:active {
+  transform: scale(0.985);
+}
+.side-gear {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.side-gear.active {
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
 /* ============ the welcome, once ============ */
 .welcome-overlay {
   z-index: 420;

@@ -199,6 +199,32 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   ;(window as unknown as { sitkaTrack: typeof track }).sitkaTrack = track
   ;(window as unknown as { sitkaReportError: typeof reportError }).sitkaReportError = reportError
   window.addEventListener('error', (e) => reportError(location.pathname, e.message || 'error', e.error?.stack))
+  // Whatever the app writes to the console as an error is a fault someone
+  // met, however small: it goes to the operations view too, a few a minute
+  // at most, so nothing is known only to a browser's own console.
+  {
+    const orig = console.error.bind(console)
+    let sent = 0
+    let windowStart = Date.now()
+    console.error = (...args: unknown[]) => {
+      orig(...args)
+      try {
+        if (Date.now() - windowStart > 60000) {
+          windowStart = Date.now()
+          sent = 0
+        }
+        if (sent >= 6) return
+        sent++
+        const text = args
+          .map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : typeof a === 'string' ? a : JSON.stringify(a)))
+          .join(' ')
+          .slice(0, 300)
+        reportError(location.pathname, `console: ${text}`)
+      } catch {
+        /* never let the reporting itself fail the app */
+      }
+    }
+  }
   window.addEventListener('unhandledrejection', (e) => {
     const r = e.reason as { message?: string; stack?: string } | string | undefined
     reportError(location.pathname, typeof r === 'string' ? r : r?.message || 'unhandled rejection', typeof r === 'object' ? r?.stack : undefined)

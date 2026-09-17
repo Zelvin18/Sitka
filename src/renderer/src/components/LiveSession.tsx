@@ -95,7 +95,7 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 }
 
 const VIDEO_CHUNK_MS = 3000
-const STT_CHUNK_MS = 5000
+const STT_CHUNK_MS = 4000
 const MIN_AUDIO_BYTES = 4000
 /** below this loudest moment a caption chunk is silence: not sent, never invented */
 const SILENCE_RMS = 0.0035
@@ -1136,7 +1136,11 @@ export default function LiveSession({
       // a meter that has never heard anything at all (some phones give the
       // microphone to the recorder alone) is not trusted to call a piece silent
       const meterDeaf = sttStatsRef.current.heard < 0.0005
-      if (peak < SILENCE_RMS && !meterDeaf) {
+      // The line between silence and speech follows the microphone: a phone's
+      // quiet microphone must not have its every piece called silent. A piece
+      // is silent when it is far below the loudest this session has been.
+      const floor = Math.min(SILENCE_RMS, Math.max(0.0012, sttStatsRef.current.heard * 0.15))
+      if (peak < floor && !meterDeaf) {
         sttStatsRef.current.dropped++
         silentChunksRef.current++
         if (silentChunksRef.current >= 3) setNoSound((cur) => (cur === 'none' ? cur : 'silent'))
@@ -2158,7 +2162,7 @@ export default function LiveSession({
                       <IconMic size={22} strokeWidth={1.6} />
                     </span>
                     <span className="act-text">
-                      <b>Just listen</b>
+                      <b>Record audio</b>
                       <span>In person, through the microphone. On a call, put it on speaker.</span>
                     </span>
                     <span className="act-go">
@@ -2194,7 +2198,7 @@ export default function LiveSession({
                         <img src={banner} alt="" className="banner-pick-img" />
                         <div className="banner-pick-text">
                           <div className="banner-pick-title">Banner</div>
-                          <div className="banner-pick-sub">Shown where the video would be when you just listen.</div>
+                          <div className="banner-pick-sub">Shown where the video would be when you record audio.</div>
                         </div>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBanner(null)}>
                           Remove
@@ -2206,7 +2210,7 @@ export default function LiveSession({
                           <div className="banner-pick-title">
                             Banner <span className="setup-optional">optional</span>
                           </div>
-                          <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be when you just listen.</div>
+                          <div className="banner-pick-sub">A poster, a logo, the speaker — shown where the video would be when you record audio.</div>
                         </div>
                         <FilePick
                           documents={false}

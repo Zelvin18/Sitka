@@ -107,6 +107,10 @@ export default function SessionView({
   const loadGenRef = useRef(0)
   /** counts the ways tried in this load, so a late watchdog from an earlier way cannot skip the next */
   const wayRef = useRef(0)
+  /** the parts and their sizes, listed once per load and shared by the ways */
+  const sizedRef = useRef<{ url: string; size: number }[]>([])
+  /** the session's meta as soon as it is known, for decisions taken before the state settles */
+  const metaRef = useRef<SessionMeta | null>(null)
   /** when this load began, and whether its first frame has been reported */
   const loadStartRef = useRef(0)
   const firstFrameSentRef = useRef(false)
@@ -296,6 +300,7 @@ export default function SessionView({
         return
       }
       setData(d)
+      metaRef.current = d.meta
       // The title and summary are written automatically. If that has not
       // happened yet (the tab was closed, the AI was busy), it happens now.
       if (
@@ -354,7 +359,7 @@ export default function SessionView({
           return
         }
         if (way === 'stream') {
-          const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
+          const sized = sizedRef.current.length > 0 ? sizedRef.current : await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
           const parts = sized.length > 0 ? sized.map((p) => p.url) : await window.sitka.listVideoParts(sessionId).catch(() => [])
           if (gen !== loadGenRef.current) return
           if (parts.length === 0 || !hasStreamingEngine()) {
@@ -406,6 +411,26 @@ export default function SessionView({
       // Remux on first open if needed (desktop): a real duration and seek index.
       await window.sitka.prepareSession(sessionId).catch(() => undefined)
       if (gen !== loadGenRef.current) return
+      // The parts and their sizes decide the order of the ways. A small
+      // recording (a voice note, a short talk) is fetched whole in one go —
+      // quicker than any engine. Sound alone on an iPhone opens by its link
+      // or whole: Safari's engine is unsure with a stream that is only sound.
+      const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
+      if (gen !== loadGenRef.current) return
+      sizedRef.current = sized
+      const total = sized.reduce((n, p) => n + p.size, 0)
+      // the session's own record may still be on its way: a moment's patience, then decide
+      for (let i = 0; i < 30 && !metaRef.current; i++) await new Promise((r) => setTimeout(r, 100))
+      if (gen !== loadGenRef.current) return
+      const audio = Boolean(metaRef.current?.audioOnly)
+      const small = sized.length > 0 && total < 12 * 1024 * 1024
+      ladderRef.current.ways = small
+        ? ['blob', 'url', 'stream']
+        : audio && IOS
+          ? ['url', 'blob', 'stream']
+          : IOS
+            ? ['stream', 'url', 'blob']
+            : ['url', 'stream', 'blob']
       void advance(gen)
     })()
     return () => {

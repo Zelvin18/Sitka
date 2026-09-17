@@ -628,7 +628,7 @@ export default function OrgView({
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => onStartSession(captureKind, true, active.id, active.name)}
-            title="Audio only"
+            title="Record audio"
           >
             <IconMic size={13} strokeWidth={2} />
           </button>
