@@ -98,6 +98,113 @@ export async function googleIdToken(): Promise<string | null> {
   }
 }
 
+// ---------- the quiet way in ----------
+
+/**
+ * The Google client the Firebase project made ("Web client (auto created by
+ * Google Service)" in Google Cloud). Google's own sign-in script needs it to
+ * offer the quiet sign-in; it is a public identifier, like the config above.
+ * Empty means the quiet sign-in is simply not offered.
+ */
+const GOOGLE_CLIENT_ID =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ||
+  '775358764227-42f5vqba55h56kiva1sud98f0dm7cfmu.apps.googleusercontent.com'
+
+const SIGNED_OUT = 'sitka.signedOut'
+
+interface GsiCredential {
+  credential: string
+  select_by?: string
+}
+interface GsiMoment {
+  isNotDisplayed(): boolean
+  isSkippedMoment(): boolean
+  isDismissedMoment(): boolean
+  getNotDisplayedReason(): string
+  getSkippedReason(): string
+  getDismissedReason(): string
+}
+interface GsiId {
+  initialize(o: Record<string, unknown>): void
+  prompt(cb?: (m: GsiMoment) => void): void
+  cancel(): void
+  disableAutoSelect(): void
+}
+type GsiWindow = Window & { google?: { accounts?: { id?: GsiId } } }
+
+function gsiScript(): Promise<GsiId> {
+  const w = window as GsiWindow
+  if (w.google?.accounts?.id) return Promise.resolve(w.google.accounts.id)
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://accounts.google.com/gsi/client'
+    s.async = true
+    s.defer = true
+    s.onload = () => {
+      const id = (window as GsiWindow).google?.accounts?.id
+      if (id) resolve(id)
+      else reject(new Error('Google sign-in script did not load.'))
+    }
+    s.onerror = () => reject(new Error('Google sign-in script did not load.'))
+    document.head.appendChild(s)
+  })
+}
+
+/**
+ * Sign the person in without asking, the way Google does on sites they use:
+ * when the browser holds their Google session and they have signed in here
+ * with it before, Google hands over their proof at once and they are in.
+ * When Google is less sure, it shows its own small "Continue as …" card at
+ * the top of the page; the ordinary sign-in card stays underneath for anyone
+ * who ignores it, and Google withdraws its card by itself after a while.
+ *
+ * Someone who signed out on purpose is asked, not swept back in: for that
+ * visit Google shows its card instead of choosing for them.
+ *
+ * `onToken` is called with Google's ID token, the same proof the button
+ * produces. Nothing happens at all when the client id is not set, when the
+ * page is inside another site's frame, or when Google decides not to offer.
+ */
+export async function quietGoogle(onToken: (token: string) => void): Promise<void> {
+  if (!GOOGLE_CLIENT_ID) return
+  if (window.top !== window.self) return
+  let signedOut = false
+  try {
+    signedOut = localStorage.getItem(SIGNED_OUT) === '1'
+    localStorage.removeItem(SIGNED_OUT)
+  } catch {
+    /* ignore */
+  }
+  let id: GsiId
+  try {
+    id = await gsiScript()
+  } catch {
+    return // no Google today: the card is there
+  }
+  if (signedOut) id.disableAutoSelect()
+  id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: (r: GsiCredential) => {
+      if (r?.credential) onToken(r.credential)
+    },
+    auto_select: !signedOut,
+    cancel_on_tap_outside: false,
+    itp_support: true,
+    use_fedcm_for_prompt: true,
+    context: 'signin'
+  })
+  id.prompt()
+}
+
+/** The page is leaving the sign-in card (a password sign-in went through): Google's card goes too. */
+export function cancelQuietGoogle(): void {
+  try {
+    ;(window as GsiWindow).google?.accounts?.id?.cancel()
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Back from a full-page trip to Google (the rare pop-up-blocked case): the
  * token Google sent along, or null when this page load is not a return.

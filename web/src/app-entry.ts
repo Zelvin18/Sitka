@@ -301,7 +301,10 @@ async function boot(): Promise<void> {
       btn.innerHTML = was
     }
     // the workspace opening has its own patience and its own messages
-    if (proceed) await launch()
+    if (proceed) {
+      googleModule.then((m) => m.cancelQuietGoogle()).catch(() => undefined)
+      await launch()
+    }
   }
   const creds = (): { email: string; password: string } => ({
     email: (el('gemail') as HTMLInputElement).value.trim(),
@@ -336,6 +339,16 @@ async function boot(): Promise<void> {
         return await supabaseFromGoogle(token)
       }, 10 * 60000) // choosing an account can take as long as it takes
   }
+  // The quiet way in: when the browser already knows them, Google hands over
+  // their proof without a tap and the workspace opens; otherwise Google's
+  // small card offers, and this card stays for anyone who ignores it.
+  googleModule
+    .then((m) =>
+      m.quietGoogle((token) =>
+        withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () => supabaseFromGoogle(token))
+      )
+    )
+    .catch(() => undefined)
   ;(el('gsignin') as HTMLButtonElement).onclick = () =>
     withBusy(el('gsignin') as HTMLButtonElement, 'Signing in…', async () => {
       err.textContent = ''

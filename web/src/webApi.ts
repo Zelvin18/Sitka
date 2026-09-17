@@ -2137,10 +2137,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     signOut: async () => {
       await sb.auth.signOut()
-      // the next person to sign in on this browser starts at the home page
+      // the next person to sign in on this browser starts at the home page;
+      // and someone who signed out on purpose is not signed straight back in
+      // by Google on the sign-in page: that page asks first, this once
       try {
         sessionStorage.removeItem('sitka.view')
         localStorage.removeItem('sitka.space')
+        localStorage.setItem('sitka.signedOut', '1')
       } catch {
         /* ignore */
       }
