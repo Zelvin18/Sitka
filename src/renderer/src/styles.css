@@ -12450,6 +12450,16 @@ video {
   margin: 10px auto 0;
 }
 
+/* a slow start, said under the player in the owner's own words */
+.video-slow-note {
+  margin: 6px 24px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
 /* ============ the welcome, once ============ */
 .welcome-overlay {
   z-index: 420;
