@@ -41,7 +41,7 @@ export async function frameToDataUrl(src: string): Promise<string | null> {
 }
 
 /**
- * Turn a chosen file into something Sitka can read with the question: images
+ * Turn a chosen file into something Sitca can read with the question: images
  * become pictures, documents become text through the same reader Materials
  * uses (PDF, text, notes, captions).
  */

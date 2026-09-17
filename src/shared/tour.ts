@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * "How Sitka works" — a guided walkthrough built from the app's own interface,
+ * "How Sitca works" — a guided walkthrough built from the app's own interface,
  * so it always matches the real product. It follows the exact path a new user
  * takes: Home → set up → listen → see → ask → end → remember. A pointer moves
  * and clicks, text is typed, answers arrive word by word.
@@ -364,7 +364,7 @@ function pointer(stage: HTMLElement, stops: Stop[], total: number): void {
 function win(stage: HTMLElement, opts: { rec?: boolean; nav?: boolean } = {}): HTMLElement {
   const scene = el('div', 't-scene')
   const w = el('div', 't-win')
-  const top = el('div', 't-top', `${MARK}<span>Sitka</span>`)
+  const top = el('div', 't-top', `${MARK}<span>Sitca</span>`)
   if (opts.nav) top.appendChild(el('span', 't-nav', '<span>Business</span><span class="on">Education</span>'))
   if (opts.rec) {
     const r = el('span', 't-rec', '<i></i>REC')
@@ -389,7 +389,7 @@ function sidebar(active: string): HTMLElement {
 }
 
 function chatHeader(live: boolean): HTMLElement {
-  return el('div', 't-chead', `${I.sparkle}<span>Ask Sitka</span>${live ? '<span class="t-live">● LIVE</span>' : ''}`)
+  return el('div', 't-chead', `${I.sparkle}<span>Ask Sitca</span>${live ? '<span class="t-live">● LIVE</span>' : ''}`)
 }
 
 function line(time: string, text: string, s: number, dim = false, animate = true): HTMLElement {
@@ -419,11 +419,11 @@ const LECTURE = [
 const SCENES: Scene[] = [
   {
     chapter: 'Start',
-    caption: 'Sitka attends lectures, meetings and talks with you.',
+    caption: 'Sitca attends lectures, meetings and talks with you.',
     duration: 3.2,
     build(stage) {
       const s = el('div', 't-scene')
-      const intro = el('div', 't-intro', `${MARK_LIVE}<h3>Sitka</h3><p>Attend once. Keep it forever.</p>`)
+      const intro = el('div', 't-intro', `${MARK_LIVE}<h3>Sitca</h3><p>Attend once. Keep it forever.</p>`)
       at(intro, 0.1, 't-pop')
       s.appendChild(intro)
       stage.appendChild(s)
@@ -440,7 +440,7 @@ const SCENES: Scene[] = [
       const home = el('div', 't-home')
       home.appendChild(at(el('div', '', MARK_LIVE), 0.1))
       home.appendChild(at(el('div', 't-greet', 'Good morning.'), 0.2))
-      home.appendChild(at(el('div', 't-greet-sub', 'Sitka attends with you — lectures, meetings, and events, understood live.'), 0.3))
+      home.appendChild(at(el('div', 't-greet-sub', 'Sitca attends with you — lectures, meetings, and events, understood live.'), 0.3))
       const cards = el('div', 't-cards')
       const defs: [string, string, string][] = [
         [I.screen, 'Start a live session', 'Transcript, AI and notes in real time.'],
@@ -464,7 +464,7 @@ const SCENES: Scene[] = [
   },
   {
     chapter: 'Start',
-    caption: 'Choose what Sitka should watch: your screen, the camera pointed at the board, or just the microphone.',
+    caption: 'Choose what Sitca should watch: your screen, the camera pointed at the board, or just the microphone.',
     duration: 9,
     build(stage) {
       const body = win(stage)
@@ -481,7 +481,7 @@ const SCENES: Scene[] = [
       })
       st1.querySelector('div')!.appendChild(chips)
       s.appendChild(st1)
-      const st2 = el('div', 't-step', '<i>2</i><div><div class="t-step-t">What should Sitka watch?</div></div>')
+      const st2 = el('div', 't-step', '<i>2</i><div><div class="t-step-t">What should Sitca watch?</div></div>')
       const tiles = el('div', 't-tiles')
       const defs: [string, string, string][] = [
         [I.screen, 'Screen + audio', 'Slides, a call, a video — with the sound.'],
@@ -499,7 +499,7 @@ const SCENES: Scene[] = [
       const st3 = el(
         'div',
         't-step',
-        '<i>3</i><div><div class="t-step-t">Anything Sitka should read first? <span style="color:var(--t3x);font-weight:500">optional</span></div><div class="t-chipx" style="display:inline-block">Add slides or notes</div></div>'
+        '<i>3</i><div><div class="t-step-t">Anything Sitca should read first? <span style="color:var(--t3x);font-weight:500">optional</span></div><div class="t-chipx" style="display:inline-block">Add slides or notes</div></div>'
       )
       s.appendChild(at(st3, 0.9))
       const foot = el('div', 't-foot', `${MARK}<span>Watching your screen · lecture</span>`)
@@ -524,7 +524,7 @@ const SCENES: Scene[] = [
   },
   {
     chapter: 'Listen',
-    caption: 'Sitka listens and writes everything down, with the time it was said.',
+    caption: 'Sitca listens and writes everything down, with the time it was said.',
     duration: 9.5,
     build(stage) {
       const body = win(stage, { rec: true })
@@ -544,7 +544,7 @@ const SCENES: Scene[] = [
       const right = el('div', 't-right')
       right.appendChild(chatHeader(true))
       const chat = el('div', 't-chat')
-      chat.appendChild(at(el('div', 't-empty', '<b>Sitka is listening with you</b>Ask anything about what is being said or shown.'), 0.8))
+      chat.appendChild(at(el('div', 't-empty', '<b>Sitca is listening with you</b>Ask anything about what is being said or shown.'), 0.8))
       right.appendChild(chat)
       right.appendChild(inputBox())
       cols.append(left, right)
@@ -583,7 +583,7 @@ const SCENES: Scene[] = [
       const right = el('div', 't-right')
       right.appendChild(chatHeader(true))
       const chat = el('div', 't-chat')
-      chat.appendChild(at(el('div', 't-empty', '<b>Sitka is listening with you</b>Ask anything about what is being said or shown.'), 0.6))
+      chat.appendChild(at(el('div', 't-empty', '<b>Sitca is listening with you</b>Ask anything about what is being said or shown.'), 0.6))
       right.appendChild(chat)
       right.appendChild(inputBox())
       cols.append(left, right)
@@ -662,7 +662,7 @@ const SCENES: Scene[] = [
   },
   {
     chapter: 'Ask',
-    caption: 'And Sitka speaks up on its own when something matters.',
+    caption: 'And Sitca speaks up on its own when something matters.',
     duration: 6,
     build(stage) {
       const body = win(stage, { rec: true })
@@ -687,7 +687,7 @@ const SCENES: Scene[] = [
       chat.appendChild(
         el('div', 't-ai', `The board shows <b>y = 3x² + 4</b> and asks for dy/dx. Using the power rule, <b>dy/dx = 6x</b>. <span class="t-chip">${I.play} 0:31</span>`)
       )
-      const note = el('div', 't-note', `<small>${I.sparkle}Sitka noticed</small>`)
+      const note = el('div', 't-note', `<small>${I.sparkle}Sitca noticed</small>`)
       note.appendChild(words('He just said the chain rule comes up in **every exam** — worth a mark. Want a quick practice question on it?', 2.9, 0.06))
       chat.appendChild(at(note, 2.7, 't-pop'))
       right.appendChild(chat)
@@ -699,7 +699,7 @@ const SCENES: Scene[] = [
   },
   {
     chapter: 'Remember',
-    caption: 'When the session ends, Sitka names it, writes the summary and marks the moments worth revisiting.',
+    caption: 'When the session ends, Sitca names it, writes the summary and marks the moments worth revisiting.',
     duration: 11,
     build(stage) {
       const body = win(stage)
@@ -743,7 +743,7 @@ const SCENES: Scene[] = [
   },
   {
     chapter: 'Remember',
-    caption: 'Weeks later, ask across everything you have ever attended. Sitka finds the moment.',
+    caption: 'Weeks later, ask across everything you have ever attended. Sitca finds the moment.',
     duration: 10,
     build(stage) {
       const body = win(stage, { nav: true })
@@ -847,7 +847,7 @@ export function mountTour(root: HTMLElement, opts: TourOptions = {}): () => void
     })
     const s = el('div', 't-scene')
     const end = el('div', 't-end')
-    end.innerHTML = `${MARK_LIVE}<h3>Ready when you are.</h3><p>Start a session the next time you are in a lecture, a meeting or a talk. Sitka does the rest.</p>`
+    end.innerHTML = `${MARK_LIVE}<h3>Ready when you are.</h3><p>Start a session the next time you are in a lecture, a meeting or a talk. Sitca does the rest.</p>`
     const btns = el('div', 't-end-btns')
     const replay = el('button', '', 'Watch again')
     replay.addEventListener('click', () => go(0))

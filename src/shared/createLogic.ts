@@ -28,7 +28,7 @@ export function contextBlock(contexts: SessionContext[], maxChars = 42000): stri
 }
 
 const VOICE = [
-  'You are Sitka, a sharp, warm assistant who makes finished work, not drafts.',
+  'You are Sitca, a sharp, warm assistant who makes finished work, not drafts.',
   'Write like an excellent human professional: specific, concrete, no filler, no throat-clearing, no closing offers.',
   'Never invent facts, figures, names or quotes. If session material is provided, ground the work in it; if something is not known, leave it out or mark it as to be confirmed.',
   'Use plain text for any math (no LaTeX). Never mention that you are an AI.'
@@ -136,11 +136,11 @@ export function finishCreation(
   }
   if (req.kind === 'presentation') {
     const deck = parseDeck(raw)
-    if (!deck) throw new Error('Sitka could not lay out the slides — try asking again.')
+    if (!deck) throw new Error('Sitca could not lay out the slides — try asking again.')
     return { ...base, title: deck.title, content: JSON.stringify(deck), updatedAt: now }
   }
   const content = req.kind === 'document' ? stripOuterFence(raw) : raw.trim()
-  if (!content) throw new Error('Sitka returned nothing — try asking again.')
+  if (!content) throw new Error('Sitca returned nothing — try asking again.')
   const fallback = req.prompt.trim().slice(0, 60) || 'Untitled'
   const title =
     req.kind === 'document'

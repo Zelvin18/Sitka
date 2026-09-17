@@ -1,5 +1,5 @@
 /**
- * A small PDF writer with no dependencies: enough for Sitka's documents and
+ * A small PDF writer with no dependencies: enough for Sitca's documents and
  * slide decks (headings, paragraphs, bullets, numbered lists, simple tables,
  * code, bold runs), in colour, with shapes, in a choice of styles. It uses
  * the fonts every PDF reader carries (Helvetica, Times, Courier), so nothing
@@ -1095,7 +1095,7 @@ export function briefToPdf(doc: BriefDoc): Uint8Array {
     p.text(right, W - margin - width(right, 7.5, 'sans'), H - 34, 7.5, 'sans', muted)
     p.hline(margin, W - margin, H - 44, rule, 0.5)
   }
-  p.onFinish = (n, total) => footerOps(p, { muted, serif: true }, 'Kept with Sitka', n, total, 1)
+  p.onFinish = (n, total) => footerOps(p, { muted, serif: true }, 'Kept with Sitca', n, total, 1)
 
   // ---- the cover ----
   p.newPage()
@@ -1134,7 +1134,7 @@ export function briefToPdf(doc: BriefDoc): Uint8Array {
     p.paragraph(doc.summary.trim(), 13, { serif: true, color: ink, lineHeight: 1.55 })
   }
   // and the mark at the foot
-  p.text('Sitka', margin, margin + 6, 9.5, 'sansBold', ink)
+  p.text('Sitca', margin, margin + 6, 9.5, 'sansBold', ink)
   p.text('Every word, kept.', margin + 34, margin + 6, 9, 'serif', muted)
 
   // ---- inside ----

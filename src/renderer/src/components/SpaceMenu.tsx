@@ -11,13 +11,13 @@ interface Props {
 const LABEL: Record<string, string> = { business: 'Business', education: 'Education' }
 
 /**
- * "Sitka for ▾" — one button in the top bar that opens a small menu with the
- * three places Sitka can be used: personal, Education, Business.
+ * "Sitca for ▾" — one button in the top bar that opens a small menu with the
+ * three places Sitca can be used: personal, Education, Business.
  */
 export default function SpaceMenu({ space, onPick }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
-  // On a phone the "Sitka for" kicker is hidden, so the label must stand alone.
+  // On a phone the "Sitca for" kicker is hidden, so the label must stand alone.
   const [phone, setPhone] = useState(() => window.innerWidth < 860)
   useEffect(() => {
     const on = (): void => setPhone(window.innerWidth < 860)
@@ -55,9 +55,9 @@ export default function SpaceMenu({ space, onPick }: Props): React.JSX.Element {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Choose where you are using Sitka"
+        title="Choose where you are using Sitca"
       >
-        <span className="space-menu-kicker">Sitka for</span>
+        <span className="space-menu-kicker">Sitca for</span>
         <span className="space-menu-current">{space ? LABEL[space] : phone ? 'For you' : 'you'}</span>
         <IconChevron size={15} strokeWidth={2.2} />
       </button>

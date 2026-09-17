@@ -126,7 +126,7 @@ export default function Home({
           <div>
             <h1 className="page-title">Library</h1>
             <p className="page-subtitle" style={{ marginBottom: 0 }}>
-              Every session Sitka has attended with you — searchable, replayable,
+              Every session Sitca has attended with you — searchable, replayable,
               understood.
             </p>
           </div>
@@ -149,7 +149,7 @@ export default function Home({
               <span className="link" onClick={onSettings}>
                 Settings
               </span>{' '}
-              to enable live transcription and Ask Sitka — a single free Groq key is
+              to enable live transcription and Ask Sitca — a single free Groq key is
               enough for testing.
             </span>
           </div>

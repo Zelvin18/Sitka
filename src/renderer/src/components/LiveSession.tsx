@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 
 /**
  * Hosts the chat column either in place or inside a pop-out window (the
- * browser's document picture-in-picture), so Sitka can float above a lecture
+ * browser's document picture-in-picture), so Sitca can float above a lecture
  * that runs in another window while the whole screen is being captured.
  */
 function PopHost({ win, children }: { win: Window | null; children: React.ReactNode }): React.JSX.Element {
@@ -112,7 +112,7 @@ interface Props {
   /** preselects hosting mode linked to this event (from the Events page) */
   initialEventId?: string
   onGoEvents: (eventId?: string) => void
-  /** started from Sitka for Business / Education: the session belongs there */
+  /** started from Sitca for Business / Education: the session belongs there */
   space?: Space
   /** ecosystem flows skip the intent step and arrive with a kind chosen */
   presetKind?: SessionKind
@@ -135,16 +135,16 @@ const SPACE_COPY: Record<
   { kicker: string; title: string; subtitle: string }
 > = {
   business: {
-    kicker: 'Sitka for Business',
+    kicker: 'Sitca for Business',
     title: 'Capture a meeting',
     subtitle:
-      'Sitka will follow the conversation and remember the decisions, promises and people — each with the moment it was said.'
+      'Sitca will follow the conversation and remember the decisions, promises and people — each with the moment it was said.'
   },
   education: {
-    kicker: 'Sitka for Education',
+    kicker: 'Sitca for Education',
     title: 'Attend a lecture',
     subtitle:
-      'Sitka listens with you: a live transcript, notes that write themselves, and every concept you were taught, pinned to the moment.'
+      'Sitca listens with you: a live transcript, notes that write themselves, and every concept you were taught, pinned to the moment.'
   }
 }
 
@@ -282,7 +282,7 @@ export default function LiveSession({
     'sitka.live.tab',
     'transcript'
   )
-  // Phone: Ask Sitka is a tab beside Transcript, open by default.
+  // Phone: Ask Sitca is a tab beside Transcript, open by default.
   const [askOpen, setAskOpen] = useRemembered('sitka.live.ask', () => window.innerWidth < 860)
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
@@ -1580,7 +1580,7 @@ export default function LiveSession({
   const liveBeat = useLive()
   const liveElsewhere = liveBeat && !isThisTab(liveBeat) && phase !== 'recording' ? liveBeat : null
 
-  // ---- theatre: the picture fills the screen, Sitka floats beside it ----
+  // ---- theatre: the picture fills the screen, Sitca floats beside it ----
   // The same chat panel is used, restyled as a glass card, so the conversation
   // is never lost when the view changes. Escape, or the browser leaving full
   // screen, brings the page back.
@@ -1658,8 +1658,8 @@ export default function LiveSession({
     return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
   }
 
-  // ---- pop out: Sitka floats above a lecture in another window ----
-  // With the whole screen captured, coming back to Sitka would put Sitka in
+  // ---- pop out: Sitca floats above a lecture in another window ----
+  // With the whole screen captured, coming back to Sitca would put Sitca in
   // the recording. The chat can instead live in a small always-on-top window
   // that sits over the lecture; the capture keeps the lecture, and the
   // conversation stays intact when it comes back.
@@ -1702,7 +1702,7 @@ export default function LiveSession({
       const size = document.documentElement.getAttribute('data-textsize')
       if (size) pip.document.documentElement.setAttribute('data-textsize', size)
       pip.document.body.className = 'popped-body'
-      pip.document.title = 'Sitka'
+      pip.document.title = 'Sitca'
       pip.addEventListener('pagehide', () => setPopped(null))
       setPopped(pip)
     } catch {
@@ -1732,7 +1732,7 @@ export default function LiveSession({
               <div className="live-block-text">
                 <b>You are already live in another tab.</b>
                 <span>
-                  "{liveElsewhere.title}" is recording there. Sitka keeps to one session at a time,
+                  "{liveElsewhere.title}" is recording there. Sitca keeps to one session at a time,
                   so end it in that tab before starting a new one.
                 </span>
               </div>
@@ -1751,7 +1751,7 @@ export default function LiveSession({
                 <span className="art-line" style={{ width: '70%' }} />
                 <span className="art-line" style={{ width: '52%' }} />
                 <span className="art-line" style={{ width: '62%' }} />
-                <span className="art-bubble">Ask Sitka anything…</span>
+                <span className="art-bubble">Ask Sitca anything…</span>
               </span>
               <span className="intent-title">
                 <IconScreen size={17} /> Just for me
@@ -1857,7 +1857,7 @@ export default function LiveSession({
                   ? 'Tap what your audience will follow. The QR you shared goes live at once.'
                   : hosting
                     ? 'Tap what to capture. The join QR appears the moment it starts.'
-                    : 'Tap what Sitka should watch. It starts the moment you choose.'}
+                    : 'Tap what Sitca should watch. It starts the moment you choose.'}
               </p>
               {!eventLocked && (
                 <div className="setup2-kinds">
@@ -1883,7 +1883,7 @@ export default function LiveSession({
                 </div>
               )}
             </div>
-            {/* what Sitka does with it, as three quiet glass cards on the right */}
+            {/* what Sitca does with it, as three quiet glass cards on the right */}
             <div className="setup2-pills" aria-hidden="true">
               <div className="setup2-pill">
                 <span className="setup2-pill-icon">
@@ -1941,7 +1941,7 @@ export default function LiveSession({
                 <span className="link" onClick={onOpenSettings}>
                   Settings
                 </span>{' '}
-                so Sitka can understand what is being said. You can still record without it.
+                so Sitca can understand what is being said. You can still record without it.
               </span>
             </div>
           )}
@@ -2005,7 +2005,7 @@ export default function LiveSession({
                     className="textarea"
                     style={{ marginTop: 10 }}
                     rows={3}
-                    placeholder={'Planned topics, one per line (optional). Sitka ticks them off live and flags what you have not covered.'}
+                    placeholder={'Planned topics, one per line (optional). Sitca ticks them off live and flags what you have not covered.'}
                     value={agendaText}
                     onChange={(e) => setAgendaText(e.target.value)}
                     spellCheck={false}
@@ -2180,8 +2180,8 @@ export default function LiveSession({
                 )}
                 {!CAN_SHARE_SCREEN && (
                   <div className="mic-card-tip" style={{ borderTop: 0, paddingTop: 0 }}>
-                    On a call or in a meeting on this phone? Put it on speaker so Sitka hears both
-                    sides, and keep Sitka on screen or in split screen so the phone keeps recording.
+                    On a call or in a meeting on this phone? Put it on speaker so Sitca hears both
+                    sides, and keep Sitca on screen or in split screen so the phone keeps recording.
                   </div>
                 )}
               </div>
@@ -2195,7 +2195,7 @@ export default function LiveSession({
               {moreOpen && (
                 <div className="setup-step-body" style={{ marginTop: 10 }}>
                   <div className="setup-step-hint">
-                    Sitka reads them before it listens, so it knows where the session is heading.
+                    Sitca reads them before it listens, so it knows where the session is heading.
                   </div>
                   <MaterialsPanel
                     compact
@@ -2462,12 +2462,12 @@ export default function LiveSession({
               type="button"
               className="theatre-fab"
               onClick={() => setTheatreChat(true)}
-              title="Open the conversation with Sitka"
-              aria-label="Ask Sitka"
+              title="Open the conversation with Sitca"
+              aria-label="Ask Sitca"
             >
               <Mark size={20} live />
               <span className="theatre-fab-text">
-                <b>Ask Sitka</b>
+                <b>Ask Sitca</b>
                 <small>about what is happening</small>
               </span>
             </button>
@@ -2499,7 +2499,7 @@ export default function LiveSession({
               <span>
                 {noSound === 'none'
                   ? 'This share carries no sound. Share the call\'s tab or the whole screen, or listen through your microphone.'
-                  : 'No sound has reached Sitka for a moment. If the call is in another window, share its tab or the whole screen, or listen through your microphone.'}
+                  : 'No sound has reached Sitca for a moment. If the call is in another window, share its tab or the whole screen, or listen through your microphone.'}
               </span>
             </div>
             {!micStreamRef.current && (
@@ -2857,7 +2857,7 @@ export default function LiveSession({
             type="button"
             className="theatre-close"
             onClick={() => setTheatreChat(false)}
-            title="Fold Sitka away — the conversation stays"
+            title="Fold Sitca away — the conversation stays"
           >
             Close
           </button>
@@ -2869,8 +2869,8 @@ export default function LiveSession({
             onClick={() => (popped ? popped.close() : void popOut())}
             title={
               popped
-                ? 'Bring Sitka back into the page'
-                : 'Float Sitka in a small window above the lecture, so the recording keeps the lecture'
+                ? 'Bring Sitca back into the page'
+                : 'Float Sitca in a small window above the lecture, so the recording keeps the lecture'
             }
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

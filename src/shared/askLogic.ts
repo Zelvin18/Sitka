@@ -1,5 +1,5 @@
 /**
- * When a question needs a look, and where. Sitka only reads the live screen
+ * When a question needs a look, and where. Sitca only reads the live screen
  * when the words ask for it, and it can look back at what was on screen at an
  * earlier moment when the question points there.
  */

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { IconDoc, IconImage, IconPhoto } from '../lib/icons'
 
 /**
- * One way to add a file anywhere in Sitka. A tap opens a small sheet asking
+ * One way to add a file anywhere in Sitca. A tap opens a small sheet asking
  * what is being added — a picture from the library, a photo taken now, or a
  * document — and the right picker opens for it. On a phone that is the
  * difference between a picker that works and one that does nothing: the
@@ -12,7 +12,7 @@ import { IconDoc, IconImage, IconPhoto } from '../lib/icons'
 
 const TOUCH = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1
 
-/** Documents Sitka can read into text. Pictures are read by the vision model. */
+/** Documents Sitca can read into text. Pictures are read by the vision model. */
 export const DOC_ACCEPT = '.pdf,.txt,.md,.csv,.json,.vtt,.srt,application/pdf,text/plain,text/markdown,text/csv'
 
 interface Props {

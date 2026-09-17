@@ -1,5 +1,5 @@
 /**
- * The Stage Screen: Sitka's face for the room itself — projector / venue TV.
+ * The Stage Screen: Sitca's face for the room itself — projector / venue TV.
  * Public and read-only: giant live captions, join QR, poll takeovers,
  * pushed recaps, and the replay QR when the event ends.
  * URL: /s/<eventId>  (optional ?lang=French for translated captions)
@@ -213,7 +213,7 @@ async function boot(): Promise<void> {
   }
   ev = data as EventRow
   el('wtitle').textContent = ev.title
-  document.title = ev.title + ' — Sitka Stage'
+  document.title = ev.title + ' — Sitca Stage'
   el('wurl').textContent = joinUrl().replace(/^https?:\/\//, '')
   void QRCode.toCanvas(el('wqr') as HTMLCanvasElement, joinUrl(), {
     width: Math.min(300, Math.round(window.innerHeight * 0.3)),

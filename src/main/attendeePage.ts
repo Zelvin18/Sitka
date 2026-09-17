@@ -10,7 +10,7 @@ export function attendeeHtml(eventTitle: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>${title} — Sitka Live</title>
+<title>${title} — Sitca Live</title>
 <style>
 :root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--danger:#c8443a;--shadow:rgba(20,20,22,.10)}
 @media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.45)}}
@@ -145,7 +145,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
 </head>
 <body>
 <header>
-  <div class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
+  <div class="brand"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitca <span class="live soon" id="livebadge"><span class="ldot"></span>LIVE</span></div>
   <div class="evtitle">${title}</div>
 </header>
 
@@ -162,7 +162,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
     <option>Arabic</option><option>Chinese</option><option>Hindi</option>
   </select>
   <button class="btn" id="joinbtn">Join event</button>
-  <div class="consent">This event is captured and AI-assisted by the host's Sitka. Your questions stay private to you; questions you submit to the speaker are shared with the host.</div>
+  <div class="consent">This event is captured and AI-assisted by the host's Sitca. Your questions stay private to you; questions you submit to the speaker are shared with the host.</div>
 </div>
 
 <div id="wait" class="center hidden" style="text-align:center">
@@ -194,7 +194,7 @@ textarea.qta{width:100%;border:1.5px solid var(--border);border-radius:14px;padd
     <div id="chat"></div>
   </div>
   <div class="pane" id="pane-q">
-    <div class="notice">Send a question to the speaker. Sitka first checks whether it was already answered.</div>
+    <div class="notice">Send a question to the speaker. Sitca first checks whether it was already answered.</div>
     <textarea id="qtext" rows="3" class="qta" placeholder="Your question for the speaker…"></textarea>
     <button class="btn" id="qsend">Check &amp; submit</button>
     <div id="qresult"></div>
@@ -538,7 +538,7 @@ var busy=false;
 function ask(q){
   if(busy||!q.trim())return;
   busy=true;bubble('bub-u',q);
-  var t=bubble('typing','Sitka is thinking…');
+  var t=bubble('typing','Sitca is thinking…');
   post('/ask',{attendeeId:attId,question:q}).then(function(r){
     t.remove();
     if(r.answer)aiBubble(r.answer);else bubble('notice err',r.error||'Something went wrong.');

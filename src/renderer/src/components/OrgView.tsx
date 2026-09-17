@@ -54,7 +54,7 @@ const spaceNoun = (kind: OrgSpaceKind): string =>
 
 /**
  * An organisation's workspace: a university or a company, with its spaces.
- * A space holds people, materials, sessions and Sitka — nothing else.
+ * A space holds people, materials, sessions and Sitca — nothing else.
  */
 export default function OrgView({
   org,
@@ -271,7 +271,7 @@ export default function OrgView({
     },
     {
       label: education ? 'Capture a lecture' : 'Capture a meeting',
-      desc: 'Sitka listens and remembers it for everyone.',
+      desc: 'Sitca listens and remembers it for everyone.',
       done: hasSessions,
       go: firstSpace
         ? () => onStartSession(firstSpace.kind === 'course' ? 'lecture' : 'meeting', false, firstSpace.id, firstSpace.name)
@@ -286,7 +286,7 @@ export default function OrgView({
   ]
 
   const joinSteps = (code: string, who: string): string =>
-    `Join ${org.name} on Sitka\n\n1. Open ${location.origin}/app and sign in (it's free).\n2. Go to ${education ? 'Education' : 'Business'} at the top right.\n3. Choose "Join with a code" and enter ${code}.\n\nYou'll join as ${who}.`
+    `Join ${org.name} on Sitca\n\n1. Open ${location.origin}/app and sign in (it's free).\n2. Go to ${education ? 'Education' : 'Business'} at the top right.\n3. Choose "Join with a code" and enter ${code}.\n\nYou'll join as ${who}.`
 
   // ---------------- organisation home ----------------
   // a space asked for by the app's history, not yet listed: nothing flashes
@@ -298,7 +298,7 @@ export default function OrgView({
           <div className="org-head">
             <span className="org-mark">{education ? <IconCap size={20} strokeWidth={1.6} /> : <IconBriefcase size={20} strokeWidth={1.6} />}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="eco-kicker">{education ? 'Sitka for Education' : 'Sitka for Business'}</div>
+              <div className="eco-kicker">{education ? 'Sitca for Education' : 'Sitca for Business'}</div>
               <h1 className="page-title" style={{ marginBottom: 4 }}>
                 {org.name}
               </h1>
@@ -346,8 +346,8 @@ export default function OrgView({
               <Mark size={16} />
               <span>
                 {education
-                  ? `Every course below has its own Sitka. Open one to ask about the lectures and the readings your lecturer shared, in their words. What you ask stays yours.`
-                  : `Every space below has its own Sitka. Open one to ask what was decided, why, and who promised what. What you ask stays yours.`}
+                  ? `Every course below has its own Sitca. Open one to ask about the lectures and the readings your lecturer shared, in their words. What you ask stays yours.`
+                  : `Every space below has its own Sitca. Open one to ask what was decided, why, and who promised what. What you ask stays yours.`}
               </span>
             </div>
           )}
@@ -475,8 +475,8 @@ export default function OrgView({
           <div className="org-foot">
             <span>
               {education
-                ? 'What you ask Sitka stays yours. Lecturers see how the room understood, never who asked what.'
-                : 'What you ask Sitka stays yours. Leads see how a meeting landed, never who asked what.'}
+                ? 'What you ask Sitca stays yours. Lecturers see how the room understood, never who asked what.'
+                : 'What you ask Sitca stays yours. Leads see how a meeting landed, never who asked what.'}
             </span>
             {org.role !== 'owner' ? (
               <button className="link-btn" onClick={() => setConfirmLeave(true)}>
@@ -495,7 +495,7 @@ export default function OrgView({
             <div className="dialog invite-dialog" onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title">Invite people to {org.name}</div>
               <div className="dialog-message">
-                Send a code. People sign in to Sitka, open {education ? 'Education' : 'Business'} at the top right,
+                Send a code. People sign in to Sitca, open {education ? 'Education' : 'Business'} at the top right,
                 choose “Join with a code”, and they are in.
               </div>
 
@@ -613,7 +613,7 @@ export default function OrgView({
             </h1>
             <div className="org-space-desc">
               {active.description ? `${active.description} · ` : ''}
-              Sitka answers from {materials.length} {materials.length === 1 ? 'document' : 'documents'} and{' '}
+              Sitca answers from {materials.length} {materials.length === 1 ? 'document' : 'documents'} and{' '}
               {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} here
             </div>
           </div>
@@ -676,8 +676,8 @@ export default function OrgView({
               emptyDesc={
                 materials.length + sessions.length === 0
                   ? lead
-                    ? 'Nothing here yet. Add the materials and capture a session, and Sitka will answer from them.'
-                    : 'Nothing here yet. Once materials are added and a session is captured, Sitka will answer from them.'
+                    ? 'Nothing here yet. Add the materials and capture a session, and Sitca will answer from them.'
+                    : 'Nothing here yet. Once materials are added and a session is captured, Sitca will answer from them.'
                   : active.kind === 'course'
                     ? 'Answers come from what was taught in the lectures and what your lecturer shared, in their words, with the exact moment linked.'
                     : 'Answers come from what was said in the meetings and the shared documents, with the exact moment linked.'
@@ -785,8 +785,8 @@ export default function OrgView({
             ) : materials.length === 0 ? (
               <div className="transcript-waiting">
                 {active.kind === 'course'
-                  ? 'Nothing shared yet. When your lecturer uploads slides or readings, Sitka reads them and they appear here.'
-                  : 'Nothing shared yet. When a lead uploads documents, Sitka reads them and they appear here.'}
+                  ? 'Nothing shared yet. When your lecturer uploads slides or readings, Sitca reads them and they appear here.'
+                  : 'Nothing shared yet. When a lead uploads documents, Sitca reads them and they appear here.'}
               </div>
             ) : (
               <div className="mat-list">
@@ -809,7 +809,7 @@ export default function OrgView({
             {materials.length > 0 && (
               <div className="mat-knows" style={{ marginTop: 12 }}>
                 <Mark size={13} />
-                Sitka has read {materials.length === 1 ? 'this document' : `these ${materials.length} documents`} and uses{' '}
+                Sitca has read {materials.length === 1 ? 'this document' : `these ${materials.length} documents`} and uses{' '}
                 {materials.length === 1 ? 'it' : 'them'} in every answer about this {noun}.
               </div>
             )}
@@ -822,7 +822,7 @@ export default function OrgView({
               <IconSparkle size={14} />
               <span>
                 How each session landed with the room, from what people did on their phones during it: who tapped
-                “lost me” and what they asked Sitka privately. Counts only, never names. Sessions that were not hosted
+                “lost me” and what they asked Sitca privately. Counts only, never names. Sessions that were not hosted
                 for an audience have nothing to show.
               </span>
             </div>

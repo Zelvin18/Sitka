@@ -3,7 +3,7 @@
 // A link pasted into WhatsApp, iMessage, Slack or a mail is fetched before it
 // is shown, by something that runs no code and reads only the page's own
 // title, description and preview image. The recap page is one file for every
-// session, so on its own it could only ever say "Sitka". This serves that same
+// session, so on its own it could only ever say "Sitca". This serves that same
 // file with the session's title, a line of its summary and a frame of its
 // recording written into the head, so a link says where it goes.
 //
@@ -40,12 +40,12 @@ export default async function handler(req, res) {
   }
 
   const info = UUID.test(id) ? await describe(kind, id) : null
-  const title = info?.title || (kind === 'event' ? 'A live event on Sitka' : 'A session recap on Sitka')
+  const title = info?.title || (kind === 'event' ? 'A live event on Sitca' : 'A session recap on Sitca')
   const description =
     info?.description ||
     (kind === 'event'
       ? 'Join live: captions in your language, ask questions privately, and keep the recap.'
-      : 'The recording, the moments that mattered, and Sitka to ask about any of it.')
+      : 'The recording, the moments that mattered, and Sitca to ask about any of it.')
   const image = info?.hasThumb
     ? `${origin}/api/thumb?id=${encodeURIComponent(id)}`
     : info?.image
@@ -56,10 +56,10 @@ export default async function handler(req, res) {
   const url = `${origin}/${kind === 'event' ? 'e' : 'r'}/${encodeURIComponent(id)}`
 
   const meta = [
-    `<title>${esc(title)} — Sitka</title>`,
+    `<title>${esc(title)} — Sitca</title>`,
     `<meta name="description" content="${esc(description)}">`,
     `<meta property="og:type" content="${kind === 'event' ? 'website' : 'video.other'}">`,
-    `<meta property="og:site_name" content="Sitka">`,
+    `<meta property="og:site_name" content="Sitca">`,
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
     `<meta property="og:url" content="${esc(url)}">`,
@@ -123,7 +123,7 @@ async function describe(kind, id) {
     if (rp.enabled) {
       return {
         title: rp.title || ev.title,
-        description: line(rp.summary) || 'The recording and recap of this event, with Sitka to ask.',
+        description: line(rp.summary) || 'The recording and recap of this event, with Sitca to ask.',
         hasThumb: false
       }
     }
@@ -133,7 +133,7 @@ async function describe(kind, id) {
       ? new Date(ev.starts_at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : ''
     return {
-      title: `${ev.title} — live on Sitka`,
+      title: `${ev.title} — live on Sitca`,
       description:
         ev.status === 'live'
           ? "Live now — tap to join. Every word in your language, the speaker's screen, and your own questions answered privately."
@@ -153,7 +153,7 @@ async function describe(kind, id) {
   const len = minutes(rc.duration_ms)
   return {
     title: rc.title || 'Session recap',
-    description: line(rc.summary) || (len ? `A ${len} session, with the recording and Sitka to ask.` : 'The recording and recap, with Sitka to ask.'),
+    description: line(rc.summary) || (len ? `A ${len} session, with the recording and Sitca to ask.` : 'The recording and recap, with Sitca to ask.'),
     hasThumb: Boolean(rc.thumb && String(rc.thumb).startsWith('data:image/'))
   }
 }

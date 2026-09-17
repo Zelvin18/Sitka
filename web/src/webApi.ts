@@ -1,5 +1,5 @@
 /**
- * Cloud backend for the full Sitka web app.
+ * Cloud backend for the full Sitca web app.
  * Implements the complete window.sitka surface (the Electron preload API)
  * against Supabase (data + storage) and the /api AI proxies, so the untouched
  * desktop renderer runs online. The signed-in user's browser tab is the brain:
@@ -226,7 +226,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       'position:fixed;left:0;right:0;top:0;z-index:9999;background:#1a1a1c;color:#fff;font:600 13px -apple-system,Segoe UI,Roboto,sans-serif;padding:11px 16px;display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,.25)'
     )
     const msg = document.createElement('span')
-    msg.textContent = 'Sitka cannot save to your database: ' + reason
+    msg.textContent = 'Sitca cannot save to your database: ' + reason
     const hint = document.createElement('span')
     hint.setAttribute('style', 'font-weight:500;opacity:.8')
     hint.textContent = /does not exist|relation|schema cache|not find/i.test(reason)
@@ -313,6 +313,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return store.download(path, where)
   }
 
+  // ---------- links written before the address changed ----------
+  // A session remembers its recap link as text. Ones written under the old
+  // address still open (the old address forwards), but what people see should
+  // be the address they know.
+  function freshLinks(meta: SessionMeta): void {
+    const fix = (u?: string): string | undefined => (u && u.includes('sitka-blue.vercel.app') ? u.replace('sitka-blue.vercel.app', 'sitcaai.vercel.app') : u)
+    meta.replayUrl = fix(meta.replayUrl)
+    meta.recapUrl = fix(meta.recapUrl)
+  }
+
   // ---------- a session's banner: a small file with a link ----------
   // A picture kept inside the session row would travel with every listing
   // of the library; the file lives in the public picture bucket (with the
@@ -387,7 +397,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       const { error } = await store.upload(videoPath(id), blob, kind)
       if (error) {
-        console.warn('Sitka: whole-file upload failed', error)
+        console.warn('Sitca: whole-file upload failed', error)
         return
       }
       d.meta.store = where
@@ -397,7 +407,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
     } catch (err) {
-      console.warn('Sitka: could not consolidate the recording', err)
+      console.warn('Sitca: could not consolidate the recording', err)
     } finally {
       consolidating.delete(id)
     }
@@ -538,7 +548,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           })
         })
       } catch {
-        lastError = 'Sitka could not reach its AI — check the connection.'
+        lastError = 'Sitca could not reach its AI — check the connection.'
         continue
       }
       const j = (await r.json().catch(() => ({}))) as { text?: string; vision?: boolean; error?: string }
@@ -847,7 +857,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const blob = new Blob(bufs, { type: kind })
     const { error } = await store.upload(partPath(p.sessionId, p.partNo), blob, kind)
     if (error) {
-      console.error('Sitka: part upload failed', p.sessionId, p.partNo, error)
+      console.error('Sitca: part upload failed', p.sessionId, p.partNo, error)
       // said once per session, so a blocked network shows up in the operations view
       if (!uploadTrouble.has(p.sessionId)) {
         uploadTrouble.add(p.sessionId)
@@ -997,7 +1007,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       void retryPendingUploads()
     } catch (err) {
-      console.error('Sitka: recovery failed', err)
+      console.error('Sitca: recovery failed', err)
     }
   }
 
@@ -1048,7 +1058,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   function askSystemPrompt(live: boolean): string {
     return [
       person(),
-      'You are Sitka, an AI assistant that is attending a live session (a lecture, meeting, presentation, or event) together with the user.',
+      'You are Sitca, an AI assistant that is attending a live session (a lecture, meeting, presentation, or event) together with the user.',
       live
         ? 'The session is happening RIGHT NOW. The transcript below covers everything captured so far, up to the present moment. When the user asks about "now" or "currently", focus on the most recent parts of the transcript.'
         : 'The session has ended. The transcript below covers the full recording.',
@@ -1056,7 +1066,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       'Rules:',
       '- Answer every question. Look in the session first: when the session covers it, answer from what was said and shown, and never present your own knowledge as the speaker\'s words.',
       '- When the session does not cover the question, or the question is about something else entirely, never refuse. Say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge. Be as helpful as a good tutor would be. Keep it to a few clear sentences unless the user asks for more.',
-      '- Lines beginning with "[On screen]" are what Sitka read from the presenter\'s screen — slides, the whiteboard, documents, charts. Treat them as part of the session. When the user asks what is shown, written, on the board, on the slide or on the screen, answer from those lines and from any attached image of the screen, quoting the text and equations exactly as they appear. If neither shows it, say the screen has not been read yet.',
+      '- Lines beginning with "[On screen]" are what Sitca read from the presenter\'s screen — slides, the whiteboard, documents, charts. Treat them as part of the session. When the user asks what is shown, written, on the board, on the slide or on the screen, answer from those lines and from any attached image of the screen, quoting the text and equations exactly as they appear. If neither shows it, say the screen has not been read yet.',
       '- Drawing what was on screen: when the user asks to see, redraw, reproduce or copy a table, chart, graph or diagram that was shown, rebuild it from the [On screen] lines and any attached image. A table becomes a markdown table with every value. A chart becomes a ```chart block — lines "type: bar" (or line), "title: …", "labels: Q1, Q2, Q3", then one line per series like "Sales: 10, 20, 30". A diagram or process becomes a ```flow block with one connection per line, like "Input -> Model -> Output". Use only values you can actually read; if a value is not legible, say so instead of inventing it.',
       '- A question that starts in the session and reaches beyond it (background, a definition, why something is so, how it compares) gets both: what the speaker said, then the wider explanation, kept apart so the user knows which is which.',
       '- When the user asks what YOU think — your opinion, a critique, whether something is right or a good idea, whether you agree, what you would add or challenge — give a genuine, reasoned point of view: strengths, weaknesses, counter-arguments, and your own assessment, drawing on your broader knowledge as well as the session. Never say you cannot have or express an opinion. Make clear what is your view and what the speaker said.',
@@ -1084,8 +1094,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   ): string {
     return [
       preEvent
-        ? 'You are Sitka, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
-        : 'You are Sitka, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
+        ? 'You are Sitca, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
+        : 'You are Sitca, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
       `This attendee describes themself as: "${persona}". Calibrate every answer to that perspective and knowledge level — the same talk means different things to different people.`,
       lang && lang.toLowerCase() !== 'english'
         ? `Respond ENTIRELY in ${lang}, even though the source material is in another language.`
@@ -1220,7 +1230,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await rememberSession(d.meta, d.segments).catch(() => undefined)
     } catch (err) {
       d.meta.analysisError = err instanceof Error ? err.message : String(err)
-      console.error('Sitka: session analysis failed', d.meta.analysisError)
+      console.error('Sitca: session analysis failed', d.meta.analysisError)
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
     }
@@ -1317,7 +1327,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     } catch {
       await sb
         .from('asks')
-        .update({ status: 'error', answer: 'Sitka could not answer — try again.' })
+        .update({ status: 'error', answer: 'Sitca could not answer — try again.' })
         .eq('id', row.id)
     } finally {
       c.answering.delete(row.id)
@@ -2159,11 +2169,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (old) moveBannerOut(old)
       // the sample lecture of earlier versions had no recording to play: it goes
       for (const m of rows) if (m.sample) void api.deleteSession(m.id).catch(() => undefined)
+      for (const m of rows) freshLinks(m)
       return rows.filter((m) => !m.sample)
     },
 
     getSession: async (id: string) => {
       const d = await loadSession(id)
+      if (d) freshLinks(d.meta)
       // A shared recap follows its session: opening the session refreshes
       // the recap's title, summary and moments, so an old share never keeps
       // a stale name.
@@ -2644,7 +2656,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const whole =
         (await fetchObject(videoPath(id), 'r2')) ?? (await fetchObject(videoPath(id), 'sb'))
       if (!whole) {
-        console.error('Sitka: no recording found for session', id)
+        console.error('Sitca: no recording found for session', id)
         return null
       }
       return new Uint8Array(whole)
@@ -2909,7 +2921,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const history: ChatMsg[] = req.history
           .slice(-10)
           .map((m) => ({ role: m.role, content: m.content }))
-        // Live sessions attach the current screen so Sitka can read what is
+        // Live sessions attach the current screen so Sitca can read what is
         // being presented — graphs, slides, diagrams — not only what is said.
         // Anything the user attached with + comes too: documents as text ahead
         // of the question, pictures as images after the screen.
@@ -2958,7 +2970,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             : '(No matching moments found in the library.)'
         const idMap = new Map(rows.map((r) => [r.id.slice(0, 8), r.id]))
         const system = [
-          'You are Sitka Overview — the intelligence over EVERYTHING this user has attended and recorded.',
+          'You are Sitca Overview — the intelligence over EVERYTHING this user has attended and recorded.',
           person(),
           `Their library: ${rows.length} sessions — ${rows.map((r) => `"${r.meta.title}"`).slice(0, 20).join(', ')}.`,
           'Relevant moments retrieved from their sessions are below; each is tagged [[<id>@M:SS]].',
@@ -3228,7 +3240,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         )
         const noun = space?.kind === 'course' ? 'course' : space?.kind === 'team' ? 'team' : 'project'
         const system = [
-          `You are Sitka for the ${noun} "${space?.name ?? ''}"${space?.description ? ` — ${space.description}` : ''}.`,
+          `You are Sitca for the ${noun} "${space?.name ?? ''}"${space?.description ? ` — ${space.description}` : ''}.`,
           person(),
           noun === 'course'
             ? 'You are the teaching assistant for this course: you answer from what the lecturer actually taught in these sessions and from the materials they shared, in the terms they used. This is what will be examined.'
@@ -4257,7 +4269,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (!ok) left++
       } catch (err) {
         left++
-        console.warn('Sitka: could not rewrite a recording yet', row.id, err)
+        console.warn('Sitca: could not rewrite a recording yet', row.id, err)
       }
     }
     if (left === 0) localStorage.setItem(FLATTEN_AT, String(Date.now()))
@@ -4314,7 +4326,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         else if (moved === 'pending') remaining++
       } catch (err) {
         remaining++
-        console.warn('Sitka: could not move a recording yet', m.id, err)
+        console.warn('Sitca: could not move a recording yet', m.id, err)
       }
     }
     if (remaining === 0) localStorage.setItem(MIGRATE_AT, String(Date.now()))

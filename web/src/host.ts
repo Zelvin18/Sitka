@@ -123,8 +123,8 @@ function attendeeSystemPrompt(persona: string, lang: string, segs: Seg[], preEve
   const materials = current?.materials_text?.trim() || ''
   return [
     preEvent
-      ? 'You are Sitka, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
-      : 'You are Sitka, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
+      ? 'You are Sitca, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
+      : 'You are Sitca, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
     `This attendee describes themself as: "${persona}". Calibrate every answer to that perspective and knowledge level — the same talk means different things to different people.`,
     lang && lang.toLowerCase() !== 'english'
       ? `Respond ENTIRELY in ${lang}, even though the source material is in another language.`
@@ -400,7 +400,7 @@ async function pollPreAsks(): Promise<void> {
       } catch {
         await sb
           .from('asks')
-          .update({ status: 'error', answer: 'Sitka could not answer — try again.' })
+          .update({ status: 'error', answer: 'Sitca could not answer — try again.' })
           .eq('id', row.id)
       } finally {
         preAnswering.delete(row.id)
@@ -760,7 +760,7 @@ async function answerAsk(row: {
   } catch {
     await sb
       .from('asks')
-      .update({ status: 'error', answer: 'Sitka could not answer — try again.' })
+      .update({ status: 'error', answer: 'Sitca could not answer — try again.' })
       .eq('id', row.id)
   } finally {
     st.answering.delete(row.id)

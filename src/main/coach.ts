@@ -221,7 +221,7 @@ export function practiceContext(eventId: string): string | null {
     parts.push(`Practiced Q&A (most recent):\n${recent.join('\n')}`)
   }
   if (parts.length === 0) return null
-  return `The presenter PRACTICED for this event with Sitka Coach. Use this practice memory — when a live audience question matches something practiced, remind them of their practiced answer:\n${parts.join('\n')}`.slice(
+  return `The presenter PRACTICED for this event with Sitca Coach. Use this practice memory — when a live audience question matches something practiced, remind them of their practiced answer:\n${parts.join('\n')}`.slice(
     0,
     6000
   )

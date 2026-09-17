@@ -6,7 +6,7 @@ import { copyRich } from '../lib/clipboard'
 
 /**
  * The page shown while something is being made, in the place the finished
- * thing will take: a warm sky drifting slowly, the Sitka mark, and a line
+ * thing will take: a warm sky drifting slowly, the Sitca mark, and a line
  * about what is happening now. Code is written out on screen as it lands.
  * When it is done, the file is a tap away, and so is opening it.
  */

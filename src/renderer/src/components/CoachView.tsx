@@ -1066,7 +1066,7 @@ export default function CoachView({ hasChatKey, hasSttKey, onOpenSettings }: Pro
                     <IconHelp size={14} /> Q&amp;A room
                   </span>
                   <span className="room-desc">
-                    Sitka plays your audience and grills you with questions from your
+                    Sitca plays your audience and grills you with questions from your
                     materials.
                   </span>
                 </button>

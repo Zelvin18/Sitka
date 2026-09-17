@@ -4,7 +4,7 @@ const ASKED = 'sitka.nameAsked'
 
 /**
  * Asked once of an account that never gave a name (older accounts were known
- * by their email). What is typed becomes what Sitka calls the person, on
+ * by their email). What is typed becomes what Sitca calls the person, on
  * screen and in a kind word now and then. "Not now" keeps the peace until
  * the next time the app opens.
  */
@@ -57,7 +57,7 @@ export default function NamePrompt(): React.JSX.Element | null {
   return (
     <div className="dialog-overlay" onMouseDown={later}>
       <div className="dialog name-prompt" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="name-prompt-title">What should Sitka call you?</div>
+        <div className="name-prompt-title">What should Sitca call you?</div>
         <div className="name-prompt-sub">
           Your name, not your email — so the workspace, and a word of encouragement in practice, feel like yours.
         </div>

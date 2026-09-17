@@ -1,5 +1,5 @@
 /**
- * Rich clipboard support: Sitka content is markdown internally, but a copy
+ * Rich clipboard support: Sitca content is markdown internally, but a copy
  * should paste as real formatting in Word/Docs/Outlook (text/html flavor)
  * while still giving clean plain text everywhere else.
  */

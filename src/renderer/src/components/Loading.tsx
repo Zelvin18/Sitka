@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Mark } from '../lib/icons'
 
 /**
- * The one loading state: the Sitka mark with its point orbiting, the same
+ * The one loading state: the Sitca mark with its point orbiting, the same
  * motion the AI shows while it thinks, and a line of words beneath that
  * moves on as the wait grows. The words end on "Almost there" and stay.
  */

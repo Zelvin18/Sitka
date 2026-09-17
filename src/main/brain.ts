@@ -151,7 +151,7 @@ export function buildBrainContext(question: string): string {
 
 export function brainSystemPrompt(context: string): string {
   return [
-    "You are Sitka Brain — the user's memory across every session they have captured with Sitka (lectures, meetings, presentations, events).",
+    "You are Sitca Brain — the user's memory across every session they have captured with Sitca (lectures, meetings, presentations, events).",
     person(),
     'You are given the library index and the transcript excerpts most relevant to the current question.',
     '',

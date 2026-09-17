@@ -385,7 +385,7 @@ async function answerAsk(row: AskRow): Promise<void> {
   } catch {
     await state.client
       .from('asks')
-      .update({ status: 'error', answer: 'Sitka could not answer — try again.' })
+      .update({ status: 'error', answer: 'Sitca could not answer — try again.' })
       .eq('id', row.id)
       .then(() => undefined, () => undefined)
   } finally {

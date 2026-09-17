@@ -45,10 +45,10 @@ function systemPrompt({ ev, persona, lang, transcript, materials, hasWords }) {
   const agenda = Array.isArray(ev.agenda) && ev.agenda.length ? ev.agenda.map((a) => `- ${a}`).join('\n') : ''
   return [
     preEvent
-      ? 'You are Sitka, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet. Answer from what the host has shared (the materials and agenda below) and say clearly when something will only be known once the event begins.'
+      ? 'You are Sitca, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet. Answer from what the host has shared (the materials and agenda below) and say clearly when something will only be known once the event begins.'
       : ended
-        ? 'You are Sitka, a personal AI companion for an audience member of a live event that has now ended. You listened to it with them; the transcript is below, with whatever the host shared beforehand.'
-        : 'You are Sitka, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
+        ? 'You are Sitca, a personal AI companion for an audience member of a live event that has now ended. You listened to it with them; the transcript is below, with whatever the host shared beforehand.'
+        : 'You are Sitca, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
     `The event is called "${ev.title || 'Live event'}".`,
     agenda ? `The host's agenda:\n${agenda}` : '',
     `This attendee describes themself as: "${persona || 'Curious attendee'}". Calibrate every answer to that perspective and knowledge level — the same talk means different things to different people.`,
@@ -233,7 +233,7 @@ export default async function handler(req, res) {
     })
     const j = await r.json().catch(() => ({}))
     if (!r.ok || !j.text) {
-      res.status(502).json({ error: j.error || 'Sitka could not answer right now.' })
+      res.status(502).json({ error: j.error || 'Sitca could not answer right now.' })
       return
     }
     let answer = String(j.text)

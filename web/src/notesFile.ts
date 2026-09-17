@@ -52,7 +52,7 @@ export function notesPdf(p: NotesParts): Uint8Array {
     moments: p.moments?.map(withoutTimes),
     body,
     bodyLabel: p.notesLabel ?? 'Notes',
-    closing: 'Written by Sitka from what was said and shown. Nothing here was invented; where something was not covered, it says so.'
+    closing: 'Written by Sitca from what was said and shown. Nothing here was invented; where something was not covered, it says so.'
   })
 }
 

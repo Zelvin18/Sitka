@@ -16,7 +16,7 @@ interface Props {
 }
 
 /**
- * The slides, notes or readings for a session. Sitka reads them so it knows
+ * The slides, notes or readings for a session. Sitca reads them so it knows
  * what the session is about, where it is heading, and the exact terms in play.
  */
 export default function MaterialsPanel({
@@ -70,7 +70,7 @@ export default function MaterialsPanel({
     <div className={`mat-panel${compact ? ' compact' : ''}`}>
       {!compact && (
         <div className="mat-explain">
-          Give Sitka the slides, notes, reading or agenda. It uses them to know what the
+          Give Sitca the slides, notes, reading or agenda. It uses them to know what the
           session is about, follow where it is heading, get every term and figure right, and
           answer questions the spoken words alone cannot.
         </div>
@@ -95,7 +95,7 @@ export default function MaterialsPanel({
           </span>
         ) : (
           <>
-            <FilePick onFiles={addFiles} hint="Sitka reads it and keeps the words.">
+            <FilePick onFiles={addFiles} hint="Sitca reads it and keeps the words.">
               {(open) => (
                 <button className="btn btn-sm" onClick={open}>
                   <IconPlus size={13} strokeWidth={2.2} />
@@ -167,7 +167,7 @@ export default function MaterialsPanel({
       {materials.length > 0 && (
         <div className="mat-knows">
           <Mark size={13} />
-          Sitka has read {materials.length === 1 ? 'this document' : `these ${materials.length} documents`}{' '}
+          Sitca has read {materials.length === 1 ? 'this document' : `these ${materials.length} documents`}{' '}
           and will use {materials.length === 1 ? 'it' : 'them'} in every answer, note and summary.
         </div>
       )}
@@ -175,7 +175,7 @@ export default function MaterialsPanel({
       {pendingRemove && (
         <ConfirmDialog
           title="Remove this material?"
-          message={`Sitka will stop using “${pendingRemove.name}” for this session.`}
+          message={`Sitca will stop using “${pendingRemove.name}” for this session.`}
           confirmLabel="Remove"
           onConfirm={() => {
             const m = pendingRemove

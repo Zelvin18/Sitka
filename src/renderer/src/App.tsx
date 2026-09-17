@@ -499,7 +499,7 @@ export default function App(): React.JSX.Element {
             ‹ Back
           </button>
         )}
-        {/* "Sitka for" at the top right: personal, Education or Business. */}
+        {/* "Sitca for" at the top right: personal, Education or Business. */}
         <div className="top-right">
         {(liveHere || liveElsewhere) && view.name !== 'live' && (
           <button

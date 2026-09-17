@@ -30,7 +30,7 @@ interface Replay {
   durationMs?: number
   /** true: a public copy exists; 'parts': play the host's own recording parts */
   video?: boolean | 'parts'
-  /** switched on by Sitka when the event ended, not by hand */
+  /** switched on by Sitca when the event ended, not by hand */
   auto?: boolean
 }
 interface SegRow {
@@ -329,7 +329,7 @@ function wireAsk(title: string, transcript: string, materials: string, kindWord:
   // Built per question: the reader may change their language at any time.
   const askSystem = (): string =>
     [
-      `You are Sitka, answering questions about a recorded ${kindWord}: "${title}".`,
+      `You are Sitca, answering questions about a recorded ${kindWord}: "${title}".`,
       'Ground every answer in the transcript (and materials) below; if something was not covered, say so plainly.',
       'Talking to the reader, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said". The word transcript is for you, not for them.',
       'When you reference a specific moment, cite it inline as [[M:SS]] using a timestamp from the transcript — plain ASCII double square brackets. These become tap-to-jump links.',
@@ -426,7 +426,7 @@ function applySummary(r: Replay): void {
     s.classList.remove('pending')
     delete s.dataset.pending
   } else {
-    s.textContent = 'Sitka is writing the summary. It appears here in a moment.'
+    s.textContent = 'Sitca is writing the summary. It appears here in a moment.'
     s.classList.add('pending')
     s.dataset.pending = '1'
   }
@@ -544,7 +544,7 @@ async function bootEvent(): Promise<boolean> {
   if (!data || !replay?.enabled) return false
 
   const title = replay.title || (data.title as string) || 'Event replay'
-  document.title = title + ' — Sitka Replay'
+  document.title = title + ' — Sitca Replay'
   el('rtitle').textContent = title
   const bits: string[] = []
   if (data.starts_at) bits.push(fmtDate(data.starts_at as string))
@@ -567,7 +567,7 @@ async function bootEvent(): Promise<boolean> {
   v.ontimeupdate = () => highlightAt(v.currentTime)
   setupPlayer(replay, data as { owner?: string | null; session_id?: string | null })
 
-  // The summary is written by Sitka in the minute after the event ends: keep
+  // The summary is written by Sitca in the minute after the event ends: keep
   // asking for it (and for the recording) for a while, so the page fills in.
   if (!replay.summary || !hasVideo) {
     let ticks = 0
@@ -623,7 +623,7 @@ async function bootRecap(): Promise<boolean> {
   }
   el('htag').textContent = 'RECAP'
   const title = rc.title || 'Session recap'
-  document.title = title + ' — Sitka'
+  document.title = title + ' — Sitca'
   el('rtitle').textContent = title
   const bits: string[] = []
   if (rc.session_at) bits.push(fmtDate(rc.session_at))
@@ -654,8 +654,8 @@ async function bootRecap(): Promise<boolean> {
     const sec = parseChipTs(chip.textContent || '')
     if (sec !== null && Number.isFinite(sec)) seek(sec)
   })
-  el('footnote').textContent = 'This session was captured and made searchable by Sitka.'
-  el('footcta').textContent = 'Try Sitka'
+  el('footnote').textContent = 'This session was captured and made searchable by Sitca.'
+  el('footcta').textContent = 'Try Sitca'
 
   const transcript = lines
     .map((s) => `[${s.label}] ${s.text}`)

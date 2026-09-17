@@ -1,5 +1,5 @@
 /**
- * Syntax colouring for the code Sitka writes: comments, strings, numbers,
+ * Syntax colouring for the code Sitca writes: comments, strings, numbers,
  * keywords, types and function names, in the languages that come up. One
  * tokenizer, a few keyword lists, no dependency; plain text for anything it
  * does not know.

@@ -246,7 +246,7 @@ export default async function handler(req, res) {
   }
   // GET /api/speak — a check you can open in a browser: which voice answers.
   if (req.method === 'GET') {
-    const out = await synthesize('Sitka is ready.')
+    const out = await synthesize('Sitca is ready.')
     res.status(out.wav ? 200 : 503).json({
       ok: Boolean(out.wav),
       provider: out.provider,

@@ -140,7 +140,7 @@ export default function BrainView({
       <div className="brain-hero">
         <h1 className="page-title">Overview</h1>
         <p className="page-subtitle" style={{ marginBottom: 16 }}>
-          Everything Sitka has ever attended with you. Ask it, search it, or see what it
+          Everything Sitca has ever attended with you. Ask it, search it, or see what it
           remembers.
         </p>
         <div className="brain-modes">

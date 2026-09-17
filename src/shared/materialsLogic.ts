@@ -1,5 +1,5 @@
 /**
- * Session materials: the slides, notes or readings a user shares so Sitka
+ * Session materials: the slides, notes or readings a user shares so Sitca
  * knows what a session is about before and while it happens. Shared prompt
  * plumbing for desktop and web.
  */

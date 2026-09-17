@@ -943,7 +943,7 @@ async function votePoll(choice: number): Promise<void> {
 // ---------- pushed room notes (host recap → this phone) ----------
 function showRoomNote(text: string): void {
   const card = el('notecard')
-  card.innerHTML = '<b>FROM THE HOST’S SITKA</b><span></span><button class="nx" aria-label="Dismiss">✕</button>'
+  card.innerHTML = '<b>FROM THE HOST’S SITCA</b><span></span><button class="nx" aria-label="Dismiss">✕</button>'
   ;(card.children[1] as HTMLElement).textContent = text
   ;(card.querySelector('.nx') as HTMLButtonElement).onclick = () => card.classList.add('hidden')
   card.classList.remove('hidden')
@@ -1265,7 +1265,7 @@ function ask(q: string): void {
   busy = true
   bubble('bub-u', q)
   askHistory.push({ role: 'user', content: q.slice(0, 600) })
-  const typing = bubble('typing', 'Sitka is thinking…')
+  const typing = bubble('typing', 'Sitca is thinking…')
   void submitAsk('ask', q.slice(0, 600), typing).finally(() => {
     busy = false
   })
@@ -1751,7 +1751,7 @@ el('proxyback').onclick = () => {
   const { error: aerr } = await sb.from('attendees').insert({
     id: proxyId,
     event_id: eventId,
-    persona: 'Absent (Sitka attending as proxy)',
+    persona: 'Absent (Sitca attending as proxy)',
     lang
   })
   const { error: perr } = aerr
@@ -1794,12 +1794,12 @@ function renderBrief(brief: string, proxyId: string): void {
         label: 'Your brief',
         date: ev?.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
         kind: 'Live event',
-        by: 'Sitka attended for you',
+        by: 'Sitca attended for you',
         notes: brief,
         notesLabel: 'What happened'
       })
     )
-  // and Sitka, who sat through it, to ask
+  // and Sitca, who sat through it, to ask
   el('proxychat').classList.remove('hidden')
   attId = proxyId
   const history: { role: 'user' | 'assistant'; content: string }[] = []
@@ -1814,14 +1814,14 @@ function renderBrief(brief: string, proxyId: string): void {
     msgs.appendChild(u)
     const typing = document.createElement('div')
     typing.className = 'typing'
-    typing.textContent = 'Sitka is thinking…'
+    typing.textContent = 'Sitca is thinking…'
     msgs.appendChild(typing)
     history.push({ role: 'user', content: q })
     try {
       const r = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitka to attend for them', lang: myLang, history: history.slice(-8) }),
+        body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitca to attend for them', lang: myLang, history: history.slice(-8) }),
         signal: AbortSignal.timeout(55000)
       })
       const j = (await r.json().catch(() => ({}))) as { answer?: string; error?: string }
@@ -1833,7 +1833,7 @@ function renderBrief(brief: string, proxyId: string): void {
         history.push({ role: 'assistant', content: j.answer })
       } else {
         a.className = 'notice err'
-        a.textContent = j.error || 'Sitka could not answer — try again.'
+        a.textContent = j.error || 'Sitca could not answer — try again.'
       }
       msgs.appendChild(a)
     } catch {
@@ -1890,7 +1890,7 @@ function showProxyStatus(proxyId: string): void {
       ev?.status === 'ended'
         ? 'The event has ended — your brief is being written. This page updates by itself.'
         : ev?.status === 'live'
-          ? 'The event is happening right now — Sitka is listening for your topics. Come back here afterwards.'
+          ? 'The event is happening right now — Sitca is listening for your topics. Come back here afterwards.'
           : 'Keep this link — your personal brief appears here when the event ends.'
     return false
   }
@@ -1965,7 +1965,7 @@ async function boot(): Promise<void> {
   }
   ev = row
   el('evtitle').textContent = ev.title
-  document.title = ev.title + ' — Sitka Live'
+  document.title = ev.title + ' — Sitca Live'
   setBadge(ev.status === 'live' ? 'live' : ev.status === 'ended' ? 'ended' : 'soon')
 
   // absent-attendee identity takes precedence: this device registered a proxy

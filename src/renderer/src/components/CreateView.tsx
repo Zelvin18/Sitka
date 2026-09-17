@@ -239,7 +239,7 @@ export default function CreateView({
         setDesigning(null)
         setError(
           res.error === 'missing-key'
-            ? 'Add an AI key in Settings to let Sitka create things.'
+            ? 'Add an AI key in Settings to let Sitca create things.'
             : res.error
         )
         return
@@ -455,7 +455,7 @@ export default function CreateView({
           <div className="content-inner" style={{ maxWidth: 760 }}>
             <h1 className="page-title">Create</h1>
             <p className="page-subtitle">
-              Tell Sitka what you need. It writes documents, designs presentations and builds
+              Tell Sitca what you need. It writes documents, designs presentations and builds
               code, and it can ground the work in what it heard in your sessions.
             </p>
 
@@ -541,7 +541,7 @@ export default function CreateView({
                 <button className="link-btn" onClick={onOpenSettings}>
                   Settings
                 </button>{' '}
-                to let Sitka create things for you.
+                to let Sitca create things for you.
               </div>
             )}
             {error && <div className="notice notice-error" style={{ marginTop: 16 }}>{error}</div>}
@@ -678,7 +678,7 @@ export default function CreateView({
               <div className="create-refine-row">
                 <input
                   className="input"
-                  placeholder="Tell Sitka what to change… (e.g. shorter, add a section on risks, make it friendlier)"
+                  placeholder="Tell Sitca what to change… (e.g. shorter, add a section on risks, make it friendlier)"
                   value={refine}
                   onChange={(e) => setRefine(e.target.value)}
                   onKeyDown={(e) => {

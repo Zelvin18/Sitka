@@ -172,7 +172,7 @@ export default function ReportPane({
       ) : (
         !busy && (
           <p className="summary-block" style={{ marginTop: 10 }}>
-            Let Sitka read the event and tell you how it went, what was missed, and
+            Let Sitca read the event and tell you how it went, what was missed, and
             what to follow up on.
           </p>
         )

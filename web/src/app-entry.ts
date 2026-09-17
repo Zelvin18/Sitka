@@ -1,5 +1,5 @@
 /**
- * Web entry for the FULL Sitka app: sign in, install the cloud backend as
+ * Web entry for the FULL Sitca app: sign in, install the cloud backend as
  * window.sitka, then boot the untouched desktop renderer (React app).
  *
  * Speed: the two big pieces of code (the cloud backend and the app itself)
@@ -92,7 +92,7 @@ function showOpenProblem(stage: string, detail: string): void {
   p.style.flexDirection = 'column'
   p.style.gap = '14px'
   const t = document.createElement('span')
-  t.textContent = 'Sitka could not open.'
+  t.textContent = 'Sitca could not open.'
   const d = document.createElement('span')
   d.style.cssText = 'font-weight:500;font-size:13px;color:var(--t3);max-width:360px;text-align:center'
   d.textContent = `It stopped while ${stage}. ${detail}`.trim()
@@ -269,10 +269,10 @@ async function boot(): Promise<void> {
         err.textContent = 'The password needs at least 6 characters.'
         return false
       }
-      // the name, so Sitka is personal from the first day rather than an email address
+      // the name, so Sitca is personal from the first day rather than an email address
       const name = ((el('gname') as HTMLInputElement | null)?.value ?? '').trim().slice(0, 80)
       if (!name) {
-        err.textContent = 'Type your name first — it is what Sitka will call you.'
+        err.textContent = 'Type your name first — it is what Sitca will call you.'
         return false
       }
       const { data: d, error } = await sb.auth.signUp({ ...c, options: { data: { full_name: name } } })

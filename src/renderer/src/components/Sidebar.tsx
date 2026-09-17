@@ -141,7 +141,7 @@ export default function Sidebar({
           onClick={onHomePage}
         >
           <Mark size={18} />
-          Sitka
+          Sitca
         </button>
         <button
           className="btn btn-ghost btn-sm"

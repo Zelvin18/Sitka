@@ -1,6 +1,6 @@
 /**
  * Small Markdown → HTML converter for exports (Word, PDF, standalone pages).
- * Covers what Sitka writes: headings, paragraphs, bullets, numbered lists,
+ * Covers what Sitca writes: headings, paragraphs, bullets, numbered lists,
  * tables, fenced code, bold, italic, inline code and links.
  */
 import { deckTemplate, docTemplate, toHex } from './pdf'
@@ -205,7 +205,7 @@ ul{margin:0;padding-left:1.2em;font-size:clamp(17px,2.4vw,32px);line-height:1.45
 @media print{html,body{background:#fff;color:#111}.slide{display:flex;page-break-after:always;height:100vh}.sub,.n,.brand{color:#666}.notes{display:block;margin-top:auto;font-size:12px;color:#555;border-top:1px solid #ddd;padding-top:8px}}
 </style></head><body>
 ${slideHtml}
-<div class="brand">Made with Sitka</div>
+<div class="brand">Made with Sitca</div>
 <script>
 var i=0,s=document.querySelectorAll('.slide');function show(k){i=Math.max(0,Math.min(s.length-1,k));s.forEach(function(el,j){el.classList.toggle('on',j===i)})}
 show(0);document.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown')show(i+1);if(e.key==='ArrowLeft'||e.key==='PageUp')show(i-1);if(e.key==='Home')show(0);if(e.key==='End')show(s.length-1)});

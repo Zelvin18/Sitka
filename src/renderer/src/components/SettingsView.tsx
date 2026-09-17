@@ -165,7 +165,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
     <div className="content">
       <div className="content-inner" style={{ maxWidth: 640 }}>
         <h1 className="page-title">Settings</h1>
-        <p className="page-subtitle">How Sitka looks, listens, answers and remembers. Changes apply straight away.</p>
+        <p className="page-subtitle">How Sitca looks, listens, answers and remembers. Changes apply straight away.</p>
 
         {showTour && <Tour onClose={closeTour} />}
         {confirmSignOut && (
@@ -197,7 +197,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
               </button>
             )}
           </div>
-          <Row title="Your name" desc="What Sitka calls you — on screen, and in a kind word now and then." wrap>
+          <Row title="Your name" desc="What Sitca calls you — on screen, and in a kind word now and then." wrap>
             {nameDraft === null ? (
               <button className="btn btn-ghost btn-sm" onClick={() => setNameDraft(profile?.needsName ? '' : (profile?.name ?? ''))}>
                 {profile?.needsName ? 'Add your name' : 'Change'}
@@ -229,7 +229,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
 
         <div className="section-title">Appearance</div>
         <div className="card">
-          <Row title="Theme" desc="Follow your device, or keep Sitka light or dark." wrap>
+          <Row title="Theme" desc="Follow your device, or keep Sitca light or dark." wrap>
             <Segmented
               value={theme}
               options={[
@@ -272,17 +272,17 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
               onChange={(v) => void persist({ defaultCapture: v })}
             />
           </Row>
-          <Row title="Read the screen" desc="Sitka reads slides, the board and charts whenever the picture settles on something new.">
+          <Row title="Read the screen" desc="Sitca reads slides, the board and charts whenever the picture settles on something new.">
             <Toggle on={readScreen} onChange={(v) => void persist({ readScreen: v })} label="Read the screen" />
           </Row>
-          <Row title="Notes from Sitka" desc="Short notes in the chat when Sitka notices something worth your attention.">
-            <Toggle on={notes} onChange={(v) => void persist({ notes: v })} label="Notes from Sitka" />
+          <Row title="Notes from Sitca" desc="Short notes in the chat when Sitca notices something worth your attention.">
+            <Toggle on={notes} onChange={(v) => void persist({ notes: v })} label="Notes from Sitca" />
           </Row>
         </div>
 
         <div className="section-title">Answers</div>
         <div className="card">
-          <Row title="Answer in" desc="The language Sitka replies in, whatever language the session is in." wrap>
+          <Row title="Answer in" desc="The language Sitca replies in, whatever language the session is in." wrap>
             <select className="set-select" value={answerLanguage} onChange={(e) => void persist({ answerLanguage: e.target.value })}>
               {LANGUAGES.map(([v, label]) => (
                 <option key={v} value={v}>
@@ -300,7 +300,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
               <Mark size={22} />
             </div>
             <div className="start-body">
-              <div className="start-title">How Sitka works</div>
+              <div className="start-title">How Sitca works</div>
               <div className="field-hint" style={{ marginTop: 2 }}>
                 A minute and a half, start to finish: a lecture captured, read, questioned and remembered. Watch it again any
                 time.
@@ -319,7 +319,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
         <div className="card">
           <div className="set-keys-note">
             {isWeb
-              ? 'Sitka comes with its AI included. Add your own keys only if you want to use your own accounts; they stay in this browser and are sent straight to each provider.'
+              ? 'Sitca comes with its AI included. Add your own keys only if you want to use your own accounts; they stay in this browser and are sent straight to each provider.'
               : 'Your keys are stored only on this computer and are used only to call each provider directly.'}
           </div>
           {!showKeys ? (
@@ -440,8 +440,8 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
 
         <div className="section-title">About</div>
         <div className="card">
-          <Row title="Sitka" desc="The AI that attends with you. Your recordings stay yours; answers point to the moment they came from.">
-            <a className="btn btn-ghost btn-sm" href={isWeb ? '/legal' : 'https://sitka-blue.vercel.app/legal'} target="_blank" rel="noreferrer">
+          <Row title="Sitca" desc="The AI that attends with you. Your recordings stay yours; answers point to the moment they came from.">
+            <a className="btn btn-ghost btn-sm" href={isWeb ? '/legal' : 'https://sitcaai.vercel.app/legal'} target="_blank" rel="noreferrer">
               Privacy &amp; Terms
             </a>
           </Row>
@@ -452,7 +452,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
           <div className="set-row contact-row">
             <div className="set-text">
               <div className="set-title">Talk to us</div>
-              <div className="set-desc">A question, a problem, an idea for what Sitka should do next. A person reads every message.</div>
+              <div className="set-desc">A question, a problem, an idea for what Sitca should do next. A person reads every message.</div>
             </div>
             <div className="contact-ways">
               <a className="btn btn-ghost btn-sm" href="mailto:magumisekelvin8@gmail.com">
@@ -470,7 +470,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
 
         {profile?.cloud && (
           <>
-            <div className="section-title">Leaving Sitka</div>
+            <div className="section-title">Leaving Sitca</div>
             <div className="card">
               <div className="set-row wrap">
                 <div className="set-text">

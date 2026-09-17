@@ -56,7 +56,7 @@ function loadJsQr(): Promise<JsQr> {
   return jsQrPromise
 }
 
-/** Turn whatever was scanned or typed into a Sitka link, or null if it is not one. */
+/** Turn whatever was scanned or typed into a Sitca link, or null if it is not one. */
 export function sitkaLinkFrom(raw: string): string | null {
   const text = raw.trim()
   if (!text) return null
@@ -67,7 +67,7 @@ export function sitkaLinkFrom(raw: string): string | null {
     return null
   } catch {
     // a bare event id or code, as printed under some QR codes
-    if (/^[a-z0-9][a-z0-9-]{3,}$/i.test(text)) return `${IS_WEB ? location.origin : 'https://sitka-blue.vercel.app'}/e/${text}`
+    if (/^[a-z0-9][a-z0-9-]{3,}$/i.test(text)) return `${IS_WEB ? location.origin : 'https://sitcaai.vercel.app'}/e/${text}`
     return null
   }
 }
@@ -106,7 +106,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
     const handle = (text: string): boolean => {
       const link = sitkaLinkFrom(text)
       if (!link) {
-        setError('That code is not a Sitka session.')
+        setError('That code is not a Sitca session.')
         return false
       }
       setError(null)
@@ -210,8 +210,8 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
             <h1 className="ev-hero-title">Join a session</h1>
             <p className="ev-hero-sub">
               {wantScan
-                ? 'Point the camera at the QR code the host is showing. You will get the captions, the slides and your own Sitka, on this device.'
-                : 'Paste the link the host shared, or scan their QR code with the camera on this computer. You will get the captions, the slides and your own Sitka.'}
+                ? 'Point the camera at the QR code the host is showing. You will get the captions, the slides and your own Sitca, on this device.'
+                : 'Paste the link the host shared, or scan their QR code with the camera on this computer. You will get the captions, the slides and your own Sitca.'}
             </p>
             {!wantScan && (
               <div className="join-choice">
@@ -280,7 +280,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
                 if (e.key === 'Enter') {
                   const link = sitkaLinkFrom(typed)
                   if (link) go(link)
-                  else setError('That does not look like a Sitka link or code.')
+                  else setError('That does not look like a Sitca link or code.')
                 }
               }}
               autoCorrect="off"
@@ -294,7 +294,7 @@ export default function JoinView({ onBack }: Props): React.JSX.Element {
               onClick={() => {
                 const link = sitkaLinkFrom(typed)
                 if (link) go(link)
-                else setError('That does not look like a Sitka link or code.')
+                else setError('That does not look like a Sitca link or code.')
               }}
             >
               Join

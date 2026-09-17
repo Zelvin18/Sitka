@@ -8,7 +8,7 @@ interface Props {
 
 /**
  * A quiet live waveform: bars that breathe with the microphone. Used on the
- * setup page (so you know Sitka can hear you) and as the stage of an
+ * setup page (so you know Sitca can hear you) and as the stage of an
  * audio-only session.
  */
 export default function AudioLevel({ stream, bars = 28, tall = false }: Props): React.JSX.Element {

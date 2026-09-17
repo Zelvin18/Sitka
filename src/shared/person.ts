@@ -1,5 +1,5 @@
 /**
- * What Sitka knows about the person it is helping, for a system prompt.
+ * What Sitca knows about the person it is helping, for a system prompt.
  * Their first name, used sparingly and only where it is warm: a word of
  * encouragement in practice, a greeting. Never in every reply, and never
  * to a third party.

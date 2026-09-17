@@ -9,7 +9,7 @@ export function buildExport(data: SessionData, kind: ExportKind): string | null 
 
   if (kind === 'overview') {
     if (!data.meta.summary) return null
-    const lines = [`# ${title}`, ``, `Recorded ${dateLine} with Sitka.`, ``, `## Summary`, ``, data.meta.summary]
+    const lines = [`# ${title}`, ``, `Recorded ${dateLine} with Sitca.`, ``, `## Summary`, ``, data.meta.summary]
     const highlights = data.meta.highlights ?? []
     if (highlights.length > 0) {
       lines.push(``, `## Key moments`, ``)
@@ -23,7 +23,7 @@ export function buildExport(data: SessionData, kind: ExportKind): string | null 
     return [
       `# ${title} — Transcript`,
       ``,
-      `Recorded ${dateLine} with Sitka.`,
+      `Recorded ${dateLine} with Sitca.`,
       ``,
       ...data.segments.map((s) => `[${formatTime(s.start)}] ${s.text}`)
     ].join('\n')
@@ -33,7 +33,7 @@ export function buildExport(data: SessionData, kind: ExportKind): string | null 
     if (!data.notes || !data.notes.markdown) return null
     const important = data.notes.moments.filter((m) => m.kind === 'important')
     const questions = data.notes.moments.filter((m) => m.kind === 'question')
-    const lines = [`# ${title} — Notes`, ``, `Recorded ${dateLine} with Sitka.`, ``]
+    const lines = [`# ${title} — Notes`, ``, `Recorded ${dateLine} with Sitca.`, ``]
     if (important.length > 0) {
       lines.push(`## Important points`, ``)
       lines.push(...important.map((m) => `- ⭐ [${m.time}] ${m.label}`), ``)
@@ -49,7 +49,7 @@ export function buildExport(data: SessionData, kind: ExportKind): string | null 
   if (kind === 'study') {
     const study = data.study
     if (!study) return null
-    const lines = [`# ${title} — Study Pack`, ``, `Generated ${dateLine} with Sitka.`, ``]
+    const lines = [`# ${title} — Study Pack`, ``, `Generated ${dateLine} with Sitca.`, ``]
     if (study.concepts.length > 0) {
       lines.push(`## Key concepts`, ``)
       lines.push(...study.concepts.map((c) => `- **${c.term}** — ${c.definition}`), ``)

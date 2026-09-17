@@ -5,7 +5,7 @@ interface Props {
   onClose: () => void
 }
 
-/** The guided "How Sitka works" walkthrough, in a modal over the app. */
+/** The guided "How Sitca works" walkthrough, in a modal over the app. */
 export default function Tour({ onClose }: Props): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   // The player is mounted exactly once. The parent may re-render (and hand
@@ -17,7 +17,7 @@ export default function Tour({ onClose }: Props): React.JSX.Element {
     if (!node) return undefined
     return mountTour(node, {
       onDone: () => onCloseRef.current(),
-      doneLabel: 'Start using Sitka',
+      doneLabel: 'Start using Sitca',
       showSkip: false
     })
   }, [])
@@ -32,7 +32,7 @@ export default function Tour({ onClose }: Props): React.JSX.Element {
     <div className="dialog-overlay" onClick={() => onCloseRef.current()}>
       <div className="tour-modal" onClick={(e) => e.stopPropagation()}>
         <div className="tour-modal-head">
-          <span className="tour-modal-title">How Sitka works</span>
+          <span className="tour-modal-title">How Sitca works</span>
           <span className="tour-modal-time">about a minute and a half</span>
           <button className="tour-modal-skip" onClick={() => onCloseRef.current()}>
             Skip

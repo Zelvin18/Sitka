@@ -29,8 +29,8 @@ function base(
 }
 
 /**
- * Sitka mark ("Halo"): the loop of everything said, and the one moment held on it.
- * With `live`, the point orbits the ring — Sitka is thinking or working.
+ * Sitca mark ("Halo"): the loop of everything said, and the one moment held on it.
+ * With `live`, the point orbits the ring — Sitca is thinking or working.
  */
 export const Mark = ({ size, live }: { size?: number; live?: boolean }) => (
   <svg

@@ -24,7 +24,7 @@ export default function Photo({
   onMissing?: () => void
 }): React.JSX.Element {
   const [ready, setReady] = useState(false)
-  const src = IS_WEB ? `/${name}.${ext}` : `https://sitka-blue.vercel.app/${name}.${ext}`
+  const src = IS_WEB ? `/${name}.${ext}` : `https://sitcaai.vercel.app/${name}.${ext}`
   const glimpse = PLACEHOLDERS[name]
   return (
     <div className={`photo-frame${ready ? ' in' : ''} ${className}`.trim()} aria-hidden="true">

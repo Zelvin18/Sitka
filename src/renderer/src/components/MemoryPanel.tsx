@@ -25,9 +25,9 @@ function niceDate(iso: string): string {
 }
 
 /**
- * What Sitka remembers across sessions — decisions, promises, people and
+ * What Sitca remembers across sessions — decisions, promises, people and
  * concepts — with the moments they came from. "What matters" surfaces the
- * items that need a look; nothing here is a number Sitka has not earned.
+ * items that need a look; nothing here is a number Sitca has not earned.
  */
 export default function MemoryPanel({
   onOpenSessionAt,
@@ -205,7 +205,7 @@ export default function MemoryPanel({
       {pendingDelete && (
         <ConfirmDialog
           title="Forget this?"
-          message={`“${pendingDelete.title}” will be removed from Sitka's memory. The sessions it came from are untouched.`}
+          message={`“${pendingDelete.title}” will be removed from Sitca's memory. The sessions it came from are untouched.`}
           onConfirm={() => {
             const o = pendingDelete
             setPendingDelete(null)

@@ -1,6 +1,6 @@
 // The recording store.
 //
-// Sitka keeps two things in two places. Everything small and structured lives
+// Sitca keeps two things in two places. Everything small and structured lives
 // in Supabase: the account, the session, the transcript, the recap, every
 // answer the AI ever wrote. Everything heavy lives in Cloudflare R2: the
 // recordings themselves, and the frames taken off the screen.
@@ -307,7 +307,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
             }
           }
         } catch (err) {
-          console.warn('Sitka: part fetch failed, retrying', key, err)
+          console.warn('Sitca: part fetch failed, retrying', key, err)
         }
         await sleep(400 * (attempt + 1))
       }

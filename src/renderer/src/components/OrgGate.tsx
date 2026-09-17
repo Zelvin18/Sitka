@@ -65,8 +65,8 @@ export default function OrgGate({ kind, onJoined, compact, owned = 0 }: Props): 
             </div>
             <div className="org-gate-desc">
               {education
-                ? 'Join your institution and Sitka becomes the companion for every course you take: it knows what your lecturers taught, in their words, and what they shared.'
-                : 'Join your organisation and Sitka becomes your company’s memory: what was decided in every meeting, why, and who promised what.'}
+                ? 'Join your institution and Sitca becomes the companion for every course you take: it knows what your lecturers taught, in their words, and what they shared.'
+                : 'Join your organisation and Sitca becomes your company’s memory: what was decided in every meeting, why, and who promised what.'}
             </div>
           </div>
         </>

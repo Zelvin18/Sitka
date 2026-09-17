@@ -19,7 +19,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    console.error('Sitka: the page crashed', error, info.componentStack)
+    console.error('Sitca: the page crashed', error, info.componentStack)
     // the owners' dashboard lists crashes people actually saw
     const report = (window as unknown as { sitkaReportError?: (p: string, m: string, s?: string) => void })
       .sitkaReportError
@@ -35,7 +35,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
           <Mark size={28} />
           <h2>Something went wrong on this page</h2>
           <p>
-            Sitka hit a problem it could not recover from. Your recordings and sessions are safe.
+            Sitca hit a problem it could not recover from. Your recordings and sessions are safe.
             Go back to the start, or reload the page.
           </p>
           <div className="crash-actions">

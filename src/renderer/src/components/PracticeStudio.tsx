@@ -288,7 +288,7 @@ export default function PracticeStudio({
               <div className="ps-orb" style={{ ['--lvl' as string]: level.toFixed(3) }}>
                 <IconMic size={26} strokeWidth={1.6} />
               </div>
-              <div className="ps-orb-note">Sitka is listening. Present as you would in the room.</div>
+              <div className="ps-orb-note">Sitca is listening. Present as you would in the room.</div>
             </div>
           )}
           {sharing && hasCam && <video ref={camVideoRef} autoPlay muted playsInline className="ps-selfview" />}
@@ -355,7 +355,7 @@ export default function PracticeStudio({
                   <div className="ps-card-question small">“{hand.question}”</div>
                   <div className="ps-card-listen">
                     <span className="ps-listen-dot" />
-                    Your answer, aloud. Sitka is listening.
+                    Your answer, aloud. Sitca is listening.
                   </div>
                   <div className="ps-card-actions">
                     <button className="ps-btn primary" onClick={judge}>

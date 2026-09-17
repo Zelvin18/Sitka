@@ -17,9 +17,9 @@ export interface Settings {
   /** appearance: follow the device, or force light or dark */
   theme?: 'system' | 'light' | 'dark'
   textSize?: 'normal' | 'large'
-  /** language Sitka answers in; '' = the language the user writes in */
+  /** language Sitca answers in; '' = the language the user writes in */
   answerLanguage?: string
-  /** "Sitka noticed" notes during a live session */
+  /** "Sitca noticed" notes during a live session */
   notes?: boolean
   /** read the screen (key frames) during a live session */
   readScreen?: boolean
@@ -68,7 +68,7 @@ export interface SessionMeta {
   agenda?: string[]
   /** the scheduled event this session went live for */
   eventId?: string
-  /** recorded inside Sitka for Business / Education (undefined = general) */
+  /** recorded inside Sitca for Business / Education (undefined = general) */
   space?: Space
   /** recorded from the microphone only — no screen */
   audioOnly?: boolean
@@ -104,7 +104,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   at: number
-  /** 'note' = something Sitka noticed on its own, shown in the conversation */
+  /** 'note' = something Sitca noticed on its own, shown in the conversation */
   kind?: 'note'
 }
 
@@ -173,7 +173,7 @@ export interface ChatAttachment {
   id: string
   name: string
   kind: 'image' | 'document'
-  /** 'screen': a frame Sitka fetched back from earlier in the session, not a file the user chose */
+  /** 'screen': a frame Sitca fetched back from earlier in the session, not a file the user chose */
   from?: 'user' | 'screen'
   /** JPEG/PNG data URL (images) */
   dataUrl?: string
@@ -319,7 +319,7 @@ export interface CoachProject {
   eventId?: string
 }
 
-// ---------- Memory: durable things Sitka keeps across sessions ----------
+// ---------- Memory: durable things Sitca keeps across sessions ----------
 
 export type MemoryKind = 'decision' | 'commitment' | 'person' | 'concept'
 
@@ -422,13 +422,13 @@ export interface SpaceInsight {
   durationMs: number
   /** attendees who tapped "lost me" */
   lost: number
-  /** private questions asked of Sitka */
+  /** private questions asked of Sitca */
   asks: number
   /** a sample of what was asked, newest first */
   questions: string[]
 }
 
-// ---------- who is using Sitka (shown top right) ----------
+// ---------- who is using Sitca (shown top right) ----------
 
 /** one line in an event's room chat */
 export interface RoomMessage {
@@ -451,7 +451,7 @@ export interface Profile {
   needsWelcome?: boolean
 }
 
-// ---------- session materials: what the user shared so Sitka knows the plan ----------
+// ---------- session materials: what the user shared so Sitca knows the plan ----------
 
 export interface SessionMaterial {
   id: string
@@ -474,7 +474,7 @@ export interface Slide {
 /** Transcript lines that describe the screen start with this marker. */
 export const ON_SCREEN_PREFIX = '[On screen] '
 
-// ---------- Create: documents, presentations and code Sitka designs ----------
+// ---------- Create: documents, presentations and code Sitca designs ----------
 
 export type CreationKind = 'document' | 'presentation' | 'code'
 

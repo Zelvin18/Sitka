@@ -1,7 +1,7 @@
 import { shrinkImageFile } from './attach'
 
 /**
- * Any chosen file, read into text Sitka can use: documents through the
+ * Any chosen file, read into text Sitca can use: documents through the
  * reader Materials has always used, pictures (a slide, a page, a whiteboard,
  * a poster) through the vision model, which writes down what they say.
  */

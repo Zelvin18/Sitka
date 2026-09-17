@@ -22,7 +22,7 @@ body = ImageFont.truetype('C:/Windows/Fonts/segoeui.ttf', 30)
 cx, cy, r = 150, 250, 56
 d.ellipse((cx - r, cy - r, cx + r, cy + r), outline='#f2f2f4', width=16)
 d.ellipse((cx + 26, cy - 62, cx + 66, cy - 22), fill='#f2f2f4')
-d.text((250, 200), 'Sitka', font=bold, fill='#f2f2f4')
+d.text((250, 200), 'Sitca', font=bold, fill='#f2f2f4')
 
 d.text((90, 388), "You're invited to a live event", font=head, fill='#f2f2f4')
 d.text((90, 450), 'Tap to join: every word in your language, the speaker\'s screen,', font=body, fill='#a3a3aa')

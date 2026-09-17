@@ -1,7 +1,7 @@
 /**
  * Recap, second take. Same data as /r/<id>, a different page: a dark stage
  * with the recording, chapters that fill as it plays, the summary as a lead,
- * the words as paragraphs lit while they are spoken, and Sitka in a dock.
+ * the words as paragraphs lit while they are spoken, and Sitca in a dock.
  */
 import { createClient } from '@supabase/supabase-js'
 import { md, parseTs as parseChipTs } from './mdlite'
@@ -996,7 +996,7 @@ function wireAsk(d: Loaded): void {
   }
   const system = (q: string): string =>
     [
-      `You are Sitka, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
+      `You are Sitca, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
       d.summary ? `Summary of the session: ${d.summary}` : '',
       'Answer every question. Look in the excerpt (and materials) below first; when the session covers it, answer from what was said. When it does not, or the question is about something else, never refuse: say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge, kept clearly apart from what the speaker said.',
       'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
@@ -1203,7 +1203,7 @@ async function boot(): Promise<void> {
     return
   }
   data = d
-  document.title = `${d.title} — Sitka`
+  document.title = `${d.title} — Sitca`
   el('title').textContent = d.title
   el('kicker').innerHTML = d.live ? '<span class="ldot"></span>Happening now' : d.kindWord === 'live event' ? 'Event recap' : 'Session recap'
   el('htag').textContent = 'RECAP'
@@ -1240,7 +1240,7 @@ async function boot(): Promise<void> {
   const lead = el('lead')
   if (d.summary) lead.textContent = d.summary
   else {
-    lead.textContent = 'Sitka is writing the summary. It appears here in a moment.'
+    lead.textContent = 'Sitca is writing the summary. It appears here in a moment.'
     lead.classList.add('pending')
   }
   if (d.notes.trim()) {

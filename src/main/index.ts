@@ -312,7 +312,7 @@ function registerIpc(): void {
 
   // ---------- organisations live in the online workspace ----------
   const ONLINE_ONLY = {
-    error: 'Organisations live in the online workspace. Open Sitka in your browser to create or join one.'
+    error: 'Organisations live in the online workspace. Open Sitca in your browser to create or join one.'
   }
   ipcMain.handle('org:list', () => [])
   ipcMain.handle('org:create', () => ONLINE_ONLY)
@@ -338,7 +338,7 @@ function registerIpc(): void {
   ipcMain.handle('org:insights', () => [])
 
   // The built-in sample lecture: a complete session with a transcript, so the
-  // very first screen already shows what Sitka does. Analysis runs like any session.
+  // very first screen already shows what Sitca does. Analysis runs like any session.
   ipcMain.handle('session:sample', () => {
     const existing = store.listSessions().find((s) => s.sample)
     if (existing) return existing
@@ -1264,7 +1264,7 @@ function registerIpc(): void {
     if (!content) return { error: 'Nothing to export yet for this tab.' }
     const safeTitle = data.meta.title.replace(/[\\/:*?"<>|]+/g, '').slice(0, 60).trim()
     const result = await dialog.showSaveDialog({
-      title: 'Export from Sitka',
+      title: 'Export from Sitca',
       defaultPath: `${safeTitle || 'session'} — ${kind}.md`,
       filters: [{ name: 'Markdown', extensions: ['md'] }]
     })

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>Sitka — Recap</title>
+<title>Sitca — Recap</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0c0c0d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -226,7 +226,7 @@ html[data-theme=light] .stage.expanded .sheet{background:rgba(19,19,21,.66);colo
 /* A phone that cannot go full screen or turn its screen (iPhone) turns the
    stage instead: the whole stage lies sideways to fill the screen in
    landscape, the way YouTube's web player does. Everything inside turns with
-   it, so the picture fills the long way, Ask Sitka sits in the bottom right
+   it, so the picture fills the long way, Ask Sitca sits in the bottom right
    corner of the turned view, and the conversation opens down its right side.
    These rules come after the phone rules above and take precedence. */
 .stage.expanded.rotated{inset:auto;top:0;left:100vw;width:100vh;width:100dvh;height:100vw;min-height:0;transform:rotate(90deg);transform-origin:left top}
@@ -312,7 +312,7 @@ html,body{overflow-x:hidden;max-width:100vw}
 </head>
 <body>
 <header class="hdr" id="hdr">
-  <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitka</a>
+  <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitca</a>
   <span class="tag" id="htag">RECAP</span>
   <div class="mini" id="mini">
     <button class="mp" id="mp" aria-label="Play or pause"><svg id="mpi" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button>
@@ -356,7 +356,7 @@ html,body{overflow-x:hidden;max-width:100vw}
     </button>
     <div class="stage-wait" id="stagewait" aria-live="polite"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span data-words="Fetching the recording|Almost there">Fetching the recording</span></div>
     <button class="xfull" id="xfull" type="button" aria-label="Leave full screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    <button class="askfab" id="askfab" type="button"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitka</button>
+    <button class="askfab" id="askfab" type="button"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitca</button>
     <div class="bar" id="bar">
       <button id="pp" aria-label="Play or pause"><svg id="ppi" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button>
       <button id="back10" aria-label="Back ten seconds" title="Back 10 s"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button>
@@ -395,8 +395,8 @@ html,body{overflow-x:hidden;max-width:100vw}
   <span class="kbd">/</span>
   <button type="submit" id="asksend" aria-label="Ask" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
 </form>
-<aside class="sheet" id="sheet" aria-label="Conversation with Sitka">
-  <div class="sheet-head"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true" style="width:16px;height:16px"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitka<button class="x" id="sheetx" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<aside class="sheet" id="sheet" aria-label="Conversation with Sitca">
+  <div class="sheet-head"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true" style="width:16px;height:16px"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitca<button class="x" id="sheetx" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="sheet-body" id="chat"></div>
 </aside>
 

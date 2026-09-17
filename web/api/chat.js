@@ -528,7 +528,7 @@ export default async function handler(req, res) {
       return
     }
     res.status(502).json({
-      error: `Sitka's AI is busy right now — it will try again automatically. (${errors[errors.length - 1]})`,
+      error: `Sitca's AI is busy right now — it will try again automatically. (${errors[errors.length - 1]})`,
       transient: true
     })
   } catch (err) {

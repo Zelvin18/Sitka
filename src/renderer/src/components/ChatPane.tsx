@@ -54,7 +54,7 @@ interface Props {
 export interface ChatPaneHandle {
   /** programmatically send a question, as if the user typed it */
   ask: (question: string) => void
-  /** drop a note from Sitka into the conversation (nudges, things it noticed) */
+  /** drop a note from Sitca into the conversation (nudges, things it noticed) */
   note: (text: string) => void
 }
 
@@ -360,7 +360,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     <div className={folded ? 'chat chat-folded' : 'chat'}>
       <div className="chat-header">
         <IconSparkle size={15} />
-        {headerTitle ?? 'Ask Sitka'}
+        {headerTitle ?? 'Ask Sitca'}
         {headerExtra && <span style={{ marginLeft: 'auto' }}>{headerExtra}</span>}
         {live && (
           <span style={{ marginLeft: headerExtra ? 8 : 'auto' }} className="live-badge">
@@ -386,7 +386,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
                 (brain
                   ? 'Ask across everything'
                   : live
-                    ? 'Sitka is listening with you'
+                    ? 'Sitca is listening with you'
                     : 'Ask about this session')}
             </div>
             <div style={{ fontSize: 13 }}>
@@ -410,7 +410,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
               {m.kind === 'note' && (
                 <div className="msg-note-label">
                   <IconSparkle size={12} />
-                  Sitka noticed
+                  Sitca noticed
                 </div>
               )}
               <AiText text={m.content} onSeek={onSeek} resolveLabel={resolveLabel} />
@@ -465,7 +465,7 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
               <span className="link" onClick={onOpenSettings}>
                 Settings
               </span>{' '}
-              to ask Sitka questions.
+              to ask Sitca questions.
             </span>
           </div>
         )}

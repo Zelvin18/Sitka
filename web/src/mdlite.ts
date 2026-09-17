@@ -84,7 +84,7 @@ export function md(src: string): string {
     if (/^```/.test(L)) {
       if (inCode) {
         if (codeLang === 'document' || codeLang === 'doc') {
-          // a document Sitka wrote: its title, then its body as markdown
+          // a document Sitca wrote: its title, then its body as markdown
           const first = codeBuf[0] || ''
           const titled = /^\s*title\s*:/i.test(first)
           const title = titled ? first.replace(/^\s*title\s*:\s*/i, '').trim() : ''

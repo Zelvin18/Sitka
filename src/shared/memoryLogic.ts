@@ -1,7 +1,7 @@
 /**
  * Memory engine logic shared by the desktop main process and the web app:
  * how durable facts are asked for, and how a new session's findings merge
- * into what Sitka already remembers. Pure — no platform dependencies.
+ * into what Sitca already remembers. Pure — no platform dependencies.
  */
 import type { MemoryKind, MemoryObject, SessionKind, TranscriptSegment } from './types'
 

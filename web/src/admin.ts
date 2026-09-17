@@ -1,5 +1,5 @@
 /**
- * Sitka · Operations. The owners' view of the whole system: who is using it,
+ * Sitca · Operations. The owners' view of the whole system: who is using it,
  * how that is growing, what they do with it, what is live this minute, and
  * what has gone wrong. Every number comes from an admin-only function in the
  * database (supabase/admin.sql); this page only draws.
@@ -243,7 +243,7 @@ let loading = false
 let liveTimer = 0
 
 const FEATURE_NAMES: Record<string, string> = {
-  ask: 'Ask Sitka',
+  ask: 'Ask Sitca',
   ask_overview: 'Ask across sessions',
   listen: 'Read aloud',
   attach: 'Attached a file',
@@ -320,7 +320,7 @@ function renderUsage(o: Overview): void {
   )
   hbars(el('languages'), o.languages, 'No attendees joined an event in this period.')
   el('platforms').textContent = o.platforms.length
-    ? 'Where people open Sitka: ' + o.platforms.map((p) => `${p.name} ${fmtInt(p.count)}`).join(' · ')
+    ? 'Where people open Sitca: ' + o.platforms.map((p) => `${p.name} ${fmtInt(p.count)}`).join(' · ')
     : ''
 }
 
@@ -514,9 +514,9 @@ async function boot(): Promise<void> {
     admin = false
   }
   if (!admin) {
-    el('gate-title').textContent = 'This page is for the Sitka team'
+    el('gate-title').textContent = 'This page is for the Sitca team'
     el('gate-text').textContent = `You are signed in as ${data.session.user.email}. Ask an owner to add you, or run supabase/admin.sql if the dashboard has not been set up yet.`
-    el('gate-btn').textContent = 'Back to Sitka'
+    el('gate-btn').textContent = 'Back to Sitca'
     el('gate').classList.remove('hidden')
     return
   }

@@ -1,6 +1,6 @@
 // Where recordings live.
 //
-// Sitka keeps its accounts, sessions and everything the AI writes in Supabase,
+// Sitca keeps its accounts, sessions and everything the AI writes in Supabase,
 // and keeps the recordings themselves in Cloudflare R2. This is the one place
 // the two meet: it checks with Supabase who is asking and what they are
 // allowed to see, then hands back links that talk to R2 directly. No video

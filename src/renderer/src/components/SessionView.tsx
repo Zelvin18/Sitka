@@ -195,7 +195,7 @@ export default function SessionView({
   // shows one thing at a time. On a desktop the chat is always the right column.
   const [askOpen, setAskOpen] = useRemembered('sitka.session.ask', () => window.innerWidth < 860)
   // Hosted events keep their room: the host can read the whole conversation
-  // again beside Ask Sitka, long after the event ended.
+  // again beside Ask Sitca, long after the event ended.
   const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.session.right', 'ask')
   const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
 
@@ -608,7 +608,7 @@ export default function SessionView({
                 <button
                   className={`btn btn-sm ${showMaterials ? '' : 'btn-ghost'}`}
                   style={{ marginLeft: 'auto' }}
-                  title="Slides, notes and readings Sitka uses for this session"
+                  title="Slides, notes and readings Sitca uses for this session"
                   onClick={() => {
                     setShowMaterials((v) => !v)
                     setSharing(false)
@@ -639,7 +639,7 @@ export default function SessionView({
                 {reanalyzing
                   ? 'writing the title and summary…'
                   : meta.analysisError
-                    ? 'summary not ready yet — Sitka will try again next time you open this session'
+                    ? 'summary not ready yet — Sitca will try again next time you open this session'
                     : 'summary pending'}
               </span>
             )}
@@ -1172,7 +1172,7 @@ export default function SessionView({
                 </div>
                 <div className="empty-title">No notes yet</div>
                 <div style={{ marginBottom: 18, maxWidth: 380, marginInline: 'auto' }}>
-                  Sitka can write organized notes for this session — key points,
+                  Sitca can write organized notes for this session — key points,
                   definitions, and the questions that were asked.
                 </div>
                 {notesError && (
@@ -1349,7 +1349,7 @@ export default function SessionView({
             ) : (
               <div className="transcript-waiting">
                 {segments.length === 0
-                  ? 'No transcript — Sitka could not analyze this session.'
+                  ? 'No transcript — Sitca could not analyze this session.'
                   : 'Summary not ready yet.'}
               </div>
             )}
@@ -1371,7 +1371,7 @@ export default function SessionView({
           <div className="right-tabs">
             <button className={rightTab === 'ask' ? 'on' : ''} onClick={() => setRightTab('ask')}>
               <IconSparkle size={13} />
-              Ask Sitka
+              Ask Sitca
             </button>
             <button className={rightTab === 'room' ? 'on' : ''} onClick={() => setRightTab('room')}>
               Room{roomMsgs.length > 0 ? ` · ${roomMsgs.length}` : ''}

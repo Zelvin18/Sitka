@@ -2,7 +2,7 @@ import type { TranscriptSegment } from './types'
 
 /**
  * The built-in sample lecture: a short, original talk on how memory forms.
- * It lets a brand-new user see Sitka work — transcript, answers, notes,
+ * It lets a brand-new user see Sitca work — transcript, answers, notes,
  * study pack — before they have recorded anything of their own.
  */
 export const SAMPLE_TITLE = 'Why we forget, and how memory actually forms'

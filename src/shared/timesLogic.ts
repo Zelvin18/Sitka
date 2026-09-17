@@ -1,5 +1,5 @@
 /**
- * The clock references Sitka's writing carries — [[12:34]], (0:15), "at
+ * The clock references Sitca's writing carries — [[12:34]], (0:15), "at
  * 12:34" — removed. On screen a moment cites its second so it can be jumped
  * to; in a file that is sent to someone, a time means nothing.
  */

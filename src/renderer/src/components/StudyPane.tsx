@@ -38,7 +38,7 @@ export default function StudyPane({
           </div>
           <div className="empty-title">Study pack</div>
           <div style={{ marginBottom: 18, maxWidth: 380, marginInline: 'auto' }}>
-            Sitka turns this session into key concepts, flashcards, and a quiz so you
+            Sitca turns this session into key concepts, flashcards, and a quiz so you
             can revise without rewatching.
           </div>
           {error && (

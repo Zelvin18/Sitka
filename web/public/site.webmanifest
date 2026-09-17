@@ -1,6 +1,6 @@
 {
-  "name": "Sitka",
-  "short_name": "Sitka",
+  "name": "Sitca",
+  "short_name": "Sitca",
   "description": "Live AI intelligence for every room.",
   "start_url": "/app",
   "display": "standalone",

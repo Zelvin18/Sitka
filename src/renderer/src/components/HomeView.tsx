@@ -125,7 +125,7 @@ export default function HomeView({
             )}
           </div>
           <p className="home-sub">
-            Sitka attends with you — lectures, meetings, and events, understood live.
+            Sitca attends with you — lectures, meetings, and events, understood live.
           </p>
         </div>
         {showTour && <Tour onClose={closeTour} />}

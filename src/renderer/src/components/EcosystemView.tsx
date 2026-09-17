@@ -33,10 +33,10 @@ interface Props {
 }
 
 /**
- * The doors into Sitka's two deep ecosystems. Sitka stays open to everyone;
+ * The doors into Sitca's two deep ecosystems. Sitca stays open to everyone;
  * these pages show what it does for a company or for a student, start the
  * right flow, and keep that ecosystem's own sessions. No numbers here that
- * Sitka has not earned.
+ * Sitca has not earned.
  */
 export default function EcosystemView({
   kind,
@@ -105,7 +105,7 @@ export default function EcosystemView({
           points: [
             'Why did we decide this? Answered with the original moment.',
             'Promises that go quiet are flagged before they slip.',
-            'Two rooms, two different decisions: Sitka notices.'
+            'Two rooms, two different decisions: Sitca notices.'
           ]
         },
         {
@@ -164,13 +164,13 @@ export default function EcosystemView({
           <Photo name={business ? 'business-hero' : 'education-hero'} position="70% center" />
           <div className="ev-hero-veil" aria-hidden="true" />
           <div className="ev-hero-text">
-            <div className="eco-kicker">{business ? 'Sitka for Business' : 'Sitka for Education'}</div>
+            <div className="eco-kicker">{business ? 'Sitca for Business' : 'Sitca for Education'}</div>
             <h1 className="ev-hero-title">
               {business ? 'Turn conversations into coordinated action.' : 'Never learn alone again.'}
             </h1>
             <p className="ev-hero-sub">
               {business
-                ? 'Meetings, projects, presentations, events and decisions — Sitka listens, understands, remembers, and helps your company act.'
+                ? 'Meetings, projects, presentations, events and decisions — Sitca listens, understands, remembers, and helps your company act.'
                 : 'Before class, during class, after class, before the exam — an AI that stays with you through your whole education.'}
             </p>
           </div>
@@ -218,7 +218,7 @@ export default function EcosystemView({
               {business ? 'In the room, no screen to share?' : 'Sitting in a lecture hall?'}
             </span>
             <span className="home-audio-desc">
-              Record audio only — Sitka listens, remembers and answers just the same.
+              Record audio only — Sitca listens, remembers and answers just the same.
             </span>
           </span>
           <span className="home-door-arrow">→</span>
@@ -284,8 +284,8 @@ export default function EcosystemView({
           <IconSparkle size={15} strokeWidth={1.8} />
           <span>
             {business
-              ? 'Everything Sitka remembers lives in Overview under “What matters”: decisions, promises and the people behind them, each with the moment it was said.'
-              : 'Everything Sitka learns with you lives in Overview under “What matters”: the concepts you were taught, each with the moment it was explained.'}
+              ? 'Everything Sitca remembers lives in Overview under “What matters”: decisions, promises and the people behind them, each with the moment it was said.'
+              : 'Everything Sitca learns with you lives in Overview under “What matters”: the concepts you were taught, each with the moment it was explained.'}
           </span>
           <button className="btn btn-sm" onClick={onGoOverview} style={{ marginLeft: 'auto' }}>
             Open Overview

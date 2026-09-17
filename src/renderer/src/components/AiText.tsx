@@ -8,7 +8,7 @@ import { mdToHtml, wordDocument } from '../lib/mdToHtml'
 import { markdownToPdf } from '../lib/pdf'
 
 /**
- * A document Sitka wrote in the conversation (a ```document block): shown as
+ * A document Sitca wrote in the conversation (a ```document block): shown as
  * a card with the title, the body, and the ways to take it away.
  */
 function DocCard({

@@ -263,8 +263,8 @@ export function buildAttendeeSystem(opts: {
   const materials = opts.materialsText
   return [
     preEvent
-      ? 'You are Sitka, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
-      : 'You are Sitka, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
+      ? 'You are Sitca, a personal AI companion for an audience member of an upcoming live event. The event has NOT started yet, but the host has shared preparation materials (below) — answer from those, and say clearly when something will only be known once the event begins.'
+      : 'You are Sitca, a personal AI companion for one audience member at a live event. You have been listening to the event with them; the transcript so far is below.',
     `This attendee describes themself as: "${persona}". Calibrate every answer to that perspective and knowledge level — the same talk means different things to different people.`,
     lang && lang.toLowerCase() !== 'english'
       ? `Respond ENTIRELY in ${lang}, even though the source material is in another language.`
@@ -513,7 +513,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     const result = await withAiSlot(() => askForAttendee(attendee, question))
     if (result === 'busy') {
-      json(res, 429, { error: 'Sitka is busy — try again in a few seconds.' })
+      json(res, 429, { error: 'Sitca is busy — try again in a few seconds.' })
       return
     }
     attendee.askTimes.push(now)
@@ -544,7 +544,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       )
     )
     if (result === 'busy') {
-      json(res, 429, { error: 'Sitka is busy — try again in a few seconds.' })
+      json(res, 429, { error: 'Sitca is busy — try again in a few seconds.' })
       return
     }
     json(res, 200, { answer: result })
@@ -564,7 +564,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const force = Boolean(body.force)
     const review = await withAiSlot(() => reviewQuestion(text))
     if (review === 'busy') {
-      json(res, 429, { error: 'Sitka is busy — try again in a few seconds.' })
+      json(res, 429, { error: 'Sitca is busy — try again in a few seconds.' })
       return
     }
     if (!force && review.answeredAt && review.answer) {
@@ -591,7 +591,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     const pack = await withAiSlot(() => buildPack(attendee.lang))
     if (pack === 'busy') {
-      json(res, 429, { error: 'Sitka is busy — try again in a few seconds.' })
+      json(res, 429, { error: 'Sitca is busy — try again in a few seconds.' })
       return
     }
     const meta = conf.sessionId ? store.getMeta(conf.sessionId) : null

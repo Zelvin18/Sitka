@@ -1,4 +1,4 @@
-/* ============ Sitka design system — monochrome, calm, precise ============ */
+/* ============ Sitca design system — monochrome, calm, precise ============ */
 
 :root {
   --bg: #ffffff;
@@ -223,7 +223,7 @@ body {
   flex: none;
 }
 
-/* The living mark: the point orbits the ring while Sitka thinks or works.
+/* The living mark: the point orbits the ring while Sitca thinks or works.
    The motion itself is an SMIL animateTransform inside the SVG (see Mark in
    lib/icons.tsx) so it needs no CSS; this only respects reduced motion. */
 @media (prefers-reduced-motion: reduce) {
@@ -2315,7 +2315,7 @@ body {
   }
 }
 
-/* ---- Sitka for Business / Education: the two doors, always in view ---- */
+/* ---- Sitca for Business / Education: the two doors, always in view ---- */
 
 .side-spaces {
   display: flex;
@@ -6925,7 +6925,7 @@ body.dragging-row .splitter-h {
   }
 }
 
-/* ---- Phone: Ask Sitka is a tab beside Transcript ----
+/* ---- Phone: Ask Sitca is a tab beside Transcript ----
    The screen shows one thing at a time: the chat, or the transcript, notes
    and study material. Ask is the default. On a desktop the chat keeps its
    own column and this tab never appears. */
@@ -6975,7 +6975,7 @@ body.dragging-row .splitter-h {
   }
 }
 
-/* Notes from Sitka live inside the conversation: never clipped, never
+/* Notes from Sitca live inside the conversation: never clipped, never
    stealing space from the chat. */
 .msg-note {
   background: var(--bg-soft);
@@ -7853,7 +7853,7 @@ body.dragging-row .splitter-h {
   background: var(--bg-soft);
 }
 
-/* ---- pop out: Sitka in a small always-on-top window over the lecture ---- */
+/* ---- pop out: Sitca in a small always-on-top window over the lecture ---- */
 .popout-btn {
   position: absolute;
   top: 10px;
@@ -7894,7 +7894,7 @@ body.dragging-row .splitter-h {
   right: 10px;
 }
 
-/* ---- theatre: the picture fills the screen, Sitka floats beside it ---- */
+/* ---- theatre: the picture fills the screen, Sitca floats beside it ---- */
 .video-wrap.theatre {
   position: fixed !important;
   inset: 0;
@@ -8055,8 +8055,8 @@ video.is-hidden {
   font-weight: 700;
 }
 
-/* Sitka in the corner, and the glass chat it opens */
-/* a pill that says what it is: the mark, "Ask Sitka", and what about */
+/* Sitca in the corner, and the glass chat it opens */
+/* a pill that says what it is: the mark, "Ask Sitca", and what about */
 .theatre-fab {
   position: fixed;
   right: 22px;
@@ -8330,7 +8330,7 @@ video.is-hidden {
   }
 }
 
-/* ---- a document Sitka wrote in the chat ---- */
+/* ---- a document Sitca wrote in the chat ---- */
 .doc-card {
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -8751,7 +8751,7 @@ video.is-hidden {
   -webkit-app-region: no-drag;
 }
 
-/* "Sitka for ▾" — one clear button, one small menu */
+/* "Sitca for ▾" — one clear button, one small menu */
 .space-wrap {
   position: relative;
   height: 100%;
@@ -9855,7 +9855,7 @@ video {
     flex: 0 0 40dvh;
     transition: flex-basis 0.2s ease;
   }
-  /* when Sitka has noticed something, the sheet grows so the note and the
+  /* when Sitca has noticed something, the sheet grows so the note and the
      conversation both stay readable */
   .session-right:has(.nudge-card) {
     flex-basis: 56dvh;
