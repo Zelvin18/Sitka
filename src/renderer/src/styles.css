@@ -12638,6 +12638,10 @@ video {
 .welcome-hero-img.in {
   opacity: 1;
 }
+/* already decoded before the card opened: no fade, it is simply there */
+.welcome-hero-img.now {
+  transition: none;
+}
 .welcome-hero::before {
   content: '';
   position: absolute;

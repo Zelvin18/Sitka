@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { IconMic, IconScreen, IconSparkle, IconStar, Mark } from '../lib/icons'
 import Tour from './Tour'
@@ -17,7 +17,15 @@ interface Props {
 export default function Welcome({ name, onClose }: Props): React.JSX.Element {
   const [tour, setTour] = useState(false)
   const first = (name || '').trim().split(/\s+/)[0]
-  const greeting = first && !first.includes('@') ? `Welcome, ${first}.` : 'Welcome.'
+  const greeting = first && !first.includes('@') ? `Welcome, ${first}.` : 'Welcome to Sitca.'
+  // The picture was fetched before the card opened. When it is already here,
+  // it is shown at once; a browser that fires no load event for a picture it
+  // has cached is checked directly.
+  const imgRef = useRef<HTMLImageElement>(null)
+  useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalWidth > 0) img.classList.add('in', 'now')
+  }, [])
 
   if (tour) return <Tour onClose={onClose} />
 
@@ -27,6 +35,7 @@ export default function Welcome({ name, onClose }: Props): React.JSX.Element {
         <div className="welcome-hero">
           {/* the lecture theatre at dusk; fetched ahead of time, faded in the moment it is ready */}
           <img
+            ref={imgRef}
             className="welcome-hero-img"
             src="/welcome-hero.png"
             alt=""

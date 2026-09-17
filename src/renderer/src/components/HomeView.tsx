@@ -41,6 +41,8 @@ interface Props {
   onOpenSession: (id: string) => void
   onNewAudioSession: () => void
   onJoin?: () => void
+  /** true while the app may still be about to show the welcome card */
+  holdTour?: boolean
 }
 
 function greeting(): string {
@@ -60,7 +62,8 @@ export default function HomeView({
   onGoLibrary,
   onOpenSession,
   onNewAudioSession,
-  onJoin
+  onJoin,
+  holdTour = false
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -73,9 +76,14 @@ export default function HomeView({
     .slice(0, 3)
   const upcomingEvents = events.filter((e) => !e.sessionId).slice(0, 2)
   const firstRun = !sessions.some((s) => !s.sample)
-  // The walkthrough opens by itself the first time someone arrives, once.
-  // After that it lives in Settings, where it can be watched again.
-  const [showTour, setShowTour] = useState(() => firstRun && !tourSeen())
+  // The walkthrough opens by itself the first time someone arrives, once —
+  // but only after the app has settled whether the welcome card is due, since
+  // that card offers the walkthrough itself. After that it lives in Settings,
+  // where it can be watched again.
+  const [showTour, setShowTour] = useState(false)
+  useEffect(() => {
+    if (!holdTour && firstRun && !tourSeen()) setShowTour(true)
+  }, [holdTour, firstRun])
   const closeTour = useCallback((): void => {
     markTourSeen()
     setShowTour(false)

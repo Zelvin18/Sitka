@@ -160,28 +160,48 @@ export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   // A new account is welcomed once, by name, when its library is still empty.
-  const [welcome, setWelcome] = useState<string | null>(null)
+  const [welcome, setWelcome] = useState<{ name: string } | null>(null)
+  // While it is not yet known whether the card is due, the home page holds
+  // its own walkthrough back: the two must never open on top of each other.
+  const [welcomePending, setWelcomePending] = useState(true)
   const welcomeChecked = useRef(false)
-  // Its picture is fetched the moment the app opens for an account still to be
-  // welcomed, so the card arrives with the picture already in hand.
-  useEffect(() => {
-    void window.sitka
+  // The profile is asked once, the moment the app opens. For an account still
+  // to be welcomed, the picture is fetched and decoded right away, so the card
+  // appears with it already in place rather than fading it in afterwards.
+  const [welcomeProfile] = useState<Promise<{ due: boolean; name: string }>>(() =>
+    window.sitka
       .getProfile()
-      .then((p) => {
-        if (p.needsWelcome) new Image().src = '/welcome-hero.png'
+      .then(async (p) => {
+        if (!p.needsWelcome) return { due: false, name: '' }
+        const img = new Image()
+        img.src = '/welcome-hero.png'
+        await Promise.race([
+          img.decode().catch(() => undefined),
+          new Promise((r) => setTimeout(r, 2500)) // a slow network is not made to wait forever
+        ])
+        // a name typed or brought from Google; never the front of an email address
+        return { due: true, name: p.needsName ? '' : p.name }
       })
-      .catch(() => undefined)
-  }, [])
+      .catch(() => ({ due: false, name: '' }))
+  )
   useEffect(() => {
     if (!sessionsLoaded || welcomeChecked.current) return
     welcomeChecked.current = true
-    if (sessions.some((s) => !s.sample)) return
-    void window.sitka
-      .getProfile()
-      .then((p) => {
-        if (p.needsWelcome) setWelcome(p.name)
-      })
-      .catch(() => undefined)
+    if (sessions.some((s) => !s.sample)) {
+      setWelcomePending(false)
+      return
+    }
+    void welcomeProfile.then((p) => {
+      if (p.due) {
+        // the card offers the walkthrough itself; it is not forced afterwards
+        try {
+          localStorage.setItem('sitka.tourSeen', '1')
+        } catch {
+          /* ignore */
+        }
+        setWelcome({ name: p.name })
+      } else setWelcomePending(false)
+    })
   }, [sessionsLoaded, sessions])
   // "Keep in my library" on a shared recap sends the person here with the
   // recap's id in the address: it is kept, the library refreshed, the recap opened.
@@ -450,9 +470,10 @@ export default function App(): React.JSX.Element {
     <div className="app">
       {welcome ? (
         <Welcome
-          name={welcome}
+          name={welcome.name}
           onClose={() => {
             setWelcome(null)
+            setWelcomePending(false)
             void window.sitka.markWelcomed().catch(() => undefined)
           }}
         />
@@ -596,6 +617,7 @@ export default function App(): React.JSX.Element {
             onOpenSession={openSession}
             onNewAudioSession={() => setView({ name: 'live', audioOnly: true })}
             onJoin={() => setView({ name: 'join' })}
+            holdTour={welcomePending}
           />
         )}
         {(view.name === 'business' || view.name === 'education') && (
