@@ -30,6 +30,28 @@ const ready = new Promise<void>((r) => {
 })
 ;(window as unknown as { sitkaReady: Promise<void> }).sitkaReady = ready
 const rendererModule = import('../../src/renderer/src/main')
+// Google sign-in lives in its own piece, fetched only when the sign-in card shows
+const googleModule = import('./googleSignIn')
+
+/**
+ * Google has said who the person is; Supabase, which owns the accounts, is
+ * shown that proof and opens (or creates) their account. Their name comes
+ * along from Google, so there is nothing to type.
+ */
+async function supabaseFromGoogle(token: string): Promise<boolean> {
+  const { error } = await sb.auth.signInWithIdToken({ provider: 'google', token })
+  if (error) {
+    const m = error.message
+    el('gerr').textContent = /provider is not enabled|Unsupported provider/i.test(m)
+      ? 'Google sign-in is not switched on for this site yet.'
+      : /audience|aud|client id|Bad ID token/i.test(m)
+        ? 'Google sign-in is not fully set up yet (the site does not recognise Google’s proof).'
+        : m
+    return false
+  }
+  forgetPlace()
+  return true
+}
 
 /**
  * The app is a fixed frame: it never zooms and never pans sideways. Phones
@@ -195,7 +217,17 @@ function forgetPlace(): void {
 
 async function boot(): Promise<void> {
   const isRecovery = location.hash.includes('type=recovery')
-  const { data } = await sb.auth.getSession()
+  let { data } = await sb.auth.getSession()
+  // back from a full-page trip to Google (only when a pop-up was refused)
+  if (!data.session?.user) {
+    try {
+      const { finishGoogleRedirect } = await googleModule
+      const token = await finishGoogleRedirect()
+      if (token && (await supabaseFromGoogle(token))) data = (await sb.auth.getSession()).data
+    } catch {
+      /* not a return from Google, or it failed: the sign-in card shows */
+    }
+  }
   if (data.session?.user) {
     // back from Google with a recap to keep: the hash it left with is restored
     try {
@@ -230,7 +262,12 @@ async function boot(): Promise<void> {
   // One request at a time: the button says it is working and ignores a
   // second press; a request that never answers is given up on after a while.
   let busy = false
-  const withBusy = async (btn: HTMLButtonElement, label: string, run: () => Promise<boolean>): Promise<void> => {
+  const withBusy = async (
+    btn: HTMLButtonElement,
+    label: string,
+    run: () => Promise<boolean>,
+    patience = 25000
+  ): Promise<void> => {
     if (busy) return
     busy = true
     const was = btn.innerHTML
@@ -241,7 +278,7 @@ async function boot(): Promise<void> {
       proceed = await Promise.race([
         run(),
         new Promise<boolean>((_, reject) =>
-          setTimeout(() => reject(new Error('The sign-in service did not answer. Check your connection and try again.')), 25000)
+          setTimeout(() => reject(new Error('The sign-in service did not answer. Check your connection and try again.')), patience)
         )
       ])
     } catch (e) {
@@ -275,32 +312,17 @@ async function boot(): Promise<void> {
   // signed in; a recap being kept survives the round trip.
   const google = el('ggoogle') as HTMLButtonElement | null
   if (google) {
-    google.onclick = async () => {
-      if (busy) return
-      busy = true
-      google.disabled = true
-      err.textContent = ''
-      try {
-        if (location.hash.startsWith('#keep=')) sessionStorage.setItem('sitka.afterAuth', location.hash)
-        forgetPlace()
-        const { error } = await sb.auth.signInWithOAuth({
-          provider: 'google',
-          options: { redirectTo: `${location.origin}/app`, queryParams: { prompt: 'select_account' } }
-        })
-        if (error) {
-          err.textContent = /provider is not enabled|Unsupported provider/i.test(error.message)
-            ? 'Google sign-in is not switched on for this site yet.'
-            : plain(error.message)
-          busy = false
-          google.disabled = false
-        }
-        // otherwise the page is on its way to Google
-      } catch (e) {
-        err.textContent = e instanceof Error ? e.message : String(e)
-        busy = false
-        google.disabled = false
-      }
-    }
+    // fetch the Google library now, quietly, so the tap answers at once
+    googleModule.then((m) => m.warmGoogle()).catch(() => undefined)
+    google.onclick = () =>
+      withBusy(google, 'Waiting for Google…', async () => {
+        err.textContent = ''
+        const { googleIdToken } = await googleModule
+        const token = await googleIdToken()
+        // null: the page is on its way to Google and will come back signed in
+        if (!token) return false
+        return await supabaseFromGoogle(token)
+      }, 10 * 60000) // choosing an account can take as long as it takes
   }
   ;(el('gsignin') as HTMLButtonElement).onclick = () =>
     withBusy(el('gsignin') as HTMLButtonElement, 'Signing in…', async () => {
