@@ -1985,6 +1985,36 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       location.href = '/app'
     },
+    deleteAccount: async (confirmEmail: string) => {
+      // the server removes everything that was theirs, then the account; the
+      // browser forgets what it kept and goes back to the front door
+      const { data } = await sb.auth.getSession()
+      const t = data.session?.access_token
+      if (!t) return { error: 'Sign in again first.' }
+      let r: Response
+      try {
+        r = await fetch('/api/account', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({ confirm: confirmEmail })
+        })
+      } catch {
+        return { error: 'Could not reach the server. Check your connection and try again.' }
+      }
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; failures?: string[] }
+      if (r.status === 400 || r.status === 401) return { error: j.error || 'Not allowed.' }
+      if (!r.ok && r.status !== 207) return { error: j.error || `The server answered ${r.status}.` }
+      try {
+        localStorage.clear()
+        sessionStorage.clear()
+        indexedDB.deleteDatabase(DB_NAME)
+      } catch {
+        /* ignore */
+      }
+      await sb.auth.signOut().catch(() => undefined)
+      location.href = '/?bye=1'
+      return { ok: true }
+    },
     setSettings: async (s: Settings) => {
       localStorage.setItem(
         SETTINGS_KEY,

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Profile, Settings } from '@shared/types'
 import Tour from './Tour'
 import ConfirmDialog from './ConfirmDialog'
@@ -70,6 +71,7 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
   const closeTour = useCallback(() => setShowTour(false), [])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
 
   const [anthropicKey, setAnthropicKey] = useState('')
@@ -465,7 +467,93 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
             </div>
           </div>
         </div>
+
+        {profile?.cloud && (
+          <>
+            <div className="section-title">Leaving Sitka</div>
+            <div className="card">
+              <div className="set-row wrap">
+                <div className="set-text">
+                  <div className="set-title">Delete my account</div>
+                  <div className="set-desc">
+                    Every session, recording, note and document you made, and the account itself, are removed for good.
+                    Organisations you created are removed for everyone in them. This cannot be undone.
+                  </div>
+                </div>
+                <button className="btn btn-ghost btn-sm set-delete-account" onClick={() => setDeleting(true)}>
+                  Delete account…
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {deleting && (
+          <DeleteAccountDialog
+            email={profile?.email ?? ''}
+            onCancel={() => setDeleting(false)}
+          />
+        )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The last dialog: the person types their email to be sure, and the account
+ * is gone. The server checks the email again before it removes anything.
+ */
+function DeleteAccountDialog({ email, onCancel }: { email: string; onCancel: () => void }): React.JSX.Element {
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const matches = typed.trim().toLowerCase() === email.trim().toLowerCase() && email.length > 0
+  const go = async (): Promise<void> => {
+    if (!matches || busy) return
+    setBusy(true)
+    setError('')
+    const r = await window.sitka.deleteAccount(typed.trim()).catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }))
+    if (r.error) {
+      setError(r.error)
+      setBusy(false)
+    }
+    // on success the page leaves on its own
+  }
+  return createPortal(
+    <div className="dialog-overlay" onMouseDown={busy ? undefined : onCancel}>
+      <div className="dialog delete-account" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dialog-title">Delete your account?</div>
+        <div className="dialog-message">
+          This removes everything: your sessions and their recordings, notes, documents, practice projects, memory, and the
+          organisations you created. Nothing can be brought back.
+        </div>
+        <label className="delete-account-label">
+          Type <b>{email}</b> to confirm
+        </label>
+        <input
+          className="input"
+          value={typed}
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={email}
+          onChange={(e) => setTyped(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void go()
+            if (e.key === 'Escape' && !busy) onCancel()
+          }}
+        />
+        {error && <div className="notice notice-error delete-account-error">{error}</div>}
+        <div className="dialog-actions">
+          <button className="btn" onClick={onCancel} disabled={busy}>
+            Keep my account
+          </button>
+          <button className="btn btn-danger" onClick={() => void go()} disabled={!matches || busy}>
+            {busy ? 'Deleting…' : 'Delete everything'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

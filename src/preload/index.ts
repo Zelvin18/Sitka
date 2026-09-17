@@ -46,6 +46,9 @@ const api = {
   markWelcomed: (): Promise<void> => ipcRenderer.invoke('profile:welcomed'),
   /** Online: sign out and return to the gate. Desktop: nothing to sign out of. */
   signOut: (): Promise<void> => ipcRenderer.invoke('profile:signOut'),
+  /** the online account and everything in it, gone for good; the desktop's local workspace has no account to delete */
+  deleteAccount: (confirmEmail: string): Promise<{ ok?: boolean; error?: string }> =>
+    ipcRenderer.invoke('profile:deleteAccount', confirmEmail),
   setSettings: (s: Settings): Promise<void> => ipcRenderer.invoke('settings:set', s),
 
   listSources: (): Promise<CaptureSource[]> => ipcRenderer.invoke('sources:list'),

@@ -1016,6 +1016,7 @@ function registerIpc(): void {
     return { name: clean, cloud: false }
   })
   ipcMain.handle('profile:signOut', () => undefined)
+  ipcMain.handle('profile:deleteAccount', () => ({ error: 'This is a local workspace on this computer: there is no online account to delete.' }))
 
   ipcMain.handle('memory:list', () => loadMemory())
   ipcMain.handle(
