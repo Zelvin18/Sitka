@@ -372,7 +372,34 @@ export default function SessionView({
           setVideoSrc('progressive')
           return
         }
-        const bytes = await window.sitka.readVideo(sessionId)
+        // The parts are already listed with their links: they are fetched
+        // straight from the store, all at once, and joined here — no further
+        // round trips through the server. Only when nothing was listed is the
+        // fuller path taken (parts still on this device, older stores).
+        let bytes: Uint8Array | null = null
+        const listed = sizedRef.current
+        if (listed.length > 0) {
+          try {
+            const bufs = await Promise.all(
+              listed.map(async (p) => {
+                const r = await fetch(p.url, { cache: 'no-store' })
+                if (!r.ok) throw new Error(`part ${r.status}`)
+                return new Uint8Array(await r.arrayBuffer())
+              })
+            )
+            const joined = new Uint8Array(bufs.reduce((n, b) => n + b.byteLength, 0))
+            let at = 0
+            for (const b of bufs) {
+              joined.set(b, at)
+              at += b.byteLength
+            }
+            bytes = joined
+          } catch {
+            bytes = null
+          }
+        }
+        if (gen !== loadGenRef.current) return
+        if (!bytes) bytes = await window.sitka.readVideo(sessionId)
         if (gen !== loadGenRef.current) return
         if (!bytes || bytes.byteLength === 0) {
           void advance(gen, 'no file could be read from the cloud or this device')
@@ -419,11 +446,12 @@ export default function SessionView({
       if (gen !== loadGenRef.current) return
       sizedRef.current = sized
       const total = sized.reduce((n, p) => n + p.size, 0)
-      // the session's own record may still be on its way: a moment's patience, then decide
-      for (let i = 0; i < 30 && !metaRef.current; i++) await new Promise((r) => setTimeout(r, 100))
+      const small = sized.length > 0 && total < 12 * 1024 * 1024
+      // a small recording needs no more deciding: it goes at once. Otherwise the
+      // session's own record may still be on its way: a moment's patience, then decide
+      if (!small) for (let i = 0; i < 30 && !metaRef.current; i++) await new Promise((r) => setTimeout(r, 100))
       if (gen !== loadGenRef.current) return
       const audio = Boolean(metaRef.current?.audioOnly)
-      const small = sized.length > 0 && total < 12 * 1024 * 1024
       ladderRef.current.ways = small
         ? ['blob', 'url', 'stream']
         : audio && IOS
