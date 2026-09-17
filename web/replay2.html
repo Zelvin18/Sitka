@@ -8,11 +8,11 @@
 <meta name="theme-color" content="#0c0c0d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* Recap, second take: a cinema, not a document. One deliberate look — dark
    stage, editorial type, the recording always within reach. */
-:root{--bg:#0c0c0d;--bg2:#131315;--bg3:#1b1b1e;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.18);--text:#f2f2f4;--t2:#a9a9b1;--t3:#6f6f78;--danger:#d0524a;--serif:'Fraunces',Georgia,'Times New Roman',serif;--sans:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;--ink:#fff;--ink-fg:#0c0c0d;--glass:rgba(19,19,21,.86)}
+:root{--bg:#0c0c0d;--bg2:#131315;--bg3:#1b1b1e;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.18);--text:#f2f2f4;--t2:#a9a9b1;--t3:#6f6f78;--danger:#d0524a;--sans:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;--serif:var(--sans);--ink:#fff;--ink-fg:#0c0c0d;--glass:rgba(19,19,21,.86)}
 /* the light take: paper instead of a cinema, everything else the same */
 html[data-theme=light]{--bg:#fbfbf9;--bg2:#f3f3f0;--bg3:#ebebe7;--line:rgba(0,0,0,.09);--line2:rgba(0,0,0,.18);--text:#151517;--t2:#5f5f66;--t3:#9a9aa1;--ink:#151517;--ink-fg:#fff;--glass:rgba(251,251,249,.9);color-scheme:light}
 html[data-theme=light] .hdr{background:var(--glass);color:var(--text)}
@@ -74,7 +74,7 @@ main{padding-top:56px}
 .stage.playing:hover .hero,.stage.playing.paused .hero{opacity:1;transform:none;pointer-events:auto}
 .kicker{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t2);margin-bottom:10px;display:flex;align-items:center;gap:10px}
 .kicker .ldot{width:7px;height:7px;border-radius:50%;background:var(--danger)}
-h1.title{font-family:var(--serif);font-weight:500;font-size:clamp(24px,3.2vw,40px);line-height:1.08;letter-spacing:-.015em;margin:0 0 10px;max-width:22ch;font-variation-settings:'opsz' 96}
+h1.title{font-family:var(--sans);font-weight:700;font-size:clamp(23px,3vw,36px);line-height:1.12;letter-spacing:-.02em;margin:0 0 10px;max-width:24ch}
 .meta{font-size:13.5px;color:var(--t2);display:flex;gap:14px;flex-wrap:wrap}
 /* one quiet glyph in the middle of the picture: there while it is paused, gone while it plays */
 .playbig{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,255,255,.22);background:rgba(12,12,13,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:opacity .25s ease,transform .15s ease;box-shadow:0 10px 40px rgba(0,0,0,.45)}
@@ -150,7 +150,7 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 .spine .follow input{accent-color:#fff}
 
 .main{min-width:0}
-.lead{font-family:var(--serif);font-weight:300;font-size:clamp(20px,2.1vw,26px);line-height:1.45;letter-spacing:-.01em;color:var(--text);margin:0 0 36px;font-variation-settings:'opsz' 60}
+.lead{font-family:var(--sans);font-weight:400;font-size:clamp(17px,1.7vw,21px);line-height:1.6;letter-spacing:-.005em;color:var(--text);margin:0 0 36px}
 .lead.pending{color:var(--t3);font-style:italic}
 .sec{margin-bottom:40px}
 .moments{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}

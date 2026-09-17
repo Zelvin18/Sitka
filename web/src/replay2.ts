@@ -917,7 +917,7 @@ function renderMoments(d: Loaded): void {
 }
 
 // ---------- read in your language ----------
-const LANGS = ['English', 'Shona', 'Ndebele', 'Swahili', 'French', 'Portuguese', 'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi']
+const LANGS = ['English', 'Luganda', 'Nyankole', 'Swahili', 'Shona', 'Ndebele', 'French', 'Portuguese', 'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi']
 async function translateBatch(texts: string[], lang: string): Promise<string[] | null> {
   try {
     const r = await fetch('/api/chat', {
