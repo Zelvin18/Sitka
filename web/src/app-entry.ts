@@ -38,8 +38,8 @@ const googleModule = import('./googleSignIn')
  * shown that proof and opens (or creates) their account. Their name comes
  * along from Google, so there is nothing to type.
  */
-async function supabaseFromGoogle(token: string): Promise<boolean> {
-  const { data, error } = await sb.auth.signInWithIdToken({ provider: 'google', token })
+async function supabaseFromGoogle(token: string, nonce?: string): Promise<boolean> {
+  const { data, error } = await sb.auth.signInWithIdToken({ provider: 'google', token, nonce })
   if (!error && data.user) {
     // An account that began with a password has no name on its profile even
     // after Google vouches for it; Google's name is kept in the account's
@@ -344,8 +344,10 @@ async function boot(): Promise<void> {
   // small card offers, and this card stays for anyone who ignores it.
   googleModule
     .then((m) =>
-      m.quietGoogle((token) =>
-        withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () => supabaseFromGoogle(token))
+      m.quietGoogle((token, nonce) =>
+        withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () =>
+          supabaseFromGoogle(token, nonce)
+        )
       )
     )
     .catch(() => undefined)

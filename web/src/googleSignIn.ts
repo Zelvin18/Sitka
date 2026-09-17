@@ -133,6 +133,17 @@ interface GsiId {
 }
 type GsiWindow = Window & { google?: { accounts?: { id?: GsiId } } }
 
+function randomCode(): string {
+  const bytes = new Uint8Array(24)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 function gsiScript(): Promise<GsiId> {
   const w = window as GsiWindow
   if (w.google?.accounts?.id) return Promise.resolve(w.google.accounts.id)
@@ -166,9 +177,19 @@ function gsiScript(): Promise<GsiId> {
  * produces. Nothing happens at all when the client id is not set, when the
  * page is inside another site's frame, or when Google decides not to offer.
  */
-export async function quietGoogle(onToken: (token: string) => void): Promise<void> {
+export async function quietGoogle(onToken: (token: string, nonce: string) => void): Promise<void> {
   if (!GOOGLE_CLIENT_ID) return
   if (window.top !== window.self) return
+  // A one-time code ties Google's proof to this very page load: Google is
+  // given its fingerprint and stamps the proof with it; Supabase is given the
+  // code itself and checks the stamp matches. Nothing replayed elsewhere fits.
+  const nonce = randomCode()
+  let stamped: string
+  try {
+    stamped = await sha256Hex(nonce)
+  } catch {
+    return // no crypto (an old browser over plain http): the card is there
+  }
   let signedOut = false
   try {
     signedOut = localStorage.getItem(SIGNED_OUT) === '1'
@@ -186,8 +207,9 @@ export async function quietGoogle(onToken: (token: string) => void): Promise<voi
   id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: (r: GsiCredential) => {
-      if (r?.credential) onToken(r.credential)
+      if (r?.credential) onToken(r.credential, nonce)
     },
+    nonce: stamped,
     auto_select: !signedOut,
     cancel_on_tap_outside: false,
     itp_support: true,
