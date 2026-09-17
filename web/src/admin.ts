@@ -338,7 +338,41 @@ function renderLive(l: Live): void {
     .join('')}</div>`
 }
 
+// The bell counts faults reported since the owner last looked at the list;
+// looking (the bell, or scrolling to Reliability) marks them seen.
+const SEEN_KEY = 'sitka.adminSeenErrors'
+let latestErrors: ErrRow[] = []
+function seenAt(): number {
+  try {
+    return Number(localStorage.getItem(SEEN_KEY) || 0)
+  } catch {
+    return 0
+  }
+}
+function markErrorsSeen(): void {
+  try {
+    localStorage.setItem(SEEN_KEY, String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+  renderBell()
+}
+function renderBell(): void {
+  const count = latestErrors.filter((e) => new Date(e.at).getTime() > seenAt()).length
+  const badge = document.getElementById('bellcount')
+  const bell = document.getElementById('bell')
+  if (!badge || !bell) return
+  badge.hidden = count === 0
+  badge.textContent = count > 99 ? '99+' : String(count)
+  bell.title = count === 0 ? 'No new faults since you last looked' : `${count} new ${count === 1 ? 'fault' : 'faults'} since you last looked`
+  if (count > 0 && !bell.classList.contains('ring')) {
+    bell.classList.add('ring')
+    window.setTimeout(() => bell.classList.remove('ring'), 700)
+  }
+}
 function renderReliability(o: Overview, errs: ErrRow[]): void {
+  latestErrors = errs
+  renderBell()
   el('rel-kpis').innerHTML = [
     { l: 'Errors in the last 24 hours', v: fmtInt(o.errors_24h), n: `${fmtInt(o.errors_7d)} in 7 days` },
     { l: 'Captions that failed to upload', v: fmtInt(o.stt_errors), n: `in ${days} days, after retries` },
@@ -479,6 +513,15 @@ function wire(): void {
     void loadAll()
   })
   el('refresh').addEventListener('click', () => void loadAll())
+  // the bell takes the owner to the faults and marks them seen
+  const bell = document.getElementById('bell')
+  if (bell) {
+    bell.addEventListener('click', () => {
+      const target = document.getElementById('errors')
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      markErrorsSeen()
+    })
+  }
   el('people-search').addEventListener('input', renderPeople)
   // the rail follows the section in view
   const links = Array.from(el('rail').querySelectorAll('a'))

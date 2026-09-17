@@ -190,11 +190,36 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     usageQueue.push({ user_id: user.id, name, props, platform: 'web', ua: UA })
     if (!usageTimer) usageTimer = window.setTimeout(flushUsage, 1500)
   }
+  // Every fault also reaches the owner by email, gathered: the first goes at
+  // once, anything more in the next ten minutes goes as one message after.
+  const mailQueue: string[] = []
+  let mailTimer: number | null = null
+  let mailLast = 0
+  async function mailErrors(): Promise<void> {
+    mailTimer = null
+    const lines = mailQueue.splice(0, 40)
+    if (lines.length === 0) return
+    mailLast = Date.now()
+    try {
+      await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ lines, user: user.email ?? user.id, page: location.pathname, ua: UA })
+      })
+    } catch {
+      /* the ops view still has it */
+    }
+  }
   function reportError(page: string, message: string, stack?: string): void {
     void sb
       .from('client_errors')
       .insert({ user_id: user.id, page, message: message.slice(0, 2000), stack: (stack || '').slice(0, 4000), ua: UA })
       .then(() => undefined, () => undefined)
+    mailQueue.push(`${page}: ${message.slice(0, 400)}`)
+    if (mailTimer === null) {
+      const wait = Math.max(0, 10 * 60000 - (Date.now() - mailLast))
+      mailTimer = window.setTimeout(() => void mailErrors(), Math.min(wait, 10 * 60000))
+    }
   }
   window.addEventListener('pagehide', flushUsage)
   ;(window as unknown as { sitkaTrack: typeof track }).sitkaTrack = track
@@ -4061,9 +4086,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             role: 'user',
             content: `${materials ? materials + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments)}`
           }
-        ])
+        ], 6000)
         const parsed = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
-        if (!parsed?.notes) return { error: 'Could not update notes.' }
+        if (!parsed?.notes) {
+          // a whole lecture's notes in one answer can run past the model's room: said where it can be seen
+          reportError(location.pathname, `notes could not be read from the answer (${out.length} chars, ${d.segments.length} lines): ${out.slice(0, 200)}`)
+          return { error: 'Could not update notes.' }
+        }
         const notes: SessionNotes = {
           markdown: parsed.notes,
           moments: Array.isArray(parsed.moments) ? parsed.moments : [],
@@ -4101,10 +4130,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
                 : transcriptBlock(d.segments)
             }
           ],
-          3000
+          5000
         )
         const parsed = extractJson<Omit<StudyPack, 'generatedAt'>>(out)
-        if (!parsed?.concepts) return { error: 'Could not build the study pack.' }
+        if (!parsed?.concepts) {
+          reportError(location.pathname, `study pack could not be read from the answer (${out.length} chars): ${out.slice(0, 200)}`)
+          return { error: 'Could not build the study pack.' }
+        }
         const study: StudyPack = {
           concepts: parsed.concepts ?? [],
           flashcards: parsed.flashcards ?? [],
