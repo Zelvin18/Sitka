@@ -197,6 +197,16 @@ async function boot(): Promise<void> {
   const isRecovery = location.hash.includes('type=recovery')
   const { data } = await sb.auth.getSession()
   if (data.session?.user) {
+    // back from Google with a recap to keep: the hash it left with is restored
+    try {
+      const after = sessionStorage.getItem('sitka.afterAuth')
+      if (after) {
+        sessionStorage.removeItem('sitka.afterAuth')
+        history.replaceState(null, '', location.pathname + after)
+      }
+    } catch {
+      /* ignore */
+    }
     if (isRecovery) {
       const np = window.prompt('Choose a new password (6+ characters):')
       if (np && np.length >= 6) await sb.auth.updateUser({ password: np })
@@ -260,6 +270,38 @@ async function boot(): Promise<void> {
             : /already registered|already exists/i.test(m)
               ? 'There is already an account with that email. Sign in instead.'
               : m
+  // Google: one tap, and Google vouches for who they are; their name comes
+  // with them, so nothing is typed. The page leaves for Google and returns
+  // signed in; a recap being kept survives the round trip.
+  const google = el('ggoogle') as HTMLButtonElement | null
+  if (google) {
+    google.onclick = async () => {
+      if (busy) return
+      busy = true
+      google.disabled = true
+      err.textContent = ''
+      try {
+        if (location.hash.startsWith('#keep=')) sessionStorage.setItem('sitka.afterAuth', location.hash)
+        forgetPlace()
+        const { error } = await sb.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: `${location.origin}/app`, queryParams: { prompt: 'select_account' } }
+        })
+        if (error) {
+          err.textContent = /provider is not enabled|Unsupported provider/i.test(error.message)
+            ? 'Google sign-in is not switched on for this site yet.'
+            : plain(error.message)
+          busy = false
+          google.disabled = false
+        }
+        // otherwise the page is on its way to Google
+      } catch (e) {
+        err.textContent = e instanceof Error ? e.message : String(e)
+        busy = false
+        google.disabled = false
+      }
+    }
+  }
   ;(el('gsignin') as HTMLButtonElement).onclick = () =>
     withBusy(el('gsignin') as HTMLButtonElement, 'Signing in…', async () => {
       err.textContent = ''
