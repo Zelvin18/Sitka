@@ -233,7 +233,12 @@ export default function Home({
                     )}
                     {s.space && <span className="lib-badge lib-badge-space">{s.space === 'business' ? 'Business' : 'Education'}</span>}
                     {s.sample && <span className="lib-badge lib-badge-sample">Sample</span>}
-                    {s.saved && <span className="lib-badge lib-badge-sample">Shared with you</span>}
+                    {s.saved && (
+                      <span className="lib-badge lib-badge-shared">
+                        <span className="lib-badge-dot" />
+                        Shared with you
+                      </span>
+                    )}
                   </span>
                   <button
                     className="lib-delete"

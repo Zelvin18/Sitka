@@ -2138,8 +2138,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     ],
 
     getThumb: async (id: string) => {
-      const { data } = await sb.from('sessions').select('thumb').eq('id', id).single()
-      return (data?.thumb as string) || null
+      const { data } = await sb.from('sessions').select('thumb').eq('id', id).maybeSingle()
+      if (data?.thumb) return data.thumb as string
+      // a kept recap: the picture its recorder's recap carries
+      const { data: r } = await sb.from('recaps').select('thumb').eq('id', id).maybeSingle()
+      return ((r as { thumb?: string | null } | null)?.thumb as string) || null
     },
 
     createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
