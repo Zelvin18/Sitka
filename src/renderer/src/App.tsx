@@ -162,6 +162,16 @@ export default function App(): React.JSX.Element {
   // A new account is welcomed once, by name, when its library is still empty.
   const [welcome, setWelcome] = useState<string | null>(null)
   const welcomeChecked = useRef(false)
+  // Its picture is fetched the moment the app opens for an account still to be
+  // welcomed, so the card arrives with the picture already in hand.
+  useEffect(() => {
+    void window.sitka
+      .getProfile()
+      .then((p) => {
+        if (p.needsWelcome) new Image().src = '/welcome-hero.png'
+      })
+      .catch(() => undefined)
+  }, [])
   useEffect(() => {
     if (!sessionsLoaded || welcomeChecked.current) return
     welcomeChecked.current = true

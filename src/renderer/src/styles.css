@@ -12443,6 +12443,13 @@ video {
   margin-top: 10px;
 }
 
+/* the browser's own player, offered when ours could not play a recording */
+.video-failed-native {
+  display: block;
+  width: min(360px, 100%);
+  margin: 10px auto 0;
+}
+
 /* ============ the welcome, once ============ */
 .welcome-overlay {
   z-index: 420;
@@ -12476,17 +12483,39 @@ video {
   justify-content: flex-end;
   color: #f4f4f6;
   overflow: hidden;
-  /* the lecture theatre at dusk, its left kept dark for the words; a veil
-     from the left and a fade at the foot so the name reads on any crop.
-     Where the picture is not served (the desktop app) the colour stands. */
+  /* the lecture theatre at dusk sits behind as a picture that fades in when
+     it has arrived; a veil from the left and a fade at the foot keep the
+     name readable on any crop. Until it arrives, and where it is not served
+     (the desktop app), the dark colour stands. */
   background-color: #0f0f11;
-  background-image:
+}
+.welcome-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 50%;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+.welcome-hero-img.in {
+  opacity: 1;
+}
+.welcome-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
     linear-gradient(to right, rgba(10, 10, 12, 0.88) 0%, rgba(10, 10, 12, 0.55) 45%, rgba(10, 10, 12, 0.12) 100%),
-    linear-gradient(to top, rgba(10, 10, 12, 0.7) 0%, rgba(10, 10, 12, 0) 45%),
-    url('/welcome-hero.png');
-  background-size: cover, cover, cover;
-  background-position: center, center, 62% 50%;
-  background-repeat: no-repeat;
+    linear-gradient(to top, rgba(10, 10, 12, 0.7) 0%, rgba(10, 10, 12, 0) 45%);
+  pointer-events: none;
+}
+.welcome-hero > *:not(.welcome-hero-img) {
+  position: relative;
+  z-index: 2;
 }
 .welcome-hero .welcome-title,
 .welcome-hero .welcome-sub {
@@ -12589,7 +12618,9 @@ video {
   .welcome-hero {
     padding: 34px 22px 22px;
     min-height: 250px;
-    background-position: center, center, 74% 55%;
+  }
+  .welcome-hero-img {
+    object-position: 74% 55%;
   }
   .welcome-title {
     font-size: 28px;

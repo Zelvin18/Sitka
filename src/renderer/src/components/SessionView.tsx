@@ -60,6 +60,8 @@ export default function SessionView({
   const [data, setData] = useState<SessionData | null>(null)
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoError, setVideoError] = useState(false)
+  /** the recording handed to the browser's own player, when ours could not play it */
+  const [nativeSrc, setNativeSrc] = useState<string | null>(null)
   /** how the recording was being played when it failed, for the message and the report */
   const diagRef = useRef('')
   const failWith = (why: string): void => {
@@ -379,8 +381,8 @@ export default function SessionView({
     const t = window.setTimeout(() => {
       const v = videoRef.current
       if (gen !== loadGenRef.current || !v || v.readyState >= 1) return
-      void advance(gen, `${diagRef.current} gave nothing in 20 s (network state ${v.networkState})`)
-    }, 20000)
+      void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState})`)
+    }, 10000)
     return () => window.clearTimeout(t)
   }, [videoSrc, advance])
 
@@ -424,8 +426,8 @@ export default function SessionView({
       if (cancelled || !videoRef.current || videoRef.current.readyState >= 1) return
       cancelled = true
       streamPartsRef.current = []
-      void advance(gen, `${diagRef.current} gave nothing in 20 s`)
-    }, 20000)
+      void advance(gen, `${diagRef.current} gave nothing in 10 s`)
+    }, 10000)
     void run.then((ok) => {
       if (cancelled) return
       if (!ok) {
@@ -850,26 +852,35 @@ export default function SessionView({
                         if (v.readyState === 0 && videoSrc !== 'progressive') v.load()
                         const gen = loadGenRef.current
                         const from = v.currentTime
+                        const state = (): string => {
+                          const played = v.played.length ? `${v.played.start(0).toFixed(1)}–${v.played.end(v.played.length - 1).toFixed(1)}` : 'none'
+                          return `length ${v.duration}, at ${v.currentTime.toFixed(2)}, ready ${v.readyState}, network ${v.networkState}, ${v.paused ? 'paused' : 'playing'}${v.ended ? ', ended' : ''}${v.muted ? ', muted' : ''}, rate ${v.playbackRate}, played ${played}${v.error ? `, error ${v.error.code}` : ''}`
+                        }
                         const stalled = (why: string): void => {
                           if (gen !== loadGenRef.current) return
-                          const d = `${diagRef.current}: ${why} (length ${v.duration}, ready ${v.readyState}, network ${v.networkState}${v.error ? `, error ${v.error.code}` : ''})`
+                          const d = `${diagRef.current}: ${why} (${state()})`
                           streamPartsRef.current = []
                           pendingSeekRef.current = Math.max(0, from) // the next way starts playing on its own
                           void advance(gen, d)
                         }
                         v.play()
                           .then(() => {
-                            // playing, but not moving: five seconds without the clock advancing
+                            // playing, but not moving: four seconds without the clock advancing
                             window.setTimeout(() => {
                               if (gen !== loadGenRef.current || userPausedRef.current) return
                               const expected = (meta.durationMs || 0) / 1000
-                              if (v.currentTime - from < 0.25) stalled('play did not move')
+                              if (v.paused && !v.ended) stalled('play stopped by itself')
+                              else if (v.currentTime - from < 0.25) stalled('play did not move')
                               else if (v.ended && v.currentTime < 1 && expected > 5) stalled('it ended at once')
-                            }, 5000)
+                            }, 4000)
                           })
                           .catch((err) => {
                             const name = err instanceof Error ? err.name : String(err)
-                            if (name === 'AbortError') return // a pause before it started, not a fault
+                            // a load that replaced this one aborted its play: the new one plays on its own
+                            if (name === 'AbortError') {
+                              pendingSeekRef.current = Math.max(0, from)
+                              return
+                            }
                             stalled(`play was refused (${name})`)
                           })
                       }}
@@ -1014,6 +1025,23 @@ export default function SessionView({
                   >
                     Download the file
                   </button>
+                  {/* the browser's own player, as a last resort and as a test: if this plays, the file is sound */}
+                  {nativeSrc ? (
+                    <audio className="video-failed-native" controls src={nativeSrc} />
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() =>
+                        void window.sitka.readVideo(sessionId).then((bytes) => {
+                          if (!bytes || bytes.byteLength === 0) return
+                          setNativeSrc(URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mediaType(bytes.subarray(0, 12)) })))
+                        })
+                      }
+                    >
+                      Try the browser’s own player
+                    </button>
+                  )}
                 </div>
               ) : !videoWanted ? (
                 <button

@@ -25,6 +25,15 @@ export default function Welcome({ name, onClose }: Props): React.JSX.Element {
     <div className="dialog-overlay welcome-overlay">
       <div className="welcome" role="dialog" aria-label="Welcome to Sitca">
         <div className="welcome-hero">
+          {/* the lecture theatre at dusk; fetched ahead of time, faded in the moment it is ready */}
+          <img
+            className="welcome-hero-img"
+            src="/welcome-hero.png"
+            alt=""
+            decoding="async"
+            fetchPriority="high"
+            onLoad={(e) => e.currentTarget.classList.add('in')}
+          />
           <span className="welcome-glow" aria-hidden="true" />
           <span className="welcome-mark">
             <Mark size={38} />
