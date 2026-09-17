@@ -17,6 +17,8 @@ import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@sha
 
 /** MediaSource, or Safari's managed one on iPhone */
 const hasStreamingEngine = (): boolean => typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
+/** an iPhone or iPad, whichever browser: every browser there is Safari's engine underneath */
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 import { formatDate, formatDuration, formatTime, parseTimestamp } from '../lib/format'
 import { copyRich } from '../lib/clipboard'
 import {
@@ -395,7 +397,10 @@ export default function SessionView({
     setPlaying(false)
     setMediaDuration(0)
     diagRef.current = ''
-    ladderRef.current = { ways: ['url', 'stream', 'blob'], tried: [] }
+    // On an iPhone or iPad the parts stream is the quick start: Safari's own
+    // loader is slow to open a long file by its link. Elsewhere the whole
+    // file by its link is the quickest, the stream next.
+    ladderRef.current = { ways: IOS ? ['stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
     if (!videoWanted) return undefined
     void (async () => {
       // Remux on first open if needed (desktop): a real duration and seek index.
@@ -417,7 +422,28 @@ export default function SessionView({
     const t = window.setTimeout(() => {
       const v = videoRef.current
       if (gen !== loadGenRef.current || !v || v.readyState >= 1) return
-      void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState})`)
+      const src = videoSrc
+      // a link that gave nothing is asked directly what it answers, so the
+      // account says whether the store or the player was the slow one
+      void (async () => {
+        let probe = ''
+        if (/^https?:/.test(src)) {
+          try {
+            const t0 = Date.now()
+            const r = await fetch(src, { headers: { Range: 'bytes=0-63' } })
+            const head = new Uint8Array(await r.arrayBuffer())
+            const box = String.fromCharCode(...head.subarray(4, 8))
+            // the box after the first (its size is small: the low byte is enough)
+            const n = head[3]
+            const next = head.length >= n + 8 ? String.fromCharCode(...head.subarray(n + 4, n + 8)) : ''
+            probe = ` · probe ${r.status} ${r.headers.get('content-type') ?? '?'} ranges:${r.headers.get('accept-ranges') ?? '-'} ${r.headers.get('content-range') ?? ''} first:${box}${next ? '/' + next : ''} in ${Date.now() - t0} ms`
+          } catch (e) {
+            probe = ` · probe failed (${e instanceof Error ? e.message : String(e)})`
+          }
+        }
+        if (gen !== loadGenRef.current) return
+        void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState}, buffered ${v.buffered.length})${probe}`)
+      })()
     }, 10000)
     return () => window.clearTimeout(t)
   }, [videoSrc, advance])

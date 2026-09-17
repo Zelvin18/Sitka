@@ -276,9 +276,11 @@ let mediaPromise: Promise<boolean> | null = null
  */
 let previewing = false
 let previewed = false
+/** a tap asked for play: the muted preview must not start, and its pause must never cut that play short */
+let playRequested = false
 async function preview(): Promise<void> {
   const v = video()
-  if (previewed || !mediaReady) return
+  if (previewed || !mediaReady || playRequested) return
   previewed = true
   previewing = true
   try {
@@ -309,6 +311,9 @@ async function sizeOf(url: string): Promise<number | null> {
     return null
   }
 }
+/** an iPhone or iPad, whichever browser: Safari's engine underneath, whose own loader is slow to open a long file by its link */
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const HAS_ENGINE = typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
 const SLICE = 8 * 1024 * 1024
 /**
  * A whole file in the recorder's fragmented form, streamed in slices. False
@@ -382,7 +387,11 @@ function loadMedia(): Promise<boolean> {
         // and the first slice is playing within seconds however long the
         // event ran; the rest arrive behind it. Only a file already rewritten
         // with its index first (which seeks best) is played natively.
-        if (found.whole) {
+        // On an iPhone the parts stream starts sooner than Safari's own loader
+        // opens a long file by its link; the whole file is kept for when there
+        // are no parts, or no engine.
+        const wholeFirst = Boolean(found.whole) && !(IOS && HAS_ENGINE && found.parts.length > 0)
+        if (found.whole && wholeFirst) {
           const streamed = await streamWhole(v, found.whole, found.wholeSize)
           if (!streamed) v.src = found.whole
           v.hidden = false
@@ -430,6 +439,18 @@ function loadMedia(): Promise<boolean> {
           el('stage').classList.add('hasvideo')
           el('playtext').textContent = 'Play'
           console.info('[recap] streaming', paths.length, 'parts')
+          void preview()
+          return true
+        }
+        // the stream declined but a whole file exists: the browser's own loader, before any long download
+        if (found.whole) {
+          v.src = found.whole
+          v.hidden = false
+          mediaReady = true
+          el('stage').classList.add('hasvideo')
+          el('playtext').textContent = 'Play'
+          el('playsub').textContent = data.durationMs ? fmtLen(data.durationMs) : 'Ready'
+          console.info('[recap] whole file played natively after the stream declined')
           void preview()
           return true
         }
@@ -521,11 +542,19 @@ function loadMedia(): Promise<boolean> {
  * hand this runs inside the tap and always works; while it is still coming
  * the request is kept and honoured the moment it lands.
  */
+let abortRetried = false
 function refused(err: unknown): void {
   // The browser said no. Say why on the pill, and hand the recording its own
   // controls, which a browser always honours from a direct tap.
   const v = video()
   const name = err instanceof Error ? err.name : String(err)
+  // a play cut short by a load that replaced it is not a refusal: it is asked
+  // again once the new load has had a moment
+  if (name === 'AbortError' && !abortRetried) {
+    abortRetried = true
+    window.setTimeout(() => v.play().catch(refused), 400)
+    return
+  }
   console.error('[recap] play refused', name, err)
   el('stage').classList.add('err')
   el('stage').classList.remove('loading')
@@ -542,6 +571,8 @@ function refused(err: unknown): void {
 
 function play(at?: number): void {
   const v = video()
+  playRequested = true
+  previewed = true
   if (mediaReady) {
     if (at !== undefined) v.currentTime = at
     v.play().catch(refused)
