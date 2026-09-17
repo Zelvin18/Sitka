@@ -2554,7 +2554,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // A whole file still in the recorder's fragmented form makes a player
       // read all of it before the first frame. The parts stream instead: the
       // first is playing within seconds however long the session ran.
-      if (d.meta.mime === 'video/mp4' && !d.meta.flat) return null
+      // (a recording whose container was never noted is treated the same: only WebM is safe unflattened)
+      if (d.meta.mime !== 'video/webm' && !d.meta.flat) return null
       // A whole file made by an older rewriter (an iPhone's edit list left
       // at nothing, which players read as no sound at all) is made again in
       // the background from the parts; until then the parts play.

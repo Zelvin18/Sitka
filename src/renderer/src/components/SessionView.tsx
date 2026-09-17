@@ -78,6 +78,8 @@ export default function SessionView({
   type Way = 'url' | 'stream' | 'blob'
   const ladderRef = useRef<{ ways: Way[]; tried: string[] }>({ ways: [], tried: [] })
   const loadGenRef = useRef(0)
+  /** counts the ways tried in this load, so a late watchdog from an earlier way cannot skip the next */
+  const wayRef = useRef(0)
   const objectUrlRef = useRef<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [mediaDuration, setMediaDuration] = useState(0)
@@ -299,6 +301,7 @@ export default function SessionView({
       const L = ladderRef.current
       if (note) L.tried.push(note)
       const way = L.ways.shift()
+      wayRef.current++
       durationFixedRef.current = false
       setVideoLive(false)
       if (!way) {
@@ -421,20 +424,23 @@ export default function SessionView({
           { durationSec, lookahead: 3 }
         )
     const gen = loadGenRef.current
-    // twenty seconds without a first frame is a stream that will not come
-    const watchdog = window.setTimeout(() => {
-      if (cancelled || !videoRef.current || videoRef.current.readyState >= 1) return
+    const way = wayRef.current
+    // ten seconds without a first frame is a stream that will not come. The
+    // hand-over happens once: whichever of the two notices first cancels the
+    // other, so the way after this one is never skipped by a late watchdog.
+    const handOver = (why: string): void => {
+      if (cancelled || gen !== loadGenRef.current || way !== wayRef.current) return
       cancelled = true
       streamPartsRef.current = []
-      void advance(gen, `${diagRef.current} gave nothing in 10 s`)
+      void advance(gen, why)
+    }
+    const watchdog = window.setTimeout(() => {
+      if (!videoRef.current || videoRef.current.readyState >= 1) return
+      handOver(`${diagRef.current} gave nothing in 10 s`)
     }, 10000)
     void run.then((ok) => {
-      if (cancelled) return
-      if (!ok) {
-        // this file cannot be streamed: the next way
-        streamPartsRef.current = []
-        void advance(gen, `${diagRef.current} could not be streamed`)
-      }
+      // this file cannot be streamed: the next way
+      if (!ok) handOver(`${diagRef.current} could not be streamed`)
     })
     return () => {
       cancelled = true
