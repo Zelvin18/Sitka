@@ -212,7 +212,8 @@
     p.type = show ? 'text' : 'password'
     $('geye').textContent = show ? 'Hide' : 'Show'
   })
-  if (location.hash === '#create') setMode('up')
+  // a recap being kept by someone without an account starts on Create account; the app keeps it once they are in
+  if (location.hash === '#create' || location.hash.indexOf('#keep=') === 0) setMode('up')
 })()
 </script>
 <script>

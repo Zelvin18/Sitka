@@ -73,6 +73,7 @@ export function installBrowserMockIfNeeded(): void {
     renameSession: async () => null,
     setSessionBanner: async () => null,
     unfileSpaceSession: async () => undefined,
+    keepRecap: async () => ({ error: 'unavailable in browser preview' }),
     exportSession: async () => ({ error: 'unavailable in browser preview' }),
     getExportText: async () => null,
     askAi: async () => undefined,

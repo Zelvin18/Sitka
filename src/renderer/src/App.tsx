@@ -183,6 +183,29 @@ export default function App(): React.JSX.Element {
       })
       .catch(() => undefined)
   }, [sessionsLoaded, sessions])
+  // "Keep in my library" on a shared recap sends the person here with the
+  // recap's id in the address: it is kept, the library refreshed, the recap opened.
+  const keepChecked = useRef(false)
+  useEffect(() => {
+    if (!sessionsLoaded || keepChecked.current) return
+    const m = /^#keep=([\w-]+)/.exec(location.hash)
+    if (!m) return
+    keepChecked.current = true
+    const id = m[1]
+    history.replaceState(null, '', location.pathname)
+    void window.sitka
+      .keepRecap(id)
+      .then(async (r) => {
+        if (r.error) {
+          window.alert(r.error)
+          return
+        }
+        await refreshSessions()
+        openSession(id)
+      })
+      .catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsLoaded])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>()

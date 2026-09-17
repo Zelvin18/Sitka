@@ -1130,7 +1130,7 @@ export default function SessionView({
                 width: '100%'
               }}
             >
-              {meta.readOnly ? (
+              {meta.readOnly && !meta.saved ? (
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
                 <div className="video-failed">

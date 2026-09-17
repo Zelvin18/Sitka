@@ -100,6 +100,10 @@ export interface SessionMeta {
   uploadError?: string
   /** true when opened from a space you do not own: read-only, recording stays with its owner */
   readOnly?: boolean
+  /** a recap someone else shared, kept in this library; the recording and words stay theirs */
+  saved?: boolean
+  /** who recorded a saved recap: their folder holds the recording */
+  savedOwner?: string
 }
 
 export interface ChatMessage {

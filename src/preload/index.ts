@@ -148,6 +148,8 @@ const api = {
   /** the picture shown in place of video for an audio session (a JPEG data URL), or null to clear it */
   /** a lead takes someone else's session out of a space (the session itself stays with its owner) */
   unfileSpaceSession: (id: string): Promise<void> => ipcRenderer.invoke('space:unfile', id),
+  /** a recap someone shared, kept in this library (an online feature; the desktop's local workspace has no shared recaps) */
+  keepRecap: (id: string): Promise<{ ok?: boolean; error?: string }> => ipcRenderer.invoke('recap:keep', id),
   setSessionBanner: (id: string, banner: string | null): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:banner', id, banner),
   exportSession: (

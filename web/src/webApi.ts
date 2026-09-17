@@ -66,6 +66,7 @@ import type {
   SpaceInsight,
   SpaceMaterial,
   SessionData,
+  SessionHighlight,
   SessionMaterial,
   SessionMeta,
   SessionNotes,
@@ -337,6 +338,63 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    */
   async function fetchObject(path: string, where: Where): Promise<ArrayBuffer | null> {
     return store.download(path, where)
+  }
+
+  // ---------- recaps other people shared, kept in this library ----------
+  // A kept recap is a session in the library like any other, marked as
+  // someone else's: its words come from the public recap row, its recording
+  // from the recorder's folder (shared, so readable), and nothing is copied.
+  const savedOwners = new Map<string, string>()
+  interface RecapRow {
+    id: string
+    owner: string
+    title: string
+    summary: string
+    highlights: SessionHighlight[]
+    notes: string
+    transcript: TranscriptSegment[]
+    duration_ms: number
+    session_at: string | null
+    enabled: boolean
+  }
+  function savedMeta(r: RecapRow, keptAt: string): SessionMeta {
+    savedOwners.set(r.id, r.owner)
+    return {
+      id: r.id,
+      title: r.title || 'Shared recap',
+      createdAt: r.session_at ? new Date(r.session_at).getTime() : new Date(keptAt).getTime(),
+      durationMs: Number(r.duration_ms) || 0,
+      status: 'complete',
+      kind: 'lecture',
+      summary: r.summary || undefined,
+      highlights: Array.isArray(r.highlights) ? r.highlights : undefined,
+      analyzed: true,
+      mime: 'video/mp4',
+      readOnly: true,
+      saved: true,
+      savedOwner: r.owner
+    }
+  }
+  async function savedRecaps(): Promise<{ meta: SessionMeta; row: RecapRow }[]> {
+    const { data: kept } = await sb.from('saved_recaps').select('recap_id,created_at').eq('user_id', user.id)
+    const ids = ((kept as { recap_id: string; created_at: string }[] | null) ?? []).map((k) => k.recap_id)
+    if (ids.length === 0) return []
+    const { data: rows } = await sb.from('recaps').select('*').in('id', ids).eq('enabled', true)
+    const at = new Map(((kept as { recap_id: string; created_at: string }[] | null) ?? []).map((k) => [k.recap_id, k.created_at]))
+    return ((rows as RecapRow[] | null) ?? []).map((r) => ({ meta: savedMeta(r, at.get(r.id) ?? new Date().toISOString()), row: r }))
+  }
+  /** a kept recap's recording, by the recorder's folder */
+  async function savedMedia(id: string): Promise<{ whole: string | null; wholeSize?: number; parts: { url: string; size: number }[] } | null> {
+    let owner = savedOwners.get(id)
+    if (!owner) {
+      const { data } = await sb.from('recaps').select('owner').eq('id', id).maybeSingle()
+      owner = (data as { owner?: string } | null)?.owner
+      if (owner) savedOwners.set(id, owner)
+    }
+    if (!owner) return null
+    const m = await store.media(owner, id)
+    const parts = m.parts.map((url, i) => ({ url, size: m.partSizes?.[i] ?? 0 }))
+    return { whole: m.whole, wholeSize: m.wholeSize, parts }
   }
 
   // ---------- links written before the address changed ----------
@@ -2199,12 +2257,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // the sample lecture of earlier versions had no recording to play: it goes
       for (const m of rows) if (m.sample) void api.deleteSession(m.id).catch(() => undefined)
       for (const m of rows) freshLinks(m)
-      return rows.filter((m) => !m.sample)
+      // recaps kept from other people sit in the same library, newest first
+      const kept = await savedRecaps().catch(() => [])
+      const mine = rows.filter((m) => !m.sample)
+      const own = new Set(mine.map((m) => m.id))
+      for (const k of kept) if (!own.has(k.meta.id)) mine.push(k.meta)
+      return mine
     },
 
     getSession: async (id: string) => {
-      const d = await loadSession(id)
+      let d = await loadSession(id)
       if (d) freshLinks(d.meta)
+      if (!d) {
+        // not one of ours: a recap kept from someone else, read from its public row
+        const { data } = await sb.from('recaps').select('*').eq('id', id).eq('enabled', true).maybeSingle()
+        const r = data as RecapRow | null
+        if (r) {
+          d = {
+            meta: savedMeta(r, new Date().toISOString()),
+            segments: Array.isArray(r.transcript) ? r.transcript : [],
+            chat: [],
+            notes: null,
+            study: null,
+            marks: [],
+            report: null
+          }
+        }
+      }
       // A shared recap follows its session: opening the session refreshes
       // the recap's title, summary and moments, so an old share never keeps
       // a stale name.
@@ -2229,6 +2308,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     deleteSession: async (id: string) => {
+      // a kept recap leaves this library only: nothing of the recorder's is touched
+      if (!cache.get(id) && !(await loadSession(id))) {
+        await sb.from('saved_recaps').delete().eq('user_id', user.id).eq('recap_id', id)
+        savedOwners.delete(id)
+        return
+      }
       // A hosted event's recap dies with its session: the page closes and the
       // public copy of the recording, if one was made, is removed. The parts
       // below go too, so the recap's own player has nothing left to read.
@@ -2574,7 +2659,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // engine in the way. Made once, after the session, from the parts.
     videoUrl: async (id: string) => {
       const d = cache.get(id) ?? (await loadSession(id))
-      if (!d) return null
+      if (!d) {
+        // a kept recap: its whole file, if the recorder has one, by the shared link
+        const m = await savedMedia(id).catch(() => null)
+        return m?.whole ?? null
+      }
       if (!d.meta.whole) {
         // an older session: make the whole file in the background for next time
         void consolidateRecording(id)
@@ -2615,6 +2704,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return urls.length === names.length ? urls : []
     },
     listVideoPartsSized: async (id: string) => {
+      if (!cache.get(id) && !(await loadSession(id))) {
+        // a kept recap: the recorder's parts, shared
+        const m = await savedMedia(id).catch(() => null)
+        return m && m.parts.every((p) => p.url && p.size > 0) ? m.parts : []
+      }
       const listing = await store.list(`${user.id}/${id}`)
       const objs = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).sort((a, b) => (a.name < b.name ? -1 : 1))
       if (objs.length === 0) return []
@@ -3811,6 +3905,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     deleteEvent: async (id: string) => {
       await sb.from('events').delete().eq('id', id)
       if (armedId === id) armedId = null
+    },
+    keepRecap: async (id: string) => {
+      // one of the person's own sessions needs no keeping
+      if (cache.get(id) || (await loadSession(id))) return { ok: true }
+      const { data } = await sb.from('recaps').select('id,enabled').eq('id', id).maybeSingle()
+      const r = data as { id: string; enabled: boolean } | null
+      if (!r || !r.enabled) return { error: 'This recap is no longer shared.' }
+      const { error } = await sb.from('saved_recaps').upsert({ user_id: user.id, recap_id: id }, { onConflict: 'user_id,recap_id' })
+      if (error) return { error: error.message }
+      return { ok: true }
     },
     unfileSpaceSession: async (id: string) => {
       const { error } = await sb.rpc('sitka_unfile_session', { p_id: id })

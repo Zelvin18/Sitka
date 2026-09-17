@@ -325,6 +325,7 @@ function registerIpc(): void {
   ipcMain.handle('org:createSpace', () => ONLINE_ONLY)
   ipcMain.handle('org:deleteSpace', () => undefined)
   ipcMain.handle('space:unfile', () => undefined)
+  ipcMain.handle('recap:keep', () => ({ error: 'Shared recaps are kept in the online workspace: open Sitca on the web to keep this one.' }))
   ipcMain.handle('org:materials', () => [])
   ipcMain.handle('org:addMaterial', () => [])
   ipcMain.handle('org:removeMaterial', () => [])

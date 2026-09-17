@@ -26,6 +26,12 @@ const el = (id: string): HTMLElement => document.getElementById(id) as HTMLEleme
 // every recap link opens here: /r/<id> as shared everywhere, and /r2/<id>
 const m = /\/r2?\/([^/?#]+)/.exec(location.pathname)
 const pageId = m ? m[1] : ''
+// "Keep in my library" carries this recap's id into the app, which keeps it
+// (after a sign-in, if need be) and opens it there
+{
+  const keep = document.getElementById('keep') as HTMLAnchorElement | null
+  if (keep && pageId) keep.href = `/app#keep=${pageId}`
+}
 // The watcher is usually not signed in. The store names the session it is
 // asking about, and the server checks that the owner has shared that one.
 const store = createStore(sb, () => pageId)
