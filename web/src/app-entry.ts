@@ -14,6 +14,7 @@ import {
   engineBridge,
   engineReady,
   ensureMic,
+  focusMeeting,
   googleIdTokenViaChrome,
   listenForMeetings,
   meetingDone,
@@ -27,7 +28,7 @@ import {
 // then reports its progress out instead of drawing it.
 if (IN_EXTENSION) {
   pointApiAtServer()
-  ;(window as unknown as { sitkaExt: unknown }).sitkaExt = { captureTab, ensureMic, meetingDone, engine: IN_ENGINE }
+  ;(window as unknown as { sitkaExt: unknown }).sitkaExt = { captureTab, ensureMic, meetingDone, focusMeeting, engine: IN_ENGINE }
   if (IN_ENGINE) {
     document.documentElement.classList.add('sitca-engine')
     engineBridge()

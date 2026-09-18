@@ -470,17 +470,56 @@
   font-size: 13px;
 }
 
+/* ---- the recap, once saved: the link leads ---- */
+.sc-share {
+  margin: 4px 0 2px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--sc-bg2);
+}
+.sc-share-t {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sc-t3);
+  margin-bottom: 6px;
+}
+.sc-share-url {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 10px;
+}
+.sc-btn-wide {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+.sc-share-d {
+  font-size: 12px;
+  color: var(--sc-t2);
+  margin-top: 8px;
+}
+
 /* ---- in its own floating window: the card is the window ---- */
 #sitca-card.sc-float {
   position: static;
+  box-sizing: border-box;
   max-width: none;
   width: 100%;
-  height: 100vh;
+  height: 100%;
   padding: 10px;
+  overflow: hidden;
 }
 #sitca-card.sc-float .sc-panel,
 #sitca-card.sc-float .sc-box,
 #sitca-card.sc-float .sc-bar {
+  box-sizing: border-box;
   width: 100%;
   max-width: none;
   max-height: none;
@@ -490,13 +529,48 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: #1a1a1d;
+  animation: none;
 }
-#sitca-card.sc-float .sc-box,
+#sitca-card.sc-float .sc-box {
+  display: flex;
+  flex-direction: column;
+}
+#sitca-card.sc-float .sc-box .sc-opt {
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 4px;
+  padding: 14px 16px;
+}
+#sitca-card.sc-float .sc-box .sc-opt-t {
+  font-size: 16px;
+}
+#sitca-card.sc-float .sc-box .sc-opt-d {
+  font-size: 13px;
+}
+#sitca-card.sc-float .sc-done {
+  justify-content: center;
+}
+#sitca-card.sc-float .sc-done .sc-head {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 22px;
+}
+#sitca-card.sc-float .sc-done {
+  position: relative;
+  padding: 24px;
+}
 #sitca-card.sc-float .sc-bar {
   height: auto;
 }
 #sitca-card.sc-float .sc-arrow {
-  display: none;
+  position: static;
+  font-size: 40px;
+  text-align: right;
+  margin-top: auto;
+}
+#sitca-card.sc-float .sc-chat {
+  min-height: 0;
 }
 
 .sc-spin {

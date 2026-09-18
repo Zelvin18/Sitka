@@ -28,6 +28,27 @@ const wanted = new Map()
 const engine = { starting: null, ready: false, signedIn: false, waiting: [] }
 let closeEngineTimer = null
 
+// Chrome stops this worker after half a minute of quiet and starts it again
+// on the next event, with its memory gone. What the cards show, and a choice
+// waiting for the icon press, are kept in session storage so nothing is
+// asked twice.
+const remembered = (async () => {
+  try {
+    const s = await chrome.storage.session.get(['cards', 'wanted'])
+    for (const [k, v] of Object.entries(s.cards || {})) cards.set(Number(k), v)
+    for (const [k, v] of Object.entries(s.wanted || {})) wanted.set(Number(k), v)
+  } catch {
+    /* nothing kept */
+  }
+})()
+function remember() {
+  const c = {}
+  for (const [k, v] of cards) c[k] = v
+  const w = {}
+  for (const [k, v] of wanted) w[k] = v
+  chrome.storage.session.set({ cards: c, wanted: w }).catch(() => undefined)
+}
+
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
@@ -49,8 +70,14 @@ function cardOf(tabId) {
 function setCard(tabId, patch) {
   const next = { ...cardOf(tabId), ...patch, tabId }
   cards.set(tabId, next)
+  remember()
   chrome.tabs.sendMessage(tabId, { type: 'sitca:card', card: next }).catch(() => undefined)
   return next
+}
+function want(tabId, mode) {
+  if (mode) wanted.set(tabId, mode)
+  else wanted.delete(tabId)
+  remember()
 }
 function recordingTab() {
   for (const [tabId, c] of cards) if (c.state === 'recording' || c.state === 'starting' || c.state === 'ending') return tabId
@@ -176,14 +203,14 @@ async function startCapture(tab, mode) {
   } catch (err) {
     const m = String((err && err.message) || err)
     if (/invoked|activeTab|not been|permission/i.test(m)) {
-      wanted.set(tabId, mode)
+      want(tabId, mode)
       setCard(tabId, { state: 'needIcon', mode })
       return { ok: false, needIcon: true }
     }
     setCard(tabId, { state: 'failed', error: 'The meeting tab could not be captured: ' + m })
     return { ok: false, error: m }
   }
-  wanted.delete(tabId)
+  want(tabId, null)
   if (closeEngineTimer) clearTimeout(closeEngineTimer)
   setCard(tabId, { state: 'starting', mode, error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
   const e = await ensureEngine()
@@ -261,24 +288,67 @@ function invited(tab) {
   setCard(tab.id, { state: 'choose', allowed: true })
 }
 
-chrome.action.onClicked.addListener((tab) => invited(tab))
+chrome.action.onClicked.addListener((tab) => {
+  // the panel must open in the same instant as the press: that path first
+  if (!tab || !tab.url || !MEETING.test(tab.url)) {
+    if (tab && tab.id) chrome.sidePanel.open({ tabId: tab.id }).catch(() => undefined)
+    return
+  }
+  void remembered.then(() => invited(tab))
+})
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'sitca-capture') invited(tab)
+  if (info.menuItemId === 'sitca-capture') void remembered.then(() => invited(tab))
 })
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command === 'capture') invited(tab)
+  if (command === 'capture') void remembered.then(() => invited(tab))
 })
 
 // ---------- messages ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return undefined
+  void remembered.then(() => handle(msg, sender, reply))
+  return true // every answer comes once the memory is loaded
+})
+
+function handle(msg, sender, reply) {
   const tab = sender.tab
   const tabId = tab && tab.id
 
   // ----- from the card -----
   if (msg.type === 'sitca:card:state') {
-    reply(cardOf(tabId))
+    const c = cardOf(tabId)
+    if (c.state === 'recording' || c.state === 'starting' || c.state === 'ending') {
+      // a card remembered as running, but is the engine still there? (Chrome
+      // may have been closed and opened again)
+      pingEngine().then((alive) => {
+        if (alive) reply(c)
+        else {
+          cards.delete(tabId)
+          want(tabId, null)
+          remember()
+          reply({ state: 'idle' })
+        }
+      })
+      return true
+    }
+    reply(c)
+    return undefined
+  }
+  // ----- from the viewer: back to the call -----
+  if (msg.type === 'sitca:focus-meeting') {
+    const t = recordingTab()
+    if (t !== null) {
+      chrome.tabs.update(t, { active: true }).then(
+        (tt) => {
+          if (tt && tt.windowId !== undefined) chrome.windows.update(tt.windowId, { focused: true }).catch(() => undefined)
+          reply({ ok: true })
+        },
+        () => reply({ ok: false })
+      )
+      return true
+    }
+    reply({ ok: false })
     return undefined
   }
   if (msg.type === 'sitca:card:start') {
@@ -301,7 +371,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   }
   if (msg.type === 'sitca:card:reset') {
     cards.delete(tabId)
-    wanted.delete(tabId)
+    want(tabId, null)
     reply({ ok: true })
     return undefined
   }
@@ -355,7 +425,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       const patch = { state: 'ended', sessionId: msg.sessionId || cardOf(t).sessionId }
       if (msg.recapUrl) patch.recapUrl = msg.recapUrl
       setCard(t, patch)
-      wanted.delete(t)
+      want(t, null)
       scheduleEngineClose()
     } else if (msg.state === 'failed') {
       setCard(t, { state: 'failed', error: msg.error || 'Sitca could not start.' })
@@ -386,20 +456,25 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     reply({ ok: true })
     return undefined
   }
+  reply(undefined)
   return undefined
-})
+}
 
 // ---------- the meeting tab itself ----------
 
 // leaving the call, or the page, ends the session: the tab was the source
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const c = cardOf(tabId)
-  if (c.state === 'recording' || c.state === 'starting') stopCapture(tabId)
-  cards.delete(tabId)
-  wanted.delete(tabId)
+  void remembered.then(() => {
+    const c = cardOf(tabId)
+    if (c.state === 'recording' || c.state === 'starting') stopCapture(tabId)
+    cards.delete(tabId)
+    want(tabId, null)
+  })
 })
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (!change.url) return
-  const c = cardOf(tabId)
-  if ((c.state === 'recording' || c.state === 'starting') && !MEETING.test(change.url)) stopCapture(tabId)
+  void remembered.then(() => {
+    const c = cardOf(tabId)
+    if ((c.state === 'recording' || c.state === 'starting') && !MEETING.test(change.url)) stopCapture(tabId)
+  })
 })

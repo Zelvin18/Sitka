@@ -391,6 +391,8 @@ export default function App(): React.JSX.Element {
   // The live session, in this tab or another: shown everywhere, and it stops
   // a second one from starting.
   const liveBeat = useLive()
+  /** inside the Chrome extension: a way back to the meeting tab being captured */
+  const extMeeting = (window as unknown as { sitkaExt?: { focusMeeting?: () => void } }).sitkaExt?.focusMeeting
   const liveHere = Boolean(recordingSessionId) || (liveBeat !== null && isThisTab(liveBeat))
   const liveElsewhere = liveBeat !== null && !isThisTab(liveBeat) && !recordingSessionId
 
@@ -612,16 +614,21 @@ export default function App(): React.JSX.Element {
             className="live-pill"
             title={
               liveElsewhere
-                ? `"${liveBeat?.title ?? 'A session'}" is recording in another tab. End it there before starting another.`
+                ? extMeeting
+                  ? 'Back to the call Sitca is capturing'
+                  : `"${liveBeat?.title ?? 'A session'}" is recording in another tab. End it there before starting another.`
                 : 'Back to the live session'
             }
             onClick={() => {
               if (liveHere) setView({ name: 'live' })
+              // inside the extension: the session is being captured from a
+              // meeting tab, and this takes the person back to it
+              else if (extMeeting) extMeeting()
             }}
           >
             <i />
             LIVE
-            <small>{liveElsewhere ? 'in another tab' : liveBeat?.title ?? 'recording'}</small>
+            <small>{liveElsewhere ? (extMeeting ? 'back to the call' : 'in another tab') : liveBeat?.title ?? 'recording'}</small>
           </button>
         )}
         <SpaceMenu

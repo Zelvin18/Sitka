@@ -79,15 +79,15 @@
   async function float() {
     if (!CAN_FLOAT || pip) return
     try {
-      const w = await window.documentPictureInPicture.requestWindow({ width: 380, height: 520 })
+      const w = await window.documentPictureInPicture.requestWindow({ width: 380, height: 470 })
       pip = w
       const link = w.document.createElement('link')
       link.rel = 'stylesheet'
       link.href = chrome.runtime.getURL('meet.css')
       w.document.head.appendChild(link)
       w.document.title = 'Sitca'
-      w.document.body.style.margin = '0'
-      w.document.body.style.background = '#131315'
+      w.document.documentElement.style.cssText = 'overflow:hidden;height:100%;background:#131315'
+      w.document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#131315'
       root.classList.add('sc-float')
       w.document.body.appendChild(root)
       w.addEventListener('pagehide', () => {
@@ -232,12 +232,20 @@
           <span class="sc-title sc-title-inline">${saved ? 'Saved to your library' : 'Saving…'}</span>
         </div>`
       if (card.recapUrl) {
-        html += `<p class="sc-p sc-p-tight">Share the recap. Anyone with the link can watch, read and ask.</p>` + linkRow(card.recapUrl, 'Recap')
+        // the link leads: a lecturer pastes it to the class and is done
+        html += `<div class="sc-share">
+          <div class="sc-share-t">Share the recap</div>
+          <div class="sc-share-url" title="${esc(card.recapUrl)}">${esc(shortUrl(card.recapUrl))}</div>
+          <button type="button" class="sc-btn sc-btn-wide" data-act="copy" data-url="${esc(card.recapUrl)}">Copy the link</button>
+          <div class="sc-share-d">Anyone with it can watch, read the notes and ask Sitca.</div>
+        </div>`
       } else if (!saved) {
         html += `<p class="sc-p sc-p-tight">The recap link appears here in a moment.</p>`
+      } else {
+        html += `<p class="sc-p sc-p-tight">No recap link: nothing was said in this session.</p>`
       }
       html += `<div class="sc-actions">
-          <button type="button" class="sc-btn" data-act="open">Open in Sitca</button>
+          <button type="button" class="sc-mini sc-mini-lg" data-act="open">Open in Sitca</button>
           ${saved ? '<button type="button" class="sc-mini sc-mini-lg" data-act="again">Capture again</button>' : ''}
         </div>
       </div>`
@@ -305,10 +313,11 @@
     } else if (act === 'copy') {
       const url = b.getAttribute('data-url') || ''
       if (url) {
+        const was = b.textContent
         navigator.clipboard.writeText(url).then(
           () => {
-            b.textContent = 'Copied'
-            setTimeout(() => (b.textContent = 'Copy'), 1600)
+            b.textContent = 'Copied ✓'
+            setTimeout(() => (b.textContent = was), 1800)
           },
           () => undefined
         )
@@ -352,18 +361,29 @@
 
   let callTimer = null
   let goneFor = 0
+  let wasInCall = false
   function inCall() {
     if (!IS_MEET) return true
     return Boolean(document.querySelector('[aria-label*="leave call" i], [aria-label*="Leave call" i], [data-tooltip*="Leave call" i]'))
   }
+  function leftScreen() {
+    // the page Meet shows after leaving: same address, different words
+    const t = document.body ? document.body.innerText || '' : ''
+    return /you left the meeting|you've left the meeting|return to home screen|rejoin/i.test(t.slice(0, 4000))
+  }
   function watchCall() {
     if (callTimer) return
     goneFor = 0
+    wasInCall = inCall()
     callTimer = setInterval(() => {
       if (inCall()) {
+        wasInCall = true
         goneFor = 0
         return
       }
+      // before joining (the lobby) there is no Leave button either: only a
+      // call that was joined, and is now gone, counts as left
+      if (!wasInCall && !leftScreen()) return
       goneFor++
       if (goneFor >= 3) {
         unwatchCall()

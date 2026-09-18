@@ -246,6 +246,11 @@ export function meetingDone(tabId: number): void {
   void send({ type: 'sitca:done', tabId })
 }
 
+/** From a viewer: back to the meeting tab the session is being captured from. */
+export function focusMeeting(): void {
+  void send({ type: 'sitca:focus-meeting' })
+}
+
 // ---------- the engine's side of the conversation ----------
 
 /** What the engine tells the worker, which tells the card and the viewer. */
