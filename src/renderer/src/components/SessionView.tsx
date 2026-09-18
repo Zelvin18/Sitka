@@ -5,6 +5,7 @@ import MaterialsPanel from './MaterialsPanel'
 import FilePick from './FilePick'
 import ChatPane from './ChatPane'
 import TranscriptPane from './TranscriptPane'
+import SpeakersBar from './SpeakersBar'
 import NotesPane from './NotesPane'
 import StudyPane from './StudyPane'
 import ReportPane from './ReportPane'
@@ -60,6 +61,10 @@ export default function SessionView({
   onOpenSessionAt
 }: Props): React.JSX.Element {
   const [data, setData] = useState<SessionData | null>(null)
+  // the voices: listening again in progress, and a voice the transcript asked to name
+  const [speakersBusy, setSpeakersBusy] = useState(false)
+  const [naming, setNaming] = useState<number | null>(null)
+  const namingDone = useCallback(() => setNaming(null), [])
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoError, setVideoError] = useState(false)
   /** the recording handed to the browser's own player, when ours could not play it */
@@ -414,6 +419,9 @@ export default function SessionView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessionId]
   )
+  // still being recorded (by the extension's engine, or another tab): there
+  // is no file to play yet; the words arrive as they are said instead
+  const stillRecording = data?.meta.status === 'recording'
   useEffect(() => {
     const gen = ++loadGenRef.current
     loadStartRef.current = Date.now()
@@ -430,7 +438,7 @@ export default function SessionView({
     // loader is slow to open a long file by its link. Elsewhere the whole
     // file by its link is the quickest, the stream next.
     ladderRef.current = { ways: IOS ? ['stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
-    if (!videoWanted) return undefined
+    if (!videoWanted || stillRecording) return undefined
     void (async () => {
       // Remux on first open if needed (desktop): a real duration and seek index.
       await window.sitka.prepareSession(sessionId).catch(() => undefined)
@@ -462,7 +470,7 @@ export default function SessionView({
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
     }
-  }, [sessionId, videoWanted, advance])
+  }, [sessionId, videoWanted, advance, stillRecording])
 
   // A source that shows nothing is not waited on for good: twenty seconds
   // without so much as its length, and the next way is tried.
@@ -855,10 +863,10 @@ export default function SessionView({
           <div className="live-block" style={{ margin: '12px 24px 0' }}>
             <span className="live-block-dot" />
             <div className="live-block-text">
-              <b>This session is recording right now.</b>
+              <b>Live now.</b>
               <span>
-                It is live in another tab or window. Follow it there; the recording and the words
-                arrive here once it ends.
+                The words arrive here as they are said. Ask anything about what has been covered so far;
+                the recording appears when the session ends.
               </span>
             </div>
           </div>
@@ -867,7 +875,8 @@ export default function SessionView({
           className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}${videoHidden ? ' collapsed' : ''}`}
           ref={videoWrapRef}
           style={{
-            height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900)
+            height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900),
+            display: meta.status === 'recording' ? 'none' : undefined
           }}
         >
           <button
@@ -1310,12 +1319,46 @@ export default function SessionView({
         </div>
 
         {tab === 'transcript' && (
-          <TranscriptPane
-            segments={segments}
-            currentTime={currentTime}
-            onSeek={seek}
-            emptyText="No transcript was captured for this session."
-          />
+          <>
+            <SpeakersBar
+              speakers={meta.speakers}
+              at={meta.speakersAt}
+              error={meta.speakersError}
+              canIdentify={
+                meta.status === 'complete' && !meta.readOnly && !meta.saved && !meta.sample && Boolean(meta.whole || segments.length > 0)
+              }
+              busy={speakersBusy}
+              onIdentify={() => {
+                setSpeakersBusy(true)
+                void window.sitka.identifySpeakers(meta.id).then((res) => {
+                  setSpeakersBusy(false)
+                  setData((d) => {
+                    if (!d) return d
+                    if (res.error) return { ...d, meta: { ...d.meta, speakersError: res.error } }
+                    const m = { ...d.meta, speakers: res.speakers, speakersAt: Date.now() }
+                    delete m.speakersError
+                    return { ...d, meta: m, segments: res.segments ?? d.segments }
+                  })
+                })
+              }}
+              onListen={seek}
+              onName={async (id, name) => {
+                const res = await window.sitka.nameSpeaker(meta.id, id, name)
+                if (res.speakers) setData((d) => (d ? { ...d, meta: { ...d.meta, speakers: res.speakers } } : d))
+              }}
+              naming={naming}
+              onNamingDone={namingDone}
+            />
+            <TranscriptPane
+              segments={segments}
+              currentTime={currentTime}
+              onSeek={seek}
+              followLive={meta.status === 'recording'}
+              emptyText={meta.status === 'recording' ? 'Listening — the words appear here as they are said.' : 'No transcript was captured for this session.'}
+              speakers={meta.speakers}
+              onSpeaker={meta.readOnly || meta.saved ? undefined : setNaming}
+            />
+          </>
         )}
 
         {tab === 'notes' &&

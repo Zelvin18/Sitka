@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitca — your microphone</title>
+<style>
+:root{--bg:#fff;--text:#1a1a1c;--t2:#62626a;--border:#e6e6e3}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--text:#ededf0;--t2:#a3a3ab;--border:#2e2e33}}
+html,body{height:100%}
+body{margin:0;display:grid;place-items:center;background:var(--bg);color:var(--text);
+  font:400 15px/1.55 'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.card{max-width:420px;padding:32px;text-align:center}
+h1{font-size:22px;font-weight:750;letter-spacing:-.02em;margin:0 0 10px}
+p{color:var(--t2);margin:0 0 20px}
+.mark{margin:0 auto 18px;display:block}
+.ok{font-weight:650;color:var(--text)}
+button{font:inherit;font-weight:600;padding:9px 18px;border-radius:10px;border:1px solid var(--border);
+  background:var(--text);color:var(--bg);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="mark" viewBox="0 0 64 64" width="34" height="34" aria-hidden="true">
+    <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="7"/>
+    <circle cx="52" cy="22" r="6" fill="currentColor"/>
+  </svg>
+  <h1 id="t">Let Sitca hear you</h1>
+  <p id="m">Chrome is about to ask for your microphone. Choose <b>Allow</b>, so your own voice is part of the recording alongside everyone else's.</p>
+  <button id="b" type="button">Ask again</button>
+</div>
+<script src="mic.js"></script>
+</body>
+</html>

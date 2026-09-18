@@ -32,6 +32,20 @@ export interface TranscriptSegment {
   start: number
   end: number
   text: string
+  /** which voice said it (an index into SessionMeta.speakers), once voices have been told apart */
+  speaker?: number
+}
+
+/** One voice heard in a recording, told apart from the others by how it sounds. */
+export interface Speaker {
+  /** the number the voice was given, in order of first speaking: 0, 1, 2 … */
+  id: number
+  /** what the person called them, if they did; otherwise "Speaker 1" and so on */
+  name?: string
+  /** a moment (seconds) where this voice is heard clearly, to listen and name it */
+  at: number
+  /** how long this voice spoke in all, in seconds */
+  seconds: number
 }
 
 export interface SessionHighlight {
@@ -104,6 +118,12 @@ export interface SessionMeta {
   saved?: boolean
   /** who recorded a saved recap: their folder holds the recording */
   savedOwner?: string
+  /** the voices in the recording, once told apart; the transcript's lines point into this list */
+  speakers?: Speaker[]
+  /** when the voices were last told apart */
+  speakersAt?: number
+  /** why the voices could not be told apart the last time it was tried */
+  speakersError?: string
 }
 
 export interface ChatMessage {

@@ -25,6 +25,7 @@ import type {
   SpaceInsight,
   SpaceMaterial,
   SimDifficulty,
+  Speaker,
   TranscriptSegment,
   CaptureSource,
   ChatMessage,
@@ -428,6 +429,22 @@ const api = {
     ipcRenderer.invoke('notes:update', id),
   generateStudy: (id: string): Promise<{ study?: StudyPack; error?: string }> =>
     ipcRenderer.invoke('study:generate', id),
+  /** Listen to the whole recording again and tell its voices apart; lines get their speaker. */
+  identifySpeakers: (id: string): Promise<{ speakers?: Speaker[]; segments?: TranscriptSegment[]; error?: string }> =>
+    ipcRenderer.invoke('speakers:identify', id),
+  /** What a voice is called; an empty name clears it back to "Speaker N". */
+  nameSpeaker: (id: string, speaker: number, name: string): Promise<{ speakers?: Speaker[]; error?: string }> =>
+    ipcRenderer.invoke('speakers:name', id, speaker, name),
+  /**
+   * Captions that arrived from outside (a meeting's own live captions, with
+   * the speaker's name): kept with the transcript, the names in the list of
+   * speakers. Returns the speaker list so the caller can label its own lines.
+   */
+  addCaptions: (
+    id: string,
+    lines: { start: number; end: number; text: string; who?: string }[]
+  ): Promise<{ speakers?: Speaker[]; segments?: TranscriptSegment[]; error?: string }> =>
+    ipcRenderer.invoke('captions:add', id, lines),
 
   onAiStream: (cb: (event: AiStreamEvent) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, payload: AiStreamEvent): void =>

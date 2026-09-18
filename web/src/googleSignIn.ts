@@ -107,7 +107,7 @@ export async function googleIdToken(): Promise<string | null> {
  * offer the quiet sign-in; it is a public identifier, like the config above.
  * Empty means the quiet sign-in is simply not offered.
  */
-const GOOGLE_CLIENT_ID =
+export const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ||
   '775358764227-42f5vqba55h56kiva1sud98f0dm7cfmu.apps.googleusercontent.com'
 

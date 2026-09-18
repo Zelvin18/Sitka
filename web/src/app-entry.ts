@@ -7,6 +7,32 @@
  * The app renders as soon as the backend is installed — nothing waits in line.
  */
 import { createClient } from '@supabase/supabase-js'
+import {
+  IN_ENGINE,
+  IN_EXTENSION,
+  captureTab,
+  engineBridge,
+  engineReady,
+  ensureMic,
+  googleIdTokenViaChrome,
+  listenForMeetings,
+  meetingDone,
+  pointApiAtServer,
+  type MeetRequest
+} from './extShell'
+
+// Inside the Chrome extension: the server is the website's, and the meeting
+// tab can be captured directly. Set before anything asks for either. The
+// engine (the invisible page that records) also says so to the app, which
+// then reports its progress out instead of drawing it.
+if (IN_EXTENSION) {
+  pointApiAtServer()
+  ;(window as unknown as { sitkaExt: unknown }).sitkaExt = { captureTab, ensureMic, meetingDone, engine: IN_ENGINE }
+  if (IN_ENGINE) {
+    document.documentElement.classList.add('sitca-engine')
+    engineBridge()
+  }
+}
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -183,7 +209,8 @@ async function launch(): Promise<void> {
     const took = Date.now() - began
     if (took > 8000) report(`open took ${Math.round(took / 1000)}s`)
     say('Putting everything in place')
-    await new Promise<void>((r) => setTimeout(r, Math.max(0, 3000 - (Date.now() - began))))
+    // the invisible engine has nobody to read to: it opens at once
+    if (!IN_ENGINE) await new Promise<void>((r) => setTimeout(r, Math.max(0, 3000 - (Date.now() - began))))
     // The sign-in form leaves the page entirely. Left in the document, hidden,
     // it still counts as a login form: an iPhone would offer to fill the
     // password into it at odd moments, keyboard and all.
@@ -256,7 +283,24 @@ async function boot(): Promise<void> {
       if (np && np.length >= 6) await sb.auth.updateUser({ password: np })
       history.replaceState(null, '', location.pathname)
     }
+    // in the side panel: a meeting tab the panel was opened for is handed to
+    // the app, which starts a live session on it; the app may still be
+    // mounting, so the request is also left where it looks on arrival
+    if (IN_EXTENSION) {
+      listenForMeetings((req: MeetRequest) => {
+        ;(window as unknown as { sitkaMeetRequest?: MeetRequest }).sitkaMeetRequest = req
+        window.dispatchEvent(new CustomEvent('sitka:meet', { detail: req }))
+      })
+    }
     await launch()
+    // the engine is up: the worker may now hand it the meeting
+    if (IN_ENGINE) engineReady(true)
+    return
+  }
+  // the engine with nobody signed in cannot record; the worker opens Sitca
+  // in a tab so the person can sign in, and asks again afterwards
+  if (IN_ENGINE) {
+    engineReady(false)
     return
   }
   const err = el('gerr')
@@ -327,11 +371,19 @@ async function boot(): Promise<void> {
   // signed in; a recap being kept survives the round trip.
   const google = el('ggoogle') as HTMLButtonElement | null
   if (google) {
-    // fetch the Google library now, quietly, so the tap answers at once
-    googleModule.then((m) => m.warmGoogle()).catch(() => undefined)
+    // fetch the Google library now, quietly, so the tap answers at once.
+    // Not inside the extension: Chrome forbids an extension from loading any
+    // code off the web, and there the button goes through Chrome instead.
+    if (!IN_EXTENSION) googleModule.then((m) => m.warmGoogle()).catch(() => undefined)
     google.onclick = () =>
       withBusy(google, 'Waiting for Google…', async () => {
         err.textContent = ''
+        if (IN_EXTENSION) {
+          // no pop-ups inside a side panel: Chrome opens Google's window itself
+          const { GOOGLE_CLIENT_ID } = await googleModule
+          const got = await googleIdTokenViaChrome(GOOGLE_CLIENT_ID)
+          return await supabaseFromGoogle(got.token, got.nonce)
+        }
         const { googleIdToken } = await googleModule
         const token = await googleIdToken()
         // null: the page is on its way to Google and will come back signed in
@@ -341,16 +393,20 @@ async function boot(): Promise<void> {
   }
   // The quiet way in: when the browser already knows them, Google hands over
   // their proof without a tap and the workspace opens; otherwise Google's
-  // small card offers, and this card stays for anyone who ignores it.
-  googleModule
-    .then((m) =>
-      m.quietGoogle((token, nonce) =>
-        withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () =>
-          supabaseFromGoogle(token, nonce)
+  // small card offers, and this card stays for anyone who ignores it. It
+  // needs a script from Google, which an extension is not allowed to load,
+  // so inside the extension the button is the only Google way in.
+  if (!IN_EXTENSION) {
+    googleModule
+      .then((m) =>
+        m.quietGoogle((token, nonce) =>
+          withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () =>
+            supabaseFromGoogle(token, nonce)
+          )
         )
       )
-    )
-    .catch(() => undefined)
+      .catch(() => undefined)
+  }
   ;(el('gsignin') as HTMLButtonElement).onclick = () =>
     withBusy(el('gsignin') as HTMLButtonElement, 'Signing in…', async () => {
       err.textContent = ''

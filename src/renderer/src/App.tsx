@@ -46,6 +46,8 @@ type View =
       audioOnly?: boolean
       /** quick record: start the audio session immediately */
       quick?: boolean
+      /** the Chrome extension: a meeting tab to capture, started on arrival */
+      meet?: { tabId: number; title: string; at: number; host?: boolean }
       /** file the session into an organisation space */
       orgSpaceId?: string
       orgSpaceName?: string
@@ -203,6 +205,41 @@ export default function App(): React.JSX.Element {
       } else setWelcomePending(false)
     })
   }, [sessionsLoaded, sessions])
+  // The Chrome extension opened the panel for a meeting tab: a live session
+  // starts on it. The request may have arrived before this mounted, in which
+  // case it is waiting where the page shell left it.
+  useEffect(() => {
+    type Req = { tabId: number; title: string; at: number; mode?: 'record' | 'host' }
+    const w = window as unknown as { sitkaMeetRequest?: Req }
+    const open = (req: Req): void => {
+      delete w.sitkaMeetRequest
+      // a recording already running is left alone: one session at a time
+      if (recordingSessionId !== undefined) return
+      setSpace(undefined)
+      setView({
+        name: 'live',
+        presetKind: req.mode === 'host' ? 'presentation' : 'lecture',
+        meet: { tabId: req.tabId, title: req.title, at: req.at, host: req.mode === 'host' }
+      })
+    }
+    const onMeet = (e: Event): void => open((e as CustomEvent<Req>).detail)
+    window.addEventListener('sitka:meet', onMeet)
+    if (w.sitkaMeetRequest) open(w.sitkaMeetRequest)
+    return () => window.removeEventListener('sitka:meet', onMeet)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The extension's card opens Sitca "here": a tab showing one session, the
+  // one being captured, growing as the engine writes it.
+  useEffect(() => {
+    const m = /^#open=([\w-]+)/.exec(location.hash)
+    if (!m) return
+    history.replaceState(null, '', location.pathname)
+    setSpace(undefined)
+    setView({ name: 'session', id: m[1] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // "Keep in my library" on a shared recap sends the person here with the
   // recap's id in the address: it is kept, the library refreshed, the recap opened.
   const keepChecked = useRef(false)
@@ -741,6 +778,7 @@ export default function App(): React.JSX.Element {
               presetKind={view.name === 'live' ? view.presetKind : undefined}
               presetAudio={view.name === 'live' ? view.audioOnly : undefined}
               autoStart={view.name === 'live' ? view.quick : undefined}
+              meetTab={view.name === 'live' ? view.meet : undefined}
               orgSpaceId={view.name === 'live' ? view.orgSpaceId : undefined}
               orgSpaceName={view.name === 'live' ? view.orgSpaceName : undefined}
               defaultCapture={settings?.defaultCapture}

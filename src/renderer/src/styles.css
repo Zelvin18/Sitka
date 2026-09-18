@@ -4657,6 +4657,130 @@ body.dragging-row .splitter-h {
   user-select: text;
 }
 
+/* ============ who spoke ============ */
+/* a new voice's turn stands a little apart, its name in front of the words */
+.transcript-seg.turn {
+  margin-top: 6px;
+}
+.speaker-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  cursor: pointer;
+  vertical-align: 1px;
+}
+.speaker-tag:hover {
+  border-color: var(--text-3);
+}
+.speaker-tag.named {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+.speakers-bar {
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.speakers-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.speakers-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.speakers-hint {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-top: 6px;
+}
+.speakers-empty .speakers-hint {
+  margin-top: 0;
+}
+.speakers-error {
+  color: var(--text-2);
+}
+.speaker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+.speaker-chip.named {
+  border-color: var(--text);
+}
+.speaker-chip-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+  flex: none;
+}
+.speaker-chip-play:hover {
+  opacity: 0.85;
+}
+.speaker-chip-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 0 6px 0 2px;
+  cursor: text;
+}
+.speaker-chip-mins {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.speaker-chip-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.speaker-chip-edit .input {
+  height: 26px;
+  width: 150px;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.speakers-again {
+  margin-left: auto;
+}
+@media (max-width: 560px) {
+  .speakers-again {
+    margin-left: 0;
+  }
+}
+
 .transcript-seg.active .transcript-text,
 .transcript-seg:hover .transcript-text {
   color: var(--text);

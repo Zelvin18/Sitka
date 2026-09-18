@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
-import { ON_SCREEN_PREFIX, type TranscriptSegment } from '@shared/types'
+import { ON_SCREEN_PREFIX, type Speaker, type TranscriptSegment } from '@shared/types'
+import { speakerName } from '@shared/speakers'
 import { formatTime } from '../lib/format'
 import { IconScreen } from '../lib/icons'
 
@@ -12,6 +13,10 @@ interface Props {
   followLive?: boolean
   emptyText: string
   transcribing?: boolean
+  /** the voices in the recording, once told apart: lines are labelled with who spoke */
+  speakers?: Speaker[]
+  /** a tap on a speaker's label: name them */
+  onSpeaker?: (id: number) => void
 }
 
 export default function TranscriptPane({
@@ -20,7 +25,9 @@ export default function TranscriptPane({
   onSeek,
   followLive,
   emptyText,
-  transcribing
+  transcribing,
+  speakers,
+  onSpeaker
 }: Props): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -35,6 +42,9 @@ export default function TranscriptPane({
       ? -1
       : segments.findIndex((s) => currentTime >= s.start && currentTime < s.end)
 
+  // a label is shown where the voice changes, not on every line: the
+  // transcript reads like a conversation, one name per turn
+  let lastSpeaker: number | undefined
   return (
     <div className="transcript" ref={scrollRef}>
       {segments.length === 0 && !transcribing && (
@@ -42,10 +52,12 @@ export default function TranscriptPane({
       )}
       {segments.map((seg, i) => {
         const onScreen = seg.text.startsWith(ON_SCREEN_PREFIX)
+        const turn = !onScreen && seg.speaker !== undefined && seg.speaker !== lastSpeaker
+        if (!onScreen && seg.speaker !== undefined) lastSpeaker = seg.speaker
         return (
           <div
             key={`${seg.start}-${i}`}
-            className={`transcript-seg${i === activeIndex ? ' active' : ''}${onScreen ? ' onscreen' : ''}`}
+            className={`transcript-seg${i === activeIndex ? ' active' : ''}${onScreen ? ' onscreen' : ''}${turn ? ' turn' : ''}`}
             data-seg-start={seg.start}
             onClick={() => onSeek?.(seg.start)}
           >
@@ -56,6 +68,20 @@ export default function TranscriptPane({
                   <IconScreen size={11} strokeWidth={2} />
                   On screen
                 </span>
+              )}
+              {turn && (
+                <button
+                  type="button"
+                  className={`speaker-tag v${(seg.speaker as number) % 6}${speakers?.find((s) => s.id === seg.speaker)?.name ? ' named' : ''}`}
+                  title={onSpeaker ? 'Name this voice' : undefined}
+                  onClick={(e) => {
+                    if (!onSpeaker) return
+                    e.stopPropagation()
+                    onSpeaker(seg.speaker as number)
+                  }}
+                >
+                  {speakerName(speakers, seg.speaker)}
+                </button>
               )}
               {onScreen ? seg.text.slice(ON_SCREEN_PREFIX.length) : seg.text}
             </span>

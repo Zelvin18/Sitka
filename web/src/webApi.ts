@@ -21,8 +21,9 @@ import {
   type SessionContext
 } from '../../src/shared/createLogic'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
-import { ON_SCREEN_PREFIX, REWRITE_VERSION } from '../../src/shared/types'
+import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
+import { assignSpeakers, listSpeakers, speakerName, speakersNote, transcriptLine, type Utterance } from '../../src/shared/speakers'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
 import {
@@ -102,8 +103,8 @@ function formatTime(totalSeconds: number): string {
 const EXCERPT_STOP = new Set(
   'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only onto over under after before earlier later show shown showed said say tell explain please hello thanks thank lecturer lecture speaker session talk mean means meant'.split(' ')
 )
-function excerptFor(segments: TranscriptSegment[], question: string, live: boolean): string {
-  const whole = transcriptBlock(segments)
+function excerptFor(segments: TranscriptSegment[], question: string, live: boolean, speakers?: Speaker[]): string {
+  const whole = transcriptBlock(segments, speakers)
   if (whole.length <= 16000) return whole
   const words = question
     .toLowerCase()
@@ -112,7 +113,8 @@ function excerptFor(segments: TranscriptSegment[], question: string, live: boole
   const keep = new Set<number>()
   if (words.length > 0) {
     segments.forEach((seg, i) => {
-      const t = seg.text.toLowerCase()
+      // a question about a person by name finds the lines that carry their name
+      const t = `${speakerName(speakers, seg.speaker)} ${seg.text}`.toLowerCase()
       if (words.some((w) => t.includes(w))) {
         for (let k = Math.max(0, i - 2); k <= Math.min(segments.length - 1, i + 2); k++) keep.add(k)
       }
@@ -129,16 +131,27 @@ function excerptFor(segments: TranscriptSegment[], question: string, live: boole
   const lines: string[] = []
   let size = 0
   for (const i of [...keep].sort((a, b) => a - b)) {
-    const line = transcriptBlock([segments[i]]) + '\n'
+    const line = transcriptBlock([segments[i]], speakers) + '\n'
     if (size + line.length > 16000) break
     lines.push(line)
     size += line.length
   }
   return lines.join('')
 }
-function transcriptBlock(segments: TranscriptSegment[]): string {
+/**
+ * Where the website is. Links that are shared (recaps, events) must point at
+ * the site even when the app runs inside the Chrome extension, whose own
+ * address nobody else can open.
+ */
+function siteOrigin(): string {
+  if (location.protocol === 'chrome-extension:') {
+    return (import.meta.env.VITE_API_ORIGIN as string | undefined) || 'https://sitcaai.vercel.app'
+  }
+  return location.origin
+}
+function transcriptBlock(segments: TranscriptSegment[], speakers?: Speaker[]): string {
   if (segments.length === 0) return '(No speech has been transcribed yet.)'
-  return segments.map((s) => `[${formatTime(s.start)}] ${s.text.trim()}`).join('\n')
+  return segments.map((s) => transcriptLine(s, speakers, formatTime(s.start))).join('\n')
 }
 function extractJson<T>(text: string): T | null {
   const a = text.indexOf('{')
@@ -337,7 +350,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       groqApiKey: '',
       supabaseUrl: '',
       supabaseServiceKey: '',
-      webAppUrl: location.origin
+      webAppUrl: siteOrigin()
     }
     try {
       const s = { ...base, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') as Partial<Settings>) }
@@ -553,6 +566,83 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  // ---------- the voices, told apart ----------
+  // The whole recording is listened to again by a service that hears which
+  // stretches share a voice. The session's own transcript lines are then
+  // given their speaker, and the voices listed so they can be named. Once per
+  // recording on its own, after the whole file is up; again on request.
+  const hearing = new Set<string>()
+  async function identifySpeakers(id: string): Promise<{ speakers?: Speaker[]; segments?: TranscriptSegment[]; error?: string }> {
+    if (hearing.has(id)) return { error: 'Already listening to this recording.' }
+    hearing.add(id)
+    try {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d) return { error: 'Session not found.' }
+      if (d.meta.readOnly || d.meta.saved || d.meta.sample) return { error: 'Only your own recordings can be listened to again.' }
+      if (!d.meta.whole) {
+        // parts still being joined into the one file: give that a moment
+        await consolidateRecording(id)
+        if (!d.meta.whole) return { error: 'The recording is still being prepared. Try again in a minute.' }
+      }
+      if (d.meta.store !== 'r2') return { error: 'This older recording is kept where voices cannot be told apart.' }
+      const { data: s } = await sb.auth.getSession()
+      const token = s.session?.access_token
+      if (!token) return { error: 'Sign in again first.' }
+      const r = await fetch('/api/speakers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ session: id })
+      })
+      const j = (await r.json().catch(() => ({}))) as { utterances?: Utterance[]; error?: string }
+      if (!r.ok || !j.utterances) {
+        const why =
+          j.error === 'not-configured'
+            ? 'Telling voices apart is not switched on for this site yet.'
+            : j.error === 'no-whole-file'
+              ? 'The recording is still being prepared. Try again in a minute.'
+              : j.error === 'too-long'
+                ? 'This recording is too long to listen to again in one go.'
+                : j.error || `Listening failed (HTTP ${r.status}).`
+        d.meta.speakersError = why
+        await patchSession(id, { meta: d.meta })
+        reportError(location.pathname, `speakers: ${why} (${id})`)
+        return { error: why }
+      }
+      const speakers = listSpeakers(j.utterances, d.meta.speakers)
+      const { segments, adopted } = assignSpeakers(d.segments, j.utterances)
+      d.segments = segments
+      d.meta.speakers = speakers
+      d.meta.speakersAt = Date.now()
+      delete d.meta.speakersError
+      await patchSession(id, { transcript: d.segments, meta: d.meta })
+      backupSession(id)
+      emitSession(d.meta)
+      track('speakers', { voices: speakers.length, adopted, lines: segments.length })
+      // a transcript that was empty and is now full deserves its title and summary
+      if (adopted && hasChatKey() && segments.length > 2) void analyzeWebSession(id)
+      return { speakers, segments }
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err)
+      reportError(location.pathname, `speakers failed: ${why} (${id})`)
+      return { error: why }
+    } finally {
+      hearing.delete(id)
+    }
+  }
+  /** After a recording: told apart on its own, once, when there is speech worth it. */
+  async function speakersQuietly(id: string): Promise<void> {
+    try {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d || !d.meta.whole || d.meta.speakersAt) return
+      if (d.meta.durationMs < 20000) return
+      const spoken = d.segments.filter((s) => !s.text.startsWith(ON_SCREEN_PREFIX))
+      if (spoken.length < 2) return
+      await identifySpeakers(id)
+    } catch {
+      /* said elsewhere */
+    }
+  }
+
   // ---------- a phone-playable copy of an older recording ----------
   // Recordings made before the MP4 change are WebM, which iPhones refuse
   // outright. This plays such a recording once, in this tab, and re-records
@@ -729,6 +819,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   // ---------- session store (Supabase rows, cached per open session) ----------
   const cache = new Map<string, SessionData>()
+
+  // Pages of the same account talk to each other. The extension's invisible
+  // engine records while a visible tab watches: every time the engine writes
+  // the transcript, the watching tab forgets its copy and reads again.
+  const liveChannel = ((): BroadcastChannel | null => {
+    try {
+      return new BroadcastChannel('sitka-live')
+    } catch {
+      return null
+    }
+  })()
+  const tellOthers = (id: string, meta: SessionMeta): void => {
+    try {
+      liveChannel?.postMessage({ id, meta })
+    } catch {
+      /* ignore */
+    }
+  }
+  if (liveChannel) {
+    liveChannel.onmessage = (e: MessageEvent<{ id?: string; meta?: SessionMeta }>) => {
+      const id = e.data?.id
+      if (!id) return
+      cache.delete(id)
+      allCache = null
+      if (e.data.meta) emitSession(e.data.meta)
+    }
+  }
   interface Row {
     id: string
     meta: SessionMeta
@@ -1336,8 +1453,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           {
             role: 'user',
             content: materials
-              ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
-              : transcriptBlock(d.segments)
+              ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
+              : transcriptBlock(d.segments, d.meta.speakers)
           }
         ])
         return extractJson(out)
@@ -1817,7 +1934,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // the summary from events.replay once analysis has written it, and the
   // recording straight from the parts uploaded while recording (wave11.sql
   // opens them to readers while the recap is on). Nothing is copied.
-  const replayUrlFor = (eventId: string): string => `${location.origin}/r/${eventId}`
+  const replayUrlFor = (eventId: string): string => `${siteOrigin()}/r/${eventId}`
 
   async function readReplay(eventId: string): Promise<Record<string, unknown> | null> {
     const { data } = await sb.from('events').select('replay').eq('id', eventId).single()
@@ -1952,7 +2069,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
   function eventUrl(id: string): string {
-    return `${location.origin}/e/${id}`
+    return `${siteOrigin()}/e/${id}`
   }
   async function saveEventMaterials(
     id: string,
@@ -2904,7 +3021,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!d) return null
       if (kind === 'transcript') {
         if (d.segments.length === 0) return null
-        return `# ${d.meta.title} — transcript\n\n${d.segments.map((s) => `**[${formatTime(s.start)}]** ${s.text.trim()}`).join('\n\n')}`
+        return `# ${d.meta.title} — transcript\n\n${d.segments
+          .map((s) => {
+            const who = s.speaker !== undefined && !s.text.startsWith(ON_SCREEN_PREFIX) ? `${speakerName(d.meta.speakers, s.speaker)}: ` : ''
+            return `**[${formatTime(s.start)}]** ${who}${s.text.trim()}`
+          })
+          .join('\n\n')}`
       }
       if (kind === 'notes') {
         if (!d.notes) return null
@@ -3003,12 +3125,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           delete d.meta.recordingPending
           delete d.meta.uploadError
         }
-        // every part is up: join them into the one whole file players start fastest from
-        if (left === 0) void consolidateRecording(id)
+        // every part is up: join them into the one whole file players start
+        // fastest from; then, with the whole recording to hand, tell its voices apart
+        if (left === 0) void consolidateRecording(id).then(() => speakersQuietly(id))
       }
       await patchSession(id, { meta: d.meta })
       backupSession(id) // belt-and-braces: text survives even if the row write above failed
       emitSession(d.meta)
+      tellOthers(id, d.meta)
 
       // analysis in the background
       if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)
@@ -3019,6 +3143,66 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!hasChatKey()) return null
       await analyzeWebSession(id)
       return (await loadSession(id))?.meta ?? null
+    },
+
+    identifySpeakers: async (id: string) => identifySpeakers(id),
+    /**
+     * Captions from the meeting itself (Google Meet's own, with names), kept
+     * as the session's transcript as they arrive. Each name becomes a speaker
+     * the first time it is heard, in order of first speaking, and stays.
+     */
+    addCaptions: async (id, lines) => {
+      const d = await loadSession(id)
+      if (!d) return { error: 'Session not found.' }
+      const speakers: Speaker[] = [...(d.meta.speakers ?? [])]
+      const idOf = (who: string | undefined): number | undefined => {
+        const name = (who || '').trim().slice(0, 60)
+        if (!name) return undefined
+        const have = speakers.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
+        if (have) return have.id
+        const next = speakers.reduce((m, s) => Math.max(m, s.id + 1), 0)
+        speakers.push({ id: next, name, at: 0, seconds: 0 })
+        return next
+      }
+      const added: TranscriptSegment[] = []
+      for (const l of lines) {
+        const text = String(l.text || '').trim()
+        if (!text) continue
+        const start = Math.max(0, Number(l.start) || 0)
+        const end = Math.max(start + 0.5, Number(l.end) || start + 2)
+        const speaker = idOf(l.who)
+        const seg: TranscriptSegment = { start, end, text, ...(speaker !== undefined ? { speaker } : {}) }
+        // the same line twice (a caption re-sent as it settled) is kept once
+        const dup = d.segments.some((s) => s.speaker === seg.speaker && Math.abs(s.start - start) < 4 && s.text === text)
+        if (dup) continue
+        added.push(seg)
+        if (speaker !== undefined) {
+          const sp = speakers.find((s) => s.id === speaker)
+          if (sp) {
+            sp.seconds += end - start
+            if (!sp.at || end - start > 6) sp.at = sp.at || start
+          }
+        }
+      }
+      if (added.length === 0) return { speakers, segments: d.segments }
+      d.segments.push(...added)
+      d.segments.sort((a, b) => a.start - b.start)
+      d.meta.speakers = speakers
+      await patchSession(id, { transcript: d.segments, meta: d.meta })
+      tellOthers(id, d.meta)
+      if (conf?.sessionId === id) void confPushSegments(added, d.segments.length - added.length)
+      return { speakers, segments: d.segments }
+    },
+    nameSpeaker: async (id: string, speaker: number, name: string) => {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d || !d.meta.speakers) return { error: 'No voices to name yet.' }
+      const clean = name.trim().slice(0, 60)
+      d.meta.speakers = d.meta.speakers.map((s) => (s.id === speaker ? { ...s, ...(clean ? { name: clean } : {}) } : s))
+      if (!clean) d.meta.speakers = d.meta.speakers.map((s) => (s.id === speaker ? { id: s.id, at: s.at, seconds: s.seconds } : s))
+      await patchSession(id, { meta: d.meta })
+      backupSession(id)
+      emitSession(d.meta)
+      return { speakers: d.meta.speakers }
     },
 
     transcribeChunk: async (id, chunk, offsetSec, mime = 'audio/webm') => {
@@ -3070,6 +3254,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             const startIdx = d.segments.length
             d.segments.push(...segments)
             await patchSession(id, { transcript: d.segments })
+            tellOthers(id, d.meta)
             if (conf?.sessionId === id) void confPushSegments(segments, startIdx)
           }
         }
@@ -3097,7 +3282,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             'Be extremely terse: 1-3 short sentences, no headings, no fluff. Reference moments as [[M:SS]] when useful.',
             `Audience right now: ${conf?.attendeeCount ?? 0} connected, ${conf?.questions.reduce((n, g) => n + g.items.length, 0) ?? 0} questions waiting${conf?.questions[0] ? ` (top topic: ${conf.questions[0].topic})` : ''}.`,
             d?.meta.agenda?.length ? `Planned agenda: ${d.meta.agenda.join('; ')}` : '',
-            `\nTranscript so far:\n${transcriptBlock(segments)}`
+            `\nTranscript so far:\n${transcriptBlock(segments, d?.meta.speakers)}`
           ]
             .filter(Boolean)
             .join('\n')
@@ -3114,8 +3299,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const langRule = lang
             ? `\n- Always answer in ${lang}, whatever language the session or the question is in, unless the user explicitly asks for another language.\n`
             : ''
+          // who is who, once the voices have been told apart
+          const voices = speakersNote(d?.meta.speakers)
+          const voicesRule = voices ? `\n- ${voices}\n` : ''
           // the part of the session this question needs, not the whole hour
-          system = `${askSystemPrompt(req.live)}${langRule}\n${materials ? materials + '\n\n' : ''}${screenNow}${excerptFor(segments, req.question, req.live)}`
+          system = `${askSystemPrompt(req.live)}${langRule}${voicesRule}\n${materials ? materials + '\n\n' : ''}${screenNow}${excerptFor(segments, req.question, req.live, d?.meta.speakers)}`
         }
         const history: ChatMsg[] = req.history
           .slice(-10)
@@ -3781,7 +3969,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             : 'Could not share: ' + error.message
         }
       }
-      const url = `${location.origin}/r/${sessionId}`
+      const url = `${siteOrigin()}/r/${sessionId}`
       d.meta.recapUrl = url
       await patchSession(sessionId, { meta: d.meta })
       emitSession(d.meta)
@@ -4095,7 +4283,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const out = await aiChat(system, [
           {
             role: 'user',
-            content: `${materials ? materials + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments)}`
+            content: `${materials ? materials + '\n\n' : ''}${speakersNote(d.meta.speakers) ? speakersNote(d.meta.speakers) + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
           }
         ], 6000)
         const parsed = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
@@ -4137,8 +4325,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             {
               role: 'user',
               content: materials
-                ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments)}`
-                : transcriptBlock(d.segments)
+                ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
+                : transcriptBlock(d.segments, d.meta.speakers)
             }
           ],
           5000
@@ -4409,8 +4597,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // Close out anything a crash left open, and finish uploads the cloud is missing.
   // Once soon after opening, and once more two minutes on, for a session whose
   // last chunk was too fresh to be sure about the first time.
-  setTimeout(() => void recoverInterrupted(), 2500)
-  setTimeout(() => void recoverInterrupted(), 120000)
+  // Inside the extension, only the engine (the invisible page that records)
+  // does this: a viewer tab watching a live session must never close it out
+  // or push its parts, since the engine is still writing them.
+  const extViewer = location.protocol === 'chrome-extension:' && location.hash !== '#engine'
+  if (!extViewer) {
+    setTimeout(() => void recoverInterrupted(), 2500)
+    setTimeout(() => void recoverInterrupted(), 120000)
+  }
 
   // ---------- recordings made before the move ----------
   // Sessions recorded while recordings lived in Supabase are carried over to

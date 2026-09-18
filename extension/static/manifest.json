@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Sitca",
+  "version": "0.1.0",
+  "description": "Sitca sits beside your Google Meet or Zoom class: live captions, private answers, notes, and a recap to share.",
+  "icons": {
+    "16": "icon-192.png",
+    "48": "icon-192.png",
+    "128": "icon-192.png"
+  },
+  "action": {
+    "default_title": "Sitca"
+  },
+  "side_panel": {
+    "default_path": "app.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["sidePanel", "tabCapture", "activeTab", "storage", "identity", "contextMenus", "tabs", "offscreen"],
+  "host_permissions": [
+    "https://sitcaai.vercel.app/*",
+    "https://jadukkvulkxnttowxefu.supabase.co/*",
+    "https://*.r2.cloudflarestorage.com/*",
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*", "https://*.zoom.us/wc/*", "https://*.zoom.us/j/*"],
+      "js": ["meet.js"],
+      "css": ["meet.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["meet.css"],
+      "matches": ["https://meet.google.com/*", "https://*.zoom.us/*"]
+    }
+  ],
+  "commands": {
+    "capture": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Sitca: capture this meeting"
+    }
+  }
+}

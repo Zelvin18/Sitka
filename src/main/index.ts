@@ -816,6 +816,13 @@ function registerIpc(): void {
     await runAnalysis(id)
     return store.getMeta(id)
   })
+  // Voices are told apart by the web app, which has the recording in the
+  // cloud where the listening service can reach it; the desktop says so.
+  ipcMain.handle('speakers:identify', async () => ({
+    error: 'Telling voices apart is available in the web app, where the recording is in the cloud.'
+  }))
+  ipcMain.handle('speakers:name', async () => ({ error: 'No voices to name on this device.' }))
+  ipcMain.handle('captions:add', async () => ({ error: 'Outside captions arrive through the browser extension only.' }))
 
   ipcMain.handle('session:finalize', async (_e, id: string, durationMs: number) => {
     if (currentRecording?.id === id) setRecording(null)

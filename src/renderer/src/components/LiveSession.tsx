@@ -71,6 +71,32 @@ const NOTES_INTERVAL_MS = 75000
 const IS_WEB = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
 /** Phones cannot share their screen (no getDisplayMedia); their camera is the eye instead. */
 const CAN_SHARE_SCREEN = typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+/** Inside the Chrome extension: taking the meeting tab, and asking for the microphone. */
+interface ExtShell {
+  captureTab?: (tabId?: number) => Promise<MediaStream>
+  ensureMic?: () => Promise<boolean>
+  /** true in the invisible page that records for the extension */
+  engine?: boolean
+}
+/** what the engine reports out, for the card on the meeting page and the viewer */
+interface EngineStatus {
+  state: 'starting' | 'recording' | 'ending' | 'ended' | 'failed'
+  tabId?: number
+  sessionId?: string
+  startedAt?: number
+  title?: string
+  hostUrl?: string
+  qr?: string
+  /** once ended: the recap link to share */
+  recapUrl?: string
+  lastLine?: string
+  error?: string
+}
+const tellEngine = (s: EngineStatus): void => {
+  if (!extShell()?.engine) return
+  window.dispatchEvent(new CustomEvent('sitka:engine:status', { detail: s }))
+}
+const extShell = (): ExtShell | undefined => (window as unknown as { sitkaExt?: ExtShell }).sitkaExt
 // eslint-disable-next-line import/first
 import { shrinkImageFile } from '../lib/attach'
 // eslint-disable-next-line import/first
@@ -120,6 +146,8 @@ interface Props {
   presetAudio?: boolean
   /** quick record: begin the audio session immediately, no setup screen */
   autoStart?: boolean
+  /** inside the Chrome extension: the meeting tab to capture, with no picker; the session starts on arrival */
+  meetTab?: { tabId: number; title: string; at: number; host?: boolean }
   /** file the session in an organisation space (course, team, project) */
   orgSpaceId?: string
   /** shown in the header when filing into a space */
@@ -189,6 +217,7 @@ export default function LiveSession({
   presetKind,
   presetAudio,
   autoStart,
+  meetTab,
   orgSpaceId,
   orgSpaceName,
   defaultCapture,
@@ -199,13 +228,14 @@ export default function LiveSession({
   // cleared the moment a session starts) so nothing has to be picked twice.
   const draft = useRef(readSession<SetupDraft>(SETUP_KEY)).current
   const [phase, setPhase] = useState<Phase>(
-    presetKind || presetAudio || draft?.picking ? 'picking' : 'intent'
+    presetKind || presetAudio || meetTab || draft?.picking ? 'picking' : 'intent'
   )
-  const [hosting, setHosting] = useState(draft?.hosting ?? false)
+  const [hosting, setHosting] = useState(draft?.hosting ?? Boolean(meetTab?.host))
   const [kind, setKind] = useState<SessionKind>(presetKind ?? draft?.kind ?? 'other')
   // ---- capture mode: the screen with its sound, the camera, or the microphone alone ----
   const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(() => {
     if (presetAudio) return 'audio'
+    if (meetTab) return 'screen' // the meeting tab is the screen
     const wanted = draft?.captureMode ?? defaultCapture ?? 'screen'
     if (wanted === 'screen' && !CAN_SHARE_SCREEN) return 'camera'
     return wanted
@@ -247,6 +277,7 @@ export default function LiveSession({
     const dest = destRef.current
     if (!ctx || !dest || micStreamRef.current) return
     try {
+      await extShell()?.ensureMic?.()
       const mic = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       })
@@ -266,13 +297,16 @@ export default function LiveSession({
   // the call, the video, the slides' audio — and the microphone only when the
   // person switches it on. Camera and audio sessions have nothing but the
   // microphone, so there it is always on.
-  const [micOn, setMicOn] = useState(draft?.micOn ?? captureMode !== 'screen')
+  // a captured meeting carries the class's voices; the lecturer's own comes through the microphone
+  const [micOn, setMicOn] = useState(draft?.micOn ?? (meetTab ? true : captureMode !== 'screen'))
   const [systemAudioOn, setSystemAudioOn] = useState(draft?.systemAudioOn ?? true)
   useEffect(() => {
     if (captureMode !== 'screen') setMicOn(true)
   }, [captureMode])
   const [error, setError] = useState<string | null>(null)
   const [session, setSession] = useState<SessionMeta | null>(null)
+  const sessionRef = useRef<SessionMeta | null>(null)
+  sessionRef.current = session
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
   const [elapsed, setElapsed] = useState(0)
   const [sttError, setSttError] = useState<string | null>(null)
@@ -414,6 +448,8 @@ export default function LiveSession({
   const notesBusyRef = useRef(false)
   const segmentsRef = useRef<TranscriptSegment[]>([])
   segmentsRef.current = segments
+  /** when the meeting's own captions last arrived: while they flow, Sitca's captioning rests */
+  const meetCaptionAtRef = useRef(0)
 
   // ---- web: pick the screen up front and preview it live (browser picker) ----
   const [webStream, setWebStream] = useState<MediaStream | null>(null)
@@ -421,7 +457,11 @@ export default function LiveSession({
   const webPreviewRef = useRef<HTMLVideoElement>(null)
   const pickWebScreen = useCallback(async (): Promise<void> => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      // inside the extension, the meeting tab is taken directly: no picker
+      const ext = extShell()
+      const stream = meetTab && ext?.captureTab
+        ? await ext.captureTab(meetTab.tabId)
+        : await navigator.mediaDevices.getDisplayMedia({
         // The picker opens on the browser's tabs, the way sharing in a call
         // does: the tab of a call carries its picture AND its sound. A single
         // window of a call often comes through with its presented picture black
@@ -463,9 +503,26 @@ export default function LiveSession({
         setError('The screen could not be captured. Close other apps that record the screen, then try again.')
       } else if (name === 'NotFoundError' || name === 'NotSupportedError') {
         setError('This browser cannot share a screen. Try Chrome or Edge on a laptop, or use the camera instead.')
+      } else if (meetTab) {
+        // the extension says in words why the meeting tab could not be taken
+        setError(err instanceof Error ? err.message : String(err))
       }
     }
-  }, [systemAudioOn])
+  }, [systemAudioOn, meetTab])
+
+  // The extension opened this page for a meeting tab: captured on arrival,
+  // one press on the Meet page and nothing more to choose.
+  // A second press on the toolbar icon is a fresh request, not a repeat: the
+  // first may have been refused before Chrome had been invited in.
+  const meetStartedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!meetTab || phase !== 'picking') return
+    const key = `${meetTab.tabId}:${meetTab.at}`
+    if (meetStartedRef.current === key) return
+    meetStartedRef.current = key
+    setError(null)
+    void pickWebScreen()
+  }, [meetTab, phase, pickWebScreen])
   // The phone's back camera, pointed at the board or the projector.
   const pickCamera = useCallback(async (): Promise<void> => {
     try {
@@ -1066,6 +1123,9 @@ export default function LiveSession({
   const enqueueAppend = useCallback((blob: Blob): void => {
     const id = sessionIdRef.current
     if (!id) return
+    // the heartbeat rides on the recorder's own clock as well as the timer:
+    // an invisible page's timers can be slowed, its media pipeline is not
+    if (sessionRef.current) writeLiveBeat(id, sessionRef.current.title, sessionStartRef.current)
     // Each chunk stands alone in the queue: one that fails to store is
     // written down and skipped, and every chunk after it still lands. A
     // rejection left in the chain would silently drop the rest of the session.
@@ -1148,6 +1208,11 @@ export default function LiveSession({
       }
       silentChunksRef.current = 0
       setNoSound('')
+      // the meeting's own captions are flowing: they say it better, with names
+      if (Date.now() - meetCaptionAtRef.current < 20000) {
+        sttStatsRef.current.dropped++
+        return
+      }
       void transcribeBlob(
         new Blob(parts, { type: container }),
         (chunkStart - sessionStartRef.current) / 1000
@@ -1306,6 +1371,9 @@ export default function LiveSession({
           // Audio-only and camera sessions happen in a room: take the
           // microphone raw. Echo cancellation would strip any sound the device
           // itself is playing, and noise suppression thins out distant speakers.
+          // In the Chrome side panel the microphone prompt never appears;
+          // the extension asks on a page of its own first, once ever.
+          await extShell()?.ensureMic?.()
           micStream = await navigator.mediaDevices.getUserMedia({
             audio:
               captureMode !== 'screen'
@@ -1482,6 +1550,7 @@ export default function LiveSession({
     if (!id || stoppingRef.current) return
     stoppingRef.current = true
     setPhase('stopping')
+    tellEngine({ state: 'ending', sessionId: id, tabId: meetTab?.tabId })
     void window.sitka.setRecordingState(null)
     // the room is told first: attendees' phones must not wait on the recording
     if (hosting) void window.sitka.endEventNow(id).catch(() => undefined)
@@ -1526,6 +1595,19 @@ export default function LiveSession({
     setNoSound('')
 
     const durationMs = Date.now() - sessionStartRef.current
+    // For the extension's card: the recap link is ready the moment the
+    // devices are released, long before the last uploads finish, so the
+    // person can copy it and go while the rest is tidied up here.
+    let recapUrl: string | undefined
+    if (meetTab && extShell()?.engine) {
+      try {
+        const r = await window.sitka.publishRecap(id, true)
+        if (r.url) recapUrl = r.url
+      } catch {
+        /* no link: the card says saved, and the session has Share */
+      }
+      tellEngine({ state: 'ending', sessionId: id, tabId: meetTab.tabId, recapUrl })
+    }
     // the last pieces of speech are still being written down: the session's
     // end waits for them (within reason), so its title and notes see every word
     await Promise.race([sttPendingRef.current, new Promise<void>((r) => setTimeout(r, 25000))])
@@ -1561,7 +1643,74 @@ export default function LiveSession({
       report?.(location.pathname, 'finalize failed: ' + (err instanceof Error ? err.message : String(err)))
     }
     onFinished(id)
-  }, [onFinished, hosting])
+    tellEngine({ state: 'ended', sessionId: id, tabId: meetTab?.tabId, recapUrl })
+  }, [onFinished, hosting, meetTab])
+
+  // ---- the extension's engine: orders in, progress out ----
+  // Stop can come from the card on the meeting page.
+  const stopRef = useRef(stop)
+  stopRef.current = stop
+  useEffect(() => {
+    const onStop = (): void => void stopRef.current()
+    window.addEventListener('sitka:stop', onStop)
+    return () => window.removeEventListener('sitka:stop', onStop)
+  }, [])
+  // What the card and the viewer are told: the state, the link for the room
+  // when hosting, and the latest line heard.
+  useEffect(() => {
+    if (!meetTab) return
+    if (phase === 'recording' && session) {
+      tellEngine({
+        state: 'recording',
+        tabId: meetTab.tabId,
+        sessionId: session.id,
+        startedAt: sessionStartRef.current,
+        title: session.title,
+        hostUrl: confUrl ?? undefined,
+        qr: confUrl ? qrData ?? undefined : undefined
+      })
+    } else if (phase === 'picking' && error) {
+      tellEngine({ state: 'failed', tabId: meetTab.tabId, error })
+    } else if (phase === 'picking' || phase === 'intent') {
+      tellEngine({ state: 'starting', tabId: meetTab.tabId })
+    }
+  }, [meetTab, phase, session, confUrl, qrData, error])
+  const lastLine = segments.length > 0 ? segments[segments.length - 1].text : ''
+  useEffect(() => {
+    if (!meetTab || phase !== 'recording' || !session || !lastLine || lastLine.startsWith(ON_SCREEN_PREFIX)) return
+    tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: session.id, startedAt: sessionStartRef.current, lastLine })
+  }, [meetTab, phase, session, lastLine])
+  // Captions the meeting itself shows (Google Meet's own, with the speaker's
+  // name) arrive from the card. They are kept as the transcript, named, and
+  // while they flow the recording's own captioning rests: the meeting's are
+  // better, and doing both would say everything twice.
+  const captionQueueRef = useRef<{ start: number; end: number; text: string; who?: string }[]>([])
+  const captionTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    const onCaption = (e: Event): void => {
+      const c = (e as CustomEvent<{ who: string; text: string; at: number; end?: number }>).detail
+      const id = sessionIdRef.current
+      if (!c || !c.text || !id || phase !== 'recording') return
+      meetCaptionAtRef.current = Date.now()
+      const start = Math.max(0, (c.at - sessionStartRef.current) / 1000)
+      const words = c.text.split(/\s+/).filter(Boolean).length
+      const end = c.end ? Math.max(start + 0.5, (c.end - sessionStartRef.current) / 1000) : start + Math.max(1.5, words / 2.6)
+      captionQueueRef.current.push({ start, end, text: c.text, who: c.who })
+      // written in small batches, so a busy conversation does not write a row per line
+      if (captionTimerRef.current === null) {
+        captionTimerRef.current = window.setTimeout(() => {
+          captionTimerRef.current = null
+          const batch = captionQueueRef.current.splice(0)
+          if (batch.length === 0) return
+          void window.sitka.addCaptions(id, batch).then((r) => {
+            if (r.segments) setSegments(r.segments)
+          })
+        }, 1500)
+      }
+    }
+    window.addEventListener('sitka:caption', onCaption)
+    return () => window.removeEventListener('sitka:caption', onCaption)
+  }, [phase])
 
   const seekTranscript = useCallback((seconds: number): void => {
     const rows = document.querySelectorAll<HTMLElement>('[data-seg-start]')

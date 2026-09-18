@@ -1,0 +1,528 @@
+/* Sitca's card on a Google Meet or Zoom page: quiet, dark, one corner. */
+#sitca-card {
+  --sc-bg: rgba(18, 18, 20, 0.94);
+  --sc-bg2: rgba(255, 255, 255, 0.06);
+  --sc-line: rgba(255, 255, 255, 0.12);
+  --sc-text: #f3f3f5;
+  --sc-t2: #b4b4bc;
+  --sc-t3: #80808a;
+  --sc-red: #e0655a;
+  position: fixed;
+  left: 16px;
+  bottom: 92px;
+  z-index: 2147483000;
+  color: var(--sc-text);
+  font: 500 13px/1.45 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  max-width: min(360px, calc(100vw - 32px));
+}
+#sitca-card * {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+#sitca-card button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.sc-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ---- the pill, before anything ---- */
+.sc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px 10px 12px;
+  border: 1px solid var(--sc-line) !important;
+  border-radius: 999px;
+  background: var(--sc-bg);
+  font-weight: 600;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.sc-pill:hover {
+  background: rgba(30, 30, 34, 0.97);
+  transform: translateY(-1px);
+}
+
+/* ---- the box: choosing, and the few things that need saying ---- */
+.sc-box {
+  width: 320px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--sc-line);
+  border-radius: 18px;
+  background: var(--sc-bg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: sc-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes sc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--sc-t2);
+  margin-bottom: 10px;
+}
+.sc-head b {
+  color: var(--sc-text);
+  font-weight: 700;
+}
+.sc-x {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--sc-t3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sc-x:hover {
+  background: var(--sc-bg2);
+  color: var(--sc-text);
+}
+.sc-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.sc-p {
+  margin: 0 0 12px;
+  color: var(--sc-t2);
+  font-size: 13px;
+}
+.sc-p b {
+  color: var(--sc-text);
+}
+.sc-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 12px;
+  border: 1px solid var(--sc-line) !important;
+  border-radius: 12px;
+  background: var(--sc-bg2);
+  margin-bottom: 8px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.sc-opt:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+.sc-opt:last-of-type {
+  margin-bottom: 2px;
+}
+.sc-opt-t {
+  font-size: 14px;
+  font-weight: 650;
+}
+.sc-opt-d {
+  font-size: 12.5px;
+  color: var(--sc-t2);
+}
+.sc-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--sc-text);
+  color: #141416;
+  font-weight: 650;
+}
+.sc-arrow {
+  position: absolute;
+  right: 14px;
+  top: 10px;
+  font-size: 22px;
+  color: var(--sc-t2);
+  animation: sc-nudge 1.2s ease-in-out infinite;
+}
+@keyframes sc-nudge {
+  50% {
+    transform: translate(3px, -3px);
+  }
+}
+#sitca-card[data-state='needIcon'] .sc-box {
+  position: relative;
+}
+
+/* ---- the bar while it runs ---- */
+.sc-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--sc-line);
+  border-radius: 14px;
+  background: var(--sc-bg);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: sc-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sc-bar-text {
+  font-weight: 600;
+}
+.sc-rec {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 340px;
+  padding: 11px 12px 10px;
+}
+.sc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sc-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--sc-red);
+  box-shadow: 0 0 0 0 rgba(224, 101, 90, 0.5);
+  animation: sc-pulse 1.6s ease-out infinite;
+  flex: none;
+}
+@keyframes sc-pulse {
+  70% {
+    box-shadow: 0 0 0 7px rgba(224, 101, 90, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 101, 90, 0);
+  }
+}
+.sc-time {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sc-label {
+  font-size: 12px;
+  color: var(--sc-t2);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-mini {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--sc-bg2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sc-mini:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sc-stop {
+  background: var(--sc-text);
+  color: #141416;
+}
+.sc-stop:hover {
+  background: #fff;
+}
+.sc-last {
+  font-size: 12.5px;
+  color: var(--sc-t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 1px;
+}
+.sc-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--sc-bg2);
+}
+.sc-link-url {
+  flex: 1;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--sc-text);
+}
+.sc-qr {
+  width: 150px;
+  height: 150px;
+  border-radius: 10px;
+  background: #fff;
+  align-self: center;
+  display: block;
+}
+.sc-ask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.sc-in {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--sc-line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--sc-text);
+  font-size: 13px;
+  outline: none;
+}
+.sc-in::placeholder {
+  color: var(--sc-t3);
+}
+.sc-in:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.sc-go {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--sc-text);
+  color: #141416;
+  font-weight: 700;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.sc-go:disabled,
+.sc-in:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.sc-answer {
+  position: relative;
+  padding: 10px 30px 10px 11px;
+  border-radius: 10px;
+  background: var(--sc-bg2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sc-text);
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.sc-x-ans {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+}
+/* ---- the companion while it runs: a conversation with Sitca ---- */
+.sc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  max-height: min(60vh, 520px);
+  padding: 11px 12px 10px;
+  border: 1px solid var(--sc-line);
+  border-radius: 16px;
+  background: var(--sc-bg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: sc-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#sitca-card.sc-wide .sc-panel {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+}
+.sc-top {
+  flex-wrap: wrap;
+}
+.sc-chat {
+  flex: 1 1 auto;
+  min-height: 72px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+  scrollbar-width: thin;
+}
+.sc-hello {
+  padding: 10px 2px 4px;
+}
+.sc-hello-t {
+  font-size: 14px;
+  font-weight: 650;
+  margin-bottom: 3px;
+}
+.sc-hello-d {
+  font-size: 12.5px;
+  color: var(--sc-t2);
+}
+.sc-msg {
+  max-width: 92%;
+  padding: 8px 11px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sc-you {
+  align-self: flex-end;
+  background: var(--sc-text);
+  color: #141416;
+  border-bottom-right-radius: 4px;
+}
+.sc-sitca {
+  align-self: flex-start;
+  background: var(--sc-bg2);
+  color: var(--sc-text);
+  border-bottom-left-radius: 4px;
+}
+.sc-thinking {
+  padding: 10px 14px;
+}
+.sc-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.sc-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sc-t2);
+  animation: sc-blink 1.2s infinite;
+}
+.sc-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.sc-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes sc-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.sc-link-l {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sc-t3);
+  flex: none;
+}
+.sc-qr-toggle {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--sc-t2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 0 2px;
+}
+.sc-qr-toggle:hover {
+  color: var(--sc-text);
+}
+.sc-done .sc-row {
+  margin-bottom: 8px;
+}
+.sc-title-inline {
+  margin: 0;
+}
+.sc-p-tight {
+  margin-bottom: 8px;
+}
+.sc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sc-mini-lg {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* ---- in its own floating window: the card is the window ---- */
+#sitca-card.sc-float {
+  position: static;
+  max-width: none;
+  width: 100%;
+  height: 100vh;
+  padding: 10px;
+}
+#sitca-card.sc-float .sc-panel,
+#sitca-card.sc-float .sc-box,
+#sitca-card.sc-float .sc-bar {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border-radius: 14px;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: #1a1a1d;
+}
+#sitca-card.sc-float .sc-box,
+#sitca-card.sc-float .sc-bar {
+  height: auto;
+}
+#sitca-card.sc-float .sc-arrow {
+  display: none;
+}
+
+.sc-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--sc-text);
+  animation: sc-spin 0.8s linear infinite;
+  flex: none;
+}
+@keyframes sc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sc-ok {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sc-text);
+  color: #141416;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}

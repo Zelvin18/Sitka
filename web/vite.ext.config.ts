@@ -1,0 +1,57 @@
+/**
+ * The Chrome extension build.
+ *
+ * The extension is the Sitca web app itself, packaged: app.html and its
+ * assets are built exactly as for the website and dropped into
+ * extension/dist, next to the manifest, the background worker and the Meet
+ * page script from extension/static. Chrome then shows app.html in its side
+ * panel. Absolute paths (/assets/…, /signin.webp) resolve against the
+ * extension's own root, so nothing in the app changes for this.
+ *
+ *   cd web && npm run build:ext      →  extension/dist  (load unpacked in Chrome)
+ */
+import { defineConfig, type Plugin } from 'vite'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
+import { cpSync, existsSync, mkdirSync } from 'fs'
+
+const OUT = resolve(__dirname, '../extension/dist')
+const STATIC = resolve(__dirname, '../extension/static')
+
+/** manifest, worker, page script and styles: copied in whole once the app is built */
+function extensionFiles(): Plugin {
+  return {
+    name: 'sitca-extension-files',
+    closeBundle() {
+      if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
+      cpSync(STATIC, OUT, { recursive: true })
+    }
+  }
+}
+
+export default defineConfig({
+  plugins: [react(), extensionFiles()],
+  resolve: {
+    alias: {
+      '@shared': resolve(__dirname, '../src/shared'),
+      '@renderer': resolve(__dirname, '../src/renderer/src'),
+      react: resolve(__dirname, 'node_modules/react'),
+      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
+      qrcode: resolve(__dirname, 'node_modules/qrcode')
+    }
+  },
+  define: {
+    // the app knows it runs inside the extension, and where its server is
+    'import.meta.env.VITE_SITCA_EXTENSION': JSON.stringify('1'),
+    'import.meta.env.VITE_API_ORIGIN': JSON.stringify('https://sitcaai.vercel.app')
+  },
+  build: {
+    outDir: OUT,
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        app: resolve(__dirname, 'app.html')
+      }
+    }
+  }
+})

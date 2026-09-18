@@ -1,0 +1,405 @@
+// Sitca's extension: the worker that holds it together.
+//
+// Three places, one conversation.
+//   The card    drawn on the Google Meet or Zoom page by meet.js: one button,
+//               then a small bar while the session runs. It never records.
+//   The engine  app.html opened invisibly (Chrome's "offscreen document"):
+//               the whole Sitca app, signed in, recording the meeting tab,
+//               captioning, uploading, answering. Nobody can close it by
+//               accident; it is closed here once its work is done.
+//   The viewer  app.html in an ordinary tab, opened from the card, showing
+//               the session as it grows.
+//
+// Two of Chrome's rules shape the code.
+//   A tab may only be captured once the person has invited the extension in,
+//   which only a press on the toolbar icon, the right-click menu or the
+//   keyboard shortcut counts as. The card asks; when Chrome refuses, the card
+//   points at the icon, and the next press on the icon carries on from there.
+//   The side panel may only be opened in the same instant as such a press.
+
+const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/)/
+const APP = chrome.runtime.getURL('app.html')
+
+/** one session per meeting tab: what the card shows */
+const cards = new Map()
+/** a choice the card made before Chrome allowed the capture: kept for the icon press */
+const wanted = new Map()
+/** the engine page: whether it is up and signed in */
+const engine = { starting: null, ready: false, signedIn: false, waiting: [] }
+let closeEngineTimer = null
+
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'sitca-capture',
+      title: 'Capture this meeting with Sitca',
+      contexts: ['page'],
+      documentUrlPatterns: ['https://meet.google.com/*', 'https://*.zoom.us/*']
+    })
+  })
+})
+
+// ---------- the card ----------
+
+function cardOf(tabId) {
+  return cards.get(tabId) || { state: 'idle' }
+}
+function setCard(tabId, patch) {
+  const next = { ...cardOf(tabId), ...patch, tabId }
+  cards.set(tabId, next)
+  chrome.tabs.sendMessage(tabId, { type: 'sitca:card', card: next }).catch(() => undefined)
+  return next
+}
+function recordingTab() {
+  for (const [tabId, c] of cards) if (c.state === 'recording' || c.state === 'starting' || c.state === 'ending') return tabId
+  return null
+}
+
+// ---------- the engine ----------
+
+/** Is an engine page already up? Chrome restarts this worker and forgets. */
+function pingEngine() {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = (v) => {
+      if (!done) {
+        done = true
+        resolve(v)
+      }
+    }
+    chrome.runtime.sendMessage({ type: 'sitca:engine:ping' }).then(
+      (r) => finish(r && r.ready ? r : null),
+      () => finish(null)
+    )
+    setTimeout(() => finish(null), 3000)
+  })
+}
+
+async function ensureEngine() {
+  if (engine.ready) return engine
+  if (!engine.starting) {
+    engine.starting = (async () => {
+      let has = await chrome.offscreen.hasDocument().catch(() => false)
+      if (has) {
+        // left by an earlier run of this worker: still answering?
+        const alive = await pingEngine()
+        if (alive) {
+          engine.ready = true
+          engine.signedIn = Boolean(alive.signedIn)
+          return
+        }
+        await chrome.offscreen.closeDocument().catch(() => undefined)
+        has = false
+      }
+      if (!has) {
+        await chrome.offscreen.createDocument({
+          url: 'app.html#engine',
+          // it records (USER_MEDIA) and plays the call back so the person
+          // keeps hearing it (AUDIO_PLAYBACK); with both, Chrome keeps it open
+          reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
+          justification: 'Records the meeting in this tab for the person, with their microphone, and captions it.'
+        })
+      }
+      // the engine says when it is up (or that nobody is signed in)
+      await new Promise((resolve) => {
+        engine.waiting.push(resolve)
+        setTimeout(resolve, 45000)
+      })
+    })().finally(() => {
+      engine.starting = null
+    })
+  }
+  await engine.starting
+  return engine
+}
+
+async function closeEngineIfIdle() {
+  if (recordingTab() !== null) return
+  try {
+    if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument()
+  } catch {
+    /* already gone */
+  }
+  engine.ready = false
+  engine.signedIn = false
+}
+
+function scheduleEngineClose() {
+  if (closeEngineTimer) clearTimeout(closeEngineTimer)
+  // the last uploads finish inside the engine before it says "ended"; a
+  // little grace, then it goes
+  closeEngineTimer = setTimeout(() => void closeEngineIfIdle(), 60000)
+}
+
+// ---------- starting a session ----------
+
+/**
+ * Chrome's handle on the tab. Chrome allows one capture of a tab at a time:
+ * when an earlier one is still held (a session that ended untidily), the
+ * engine is asked to let go and the handle is asked for once more.
+ */
+async function askHandle(tabId) {
+  try {
+    return await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId })
+  } catch (err) {
+    const m = String((err && err.message) || err)
+    if (!/active stream/i.test(m)) throw err
+    await chrome.runtime.sendMessage({ type: 'sitca:engine:release' }).catch(() => undefined)
+    await new Promise((r) => setTimeout(r, 600))
+    return chrome.tabCapture.getMediaStreamId({ targetTabId: tabId })
+  }
+}
+
+/**
+ * Capture this meeting tab. Chrome's handle on the tab is asked for first:
+ * that is the step Chrome refuses until the icon has been pressed, and it
+ * is better to learn that before the engine is woken.
+ */
+async function startCapture(tab, mode) {
+  if (!tab || !tab.id) return { ok: false }
+  const tabId = tab.id
+  const busy = recordingTab()
+  if (busy !== null && busy !== tabId) {
+    setCard(tabId, { state: 'busy' })
+    return { ok: false, busy: true }
+  }
+  if (cardOf(tabId).state === 'ending') {
+    // the last one is still being saved: the card shows that, and turns to
+    // "saved" by itself in a moment
+    return { ok: false, ending: true }
+  }
+  // asked once now, to learn whether Chrome allows it at all
+  try {
+    await askHandle(tabId)
+  } catch (err) {
+    const m = String((err && err.message) || err)
+    if (/invoked|activeTab|not been|permission/i.test(m)) {
+      wanted.set(tabId, mode)
+      setCard(tabId, { state: 'needIcon', mode })
+      return { ok: false, needIcon: true }
+    }
+    setCard(tabId, { state: 'failed', error: 'The meeting tab could not be captured: ' + m })
+    return { ok: false, error: m }
+  }
+  wanted.delete(tabId)
+  if (closeEngineTimer) clearTimeout(closeEngineTimer)
+  setCard(tabId, { state: 'starting', mode, error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
+  const e = await ensureEngine()
+  if (!e.ready) {
+    setCard(tabId, { state: 'failed', error: 'Sitca could not start. Reload the page and try again.' })
+    return { ok: false }
+  }
+  if (!e.signedIn) {
+    // nobody is signed in on this browser yet: Sitca opens in a tab to sign
+    // in; the card says so, and the next press starts the session
+    setCard(tabId, { state: 'signin' })
+    await chrome.tabs.create({ url: APP, active: true })
+    await closeEngineIfIdle()
+    return { ok: false, signin: true }
+  }
+  // and once more now the engine is awake: the handle is used the moment it arrives
+  let streamId
+  try {
+    streamId = await askHandle(tabId)
+  } catch (err) {
+    setCard(tabId, { state: 'failed', error: 'The meeting tab could not be captured: ' + String((err && err.message) || err) })
+    return { ok: false }
+  }
+  const req = { tabId, title: tab.title || '', url: tab.url || '', at: Date.now(), mode, streamId }
+  chrome.runtime.sendMessage({ type: 'sitca:engine:start', ...req }).catch(() => undefined)
+  return { ok: true }
+}
+
+function stopCapture(tabId) {
+  const c = cardOf(tabId)
+  if (c.state !== 'recording' && c.state !== 'starting') return
+  setCard(tabId, { state: 'ending' })
+  chrome.runtime.sendMessage({ type: 'sitca:engine:stop', tabId }).catch(() => undefined)
+}
+
+/** Sitca in a tab, on this session; an open Sitca tab is reused. */
+async function openViewer(sessionId) {
+  const url = sessionId ? `${APP}#open=${sessionId}` : APP
+  const tabs = await chrome.tabs.query({ url: APP + '*' }).catch(() => [])
+  const mine = tabs.find((t) => t.id !== undefined)
+  if (mine) {
+    await chrome.tabs.update(mine.id, { url, active: true }).catch(() => undefined)
+    if (mine.windowId !== undefined) chrome.windows.update(mine.windowId, { focused: true }).catch(() => undefined)
+    return
+  }
+  await chrome.tabs.create({ url, active: true })
+}
+
+// ---------- the presses Chrome counts ----------
+
+/**
+ * The icon, the menu, the shortcut: the presses that invite the extension
+ * in. On a meeting tab the card takes it from here; anywhere else the side
+ * panel opens (in the same instant, as Chrome demands).
+ */
+function invited(tab) {
+  if (!tab || !tab.id) return
+  const meeting = Boolean(tab.url && MEETING.test(tab.url))
+  if (!meeting) {
+    chrome.sidePanel.open({ tabId: tab.id }).catch(() => undefined)
+    return
+  }
+  const c = cardOf(tab.id)
+  if (c.state === 'recording' || c.state === 'starting') {
+    void openViewer(c.sessionId)
+    return
+  }
+  const mode = wanted.get(tab.id)
+  if (mode) {
+    void startCapture(tab, mode)
+    return
+  }
+  // nothing chosen yet: the card unfolds its two choices, and from now on
+  // Chrome allows the capture on this tab, so the card's own press will do
+  setCard(tab.id, { state: 'choose', allowed: true })
+}
+
+chrome.action.onClicked.addListener((tab) => invited(tab))
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'sitca-capture') invited(tab)
+})
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === 'capture') invited(tab)
+})
+
+// ---------- messages ----------
+
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return undefined
+  const tab = sender.tab
+  const tabId = tab && tab.id
+
+  // ----- from the card -----
+  if (msg.type === 'sitca:card:state') {
+    reply(cardOf(tabId))
+    return undefined
+  }
+  if (msg.type === 'sitca:card:start') {
+    if (!tab) {
+      reply({ ok: false })
+      return undefined
+    }
+    startCapture(tab, msg.mode === 'host' ? 'host' : 'record').then(reply, () => reply({ ok: false }))
+    return true
+  }
+  if (msg.type === 'sitca:card:stop' || msg.type === 'sitca:card:left') {
+    // Stop pressed, or the person left the call: either way the session ends
+    if (tabId !== undefined) stopCapture(tabId)
+    reply({ ok: true })
+    return undefined
+  }
+  if (msg.type === 'sitca:card:open') {
+    openViewer(cardOf(tabId).sessionId).then(() => reply({ ok: true }), () => reply({ ok: false }))
+    return true
+  }
+  if (msg.type === 'sitca:card:reset') {
+    cards.delete(tabId)
+    wanted.delete(tabId)
+    reply({ ok: true })
+    return undefined
+  }
+  if (msg.type === 'sitca:card:ask') {
+    const c = cardOf(tabId)
+    if (!c.sessionId) {
+      reply({ answer: 'Start capturing first, then ask.' })
+      return undefined
+    }
+    chrome.runtime
+      .sendMessage({ type: 'sitca:engine:ask', sessionId: c.sessionId, text: String(msg.text || '') })
+      .then((r) => reply(r || { answer: '' }), () => reply({ answer: 'Sitca could not answer just now.' }))
+    return true
+  }
+  if (msg.type === 'sitca:caption') {
+    const c = cardOf(tabId)
+    if (c.state === 'recording') {
+      chrome.runtime.sendMessage({ type: 'sitca:engine:caption', who: msg.who, text: msg.text, at: msg.at, end: msg.end }).catch(() => undefined)
+    }
+    reply({ ok: true })
+    return undefined
+  }
+
+  // ----- from the engine -----
+  if (msg.type === 'sitca:engine:ready') {
+    engine.ready = true
+    engine.signedIn = Boolean(msg.signedIn)
+    const w = engine.waiting.splice(0)
+    w.forEach((r) => r())
+    reply({ ok: true })
+    return undefined
+  }
+  if (msg.type === 'sitca:engine:status') {
+    const t = msg.tabId
+    if (typeof t !== 'number') {
+      reply({ ok: true })
+      return undefined
+    }
+    if (msg.state === 'recording') {
+      const patch = { state: 'recording', sessionId: msg.sessionId, startedAt: msg.startedAt }
+      if (msg.title) patch.title = msg.title
+      if (msg.hostUrl) patch.hostUrl = msg.hostUrl
+      if (msg.qr) patch.qr = msg.qr
+      if (msg.lastLine) patch.lastLine = msg.lastLine
+      setCard(t, patch)
+    } else if (msg.state === 'ending') {
+      const patch = { state: 'ending' }
+      if (msg.recapUrl) patch.recapUrl = msg.recapUrl
+      setCard(t, patch)
+    } else if (msg.state === 'ended') {
+      const patch = { state: 'ended', sessionId: msg.sessionId || cardOf(t).sessionId }
+      if (msg.recapUrl) patch.recapUrl = msg.recapUrl
+      setCard(t, patch)
+      wanted.delete(t)
+      scheduleEngineClose()
+    } else if (msg.state === 'failed') {
+      setCard(t, { state: 'failed', error: msg.error || 'Sitca could not start.' })
+      scheduleEngineClose()
+    } else if (msg.state === 'starting') {
+      if (cardOf(t).state !== 'recording') setCard(t, { state: 'starting' })
+    }
+    reply({ ok: true })
+    return undefined
+  }
+  if (msg.type === 'sitca:mic:ask') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('mic.html'), active: true }).catch(() => undefined)
+    reply({ ok: true })
+    return undefined
+  }
+  if (msg.type === 'sitca:mic') {
+    // the answer travels on to the engine (every extension page hears it)
+    reply({ ok: true })
+    return undefined
+  }
+
+  // ----- from the side panel (kept for those who use it) -----
+  if (msg.type === 'sitca:pending') {
+    reply(null)
+    return undefined
+  }
+  if (msg.type === 'sitca:done') {
+    reply({ ok: true })
+    return undefined
+  }
+  return undefined
+})
+
+// ---------- the meeting tab itself ----------
+
+// leaving the call, or the page, ends the session: the tab was the source
+chrome.tabs.onRemoved.addListener((tabId) => {
+  const c = cardOf(tabId)
+  if (c.state === 'recording' || c.state === 'starting') stopCapture(tabId)
+  cards.delete(tabId)
+  wanted.delete(tabId)
+})
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (!change.url) return
+  const c = cardOf(tabId)
+  if ((c.state === 'recording' || c.state === 'starting') && !MEETING.test(change.url)) stopCapture(tabId)
+})
