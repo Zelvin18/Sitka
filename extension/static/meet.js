@@ -39,7 +39,6 @@
   let showQr = false
   let tick = null
   let pip = null // the floating window, while open
-  let expanded = false // the in-page card, when it cannot float
 
   // ---------- talking to the worker ----------
 
@@ -150,7 +149,6 @@
   function render() {
     const st = card.state
     root.setAttribute('data-state', st)
-    root.classList.toggle('sc-wide', expanded && !pip)
     let html = ''
     if (st === 'idle') {
       html = `<button type="button" class="sc-pill" data-act="choose">${MARK}<span>Capture with Sitca</span></button>`
@@ -186,6 +184,19 @@
       html += '</div>'
     } else if (st === 'starting') {
       html = `<div class="sc-bar"><span class="sc-spin"></span><span class="sc-bar-text">Starting Sitca…</span></div>`
+    } else if (st === 'recording' && !pip) {
+      // On the page itself, while recording, only a slim bar: the page is
+      // what is being recorded, and the conversation must never be in it.
+      // The conversation lives in the floating window or the Sitca tab.
+      const live = card.mode === 'host' || Boolean(card.hostUrl)
+      html = `<div class="sc-bar sc-slim">
+        <span class="sc-dot"></span>
+        <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
+        <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
+        ${CAN_FLOAT ? '<button type="button" class="sc-mini" data-act="float" title="Chat with Sitca privately, in a window the recording never sees">Chat</button>' : ''}
+        <button type="button" class="sc-mini" data-act="open" title="Open this session in Sitca">Open</button>
+        <button type="button" class="sc-mini sc-stop" data-act="stop">Stop</button>
+      </div>`
     } else if (st === 'recording') {
       const live = card.mode === 'host' || Boolean(card.hostUrl)
       html = `<div class="sc-panel">
@@ -193,8 +204,6 @@
           <span class="sc-dot"></span>
           <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
           <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
-          ${!pip && CAN_FLOAT ? '<button type="button" class="sc-mini" data-act="float" title="Float above everything, out of the recording">Pop out</button>' : ''}
-          ${!pip && !CAN_FLOAT ? `<button type="button" class="sc-mini" data-act="expand">${expanded ? 'Smaller' : 'Bigger'}</button>` : ''}
           <button type="button" class="sc-mini" data-act="open" title="Open this session in Sitca">Open</button>
           <button type="button" class="sc-mini sc-stop" data-act="stop">Stop</button>
         </div>`
@@ -327,9 +336,6 @@
       render()
     } else if (act === 'float') {
       void float()
-    } else if (act === 'expand') {
-      expanded = !expanded
-      render()
     }
   })
   root.addEventListener('submit', (e) => {

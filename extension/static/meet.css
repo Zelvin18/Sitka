@@ -600,3 +600,13 @@
   justify-content: center;
   flex: none;
 }
+
+/* ---- on the page while recording: slim, and nothing private ---- */
+.sc-slim {
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+.sc-slim .sc-label {
+  flex: none;
+  margin-right: 2px;
+}
