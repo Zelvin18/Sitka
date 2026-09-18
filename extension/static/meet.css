@@ -610,3 +610,57 @@
   flex: none;
   margin-right: 2px;
 }
+
+/* ---- scrolling in the dark: a quiet, thin bar that belongs to the card ---- */
+.sc-chat,
+.sc-answer {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+.sc-chat::-webkit-scrollbar,
+.sc-answer::-webkit-scrollbar {
+  width: 6px;
+}
+.sc-chat::-webkit-scrollbar-track,
+.sc-answer::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sc-chat::-webkit-scrollbar-thumb,
+.sc-answer::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+.sc-chat::-webkit-scrollbar-thumb:hover,
+.sc-answer::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.sc-chat {
+  padding-right: 4px;
+}
+
+/* ---- a small switch under the latest words: captions on the Meet screen ---- */
+.sc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sc-foot .sc-last {
+  flex: 1;
+  min-width: 0;
+}
+.sc-cc {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--sc-t3);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.sc-cc:hover {
+  color: var(--sc-text);
+  background: var(--sc-bg2);
+}
+.sc-cc b {
+  color: var(--sc-t2);
+  font-weight: 600;
+}

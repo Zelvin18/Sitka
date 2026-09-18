@@ -39,6 +39,7 @@
   let showQr = false
   let tick = null
   let pip = null // the floating window, while open
+  let showCc = false // Meet's captions on the screen itself; Sitca reads them either way
 
   // ---------- talking to the worker ----------
 
@@ -226,7 +227,10 @@
       }
       if (asking) html += `<div class="sc-msg sc-sitca sc-thinking"><span class="sc-dots"><span></span><span></span><span></span></span></div>`
       html += `</div>
-        <div class="sc-last" title="${esc(card.lastLine || '')}">${esc(card.lastLine || 'Listening…')}</div>
+        <div class="sc-foot">
+          <div class="sc-last" title="${esc(card.lastLine || '')}">${esc(card.lastLine || 'Listening…')}</div>
+          ${IS_MEET ? `<button type="button" class="sc-cc" data-act="cc" title="Meet's captions on the screen. Sitca reads them either way.">Captions on screen <b>${showCc ? 'on' : 'off'}</b></button>` : ''}
+        </div>
         <form class="sc-ask" data-act="ask">
           <input type="text" class="sc-in" placeholder="Ask about what was said…" maxlength="400" ${asking ? 'disabled' : ''}>
           <button type="submit" class="sc-go" ${asking ? 'disabled' : ''} aria-label="Ask">↑</button>
@@ -336,6 +340,10 @@
       render()
     } else if (act === 'float') {
       void float()
+    } else if (act === 'cc') {
+      showCc = !showCc
+      hideCaptions(!showCc)
+      render()
     }
   })
   root.addEventListener('submit', (e) => {
@@ -436,6 +444,24 @@
     return document.querySelector('[role="region"][aria-label*="aption" i], [aria-label="Captions"]')
   }
 
+  // Meet's captions stay switched on for Sitca to read, but are kept off the
+  // screen: they take a good part of the picture and most people would
+  // switch them off. The words still arrive; only the drawing is hidden.
+  const HIDE_ID = 'sitca-hide-captions'
+  function hideCaptions(hide) {
+    let st = document.getElementById(HIDE_ID)
+    if (!hide) {
+      if (st) st.remove()
+      return
+    }
+    if (st) return
+    st = document.createElement('style')
+    st.id = HIDE_ID
+    st.textContent =
+      '[role="region"][aria-label*="aption" i],[aria-label="Captions"]{opacity:0!important;pointer-events:none!important;max-height:2px!important;min-height:0!important;overflow:hidden!important}'
+    document.documentElement.appendChild(st)
+  }
+
   const NOT_A_ROW = /jump to|arrow_downward|^\.{2,}$|продолжение/i
   /** a row is a speaker and their words: a picture plus text, or at least a name and text */
   function captionRows(region) {
@@ -527,11 +553,18 @@
       setTimeout(tryOn, 1500)
     }
     tryOn()
-    capTimer = setInterval(pollCaptions, 700)
+    hideCaptions(!showCc)
+    let ticks = 0
+    capTimer = setInterval(() => {
+      pollCaptions()
+      // switched off by a stray press of "c"? on again, quietly
+      if (++ticks % 20 === 0) turnCaptionsOn()
+    }, 700)
   }
   function captionsOff() {
     if (capTimer) clearInterval(capTimer)
     capTimer = null
+    hideCaptions(false)
     if (current && current.text.length > current.sentLen) send(current.who, current.text.slice(current.sentLen), current.at)
     current = null
   }

@@ -316,40 +316,26 @@ export function engineBridge(): void {
   })
 }
 
-/** A question typed into the card on the meeting page, answered by the session's Ask. */
+/**
+ * A question typed into the card on the meeting page. It is asked through
+ * the live session's own conversation, so it is answered with everything
+ * that conversation knows, and kept with the session for afterwards.
+ */
 async function askFromCard(sessionId: string, question: string): Promise<string> {
   const q = question.trim()
   if (!sessionId || !q) return ''
-  const api = (window as unknown as {
-    sitka?: {
-      askAi: (r: { sessionId: string; requestId: string; question: string; live: boolean; history: unknown[] }) => Promise<unknown>
-      onAiStream: (cb: (e: { requestId: string; type: string; text?: string; error?: string }) => void) => () => void
-    }
-  }).sitka
-  if (!api) return 'Sitca is still opening. Try again in a moment.'
-  const requestId = Math.random().toString(36).slice(2)
   return new Promise<string>((resolve) => {
-    let out = ''
-    const off = api.onAiStream((e) => {
-      if (e.requestId !== requestId) return
-      if (e.type === 'delta') out += e.text || ''
-      if (e.type === 'done') {
-        off()
-        resolve(out.trim())
-      }
-      if (e.type === 'error') {
-        off()
-        resolve(out.trim() || e.error || 'Sitca could not answer just now.')
-      }
-    })
-    void api.askAi({ sessionId, requestId, question: q, live: true, history: [] }).catch((err) => {
-      off()
-      resolve(err instanceof Error ? err.message : String(err))
-    })
-    setTimeout(() => {
-      off()
-      resolve(out.trim() || 'Sitca took too long to answer. Try again.')
-    }, 60000)
+    let done = false
+    const finish = (text: string): void => {
+      if (done) return
+      done = true
+      window.removeEventListener('sitka:answered', onAnswer)
+      resolve(text)
+    }
+    const onAnswer = (e: Event): void => finish(String((e as CustomEvent<{ text?: string }>).detail?.text || ''))
+    window.addEventListener('sitka:answered', onAnswer)
+    window.dispatchEvent(new CustomEvent('sitka:ask', { detail: { question: q, sessionId } }))
+    setTimeout(() => finish('Sitca took too long to answer. Try again.'), 75000)
   })
 }
 

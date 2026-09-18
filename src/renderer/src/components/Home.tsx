@@ -198,7 +198,26 @@ export default function Home({
                   {g.items.map((s) => (
               <div key={s.id} className="lib-card" onClick={() => onOpenSession(s.id)}>
                 <div className="lib-thumb-wrap">
-                  {s.banner ? (
+                  {s.status === 'recording' ? (
+                    // being captured right now: a card that says so, with the sound moving
+                    <div className="lib-thumb-live">
+                      <span className="lib-live-ring" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                      <span className="voice-bars lib-live-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <span className="lib-thumb-live-text">Sitca is listening</span>
+                    </div>
+                  ) : s.banner ? (
                     <img className="lib-thumb" src={s.banner} alt="" />
                   ) : s.audioOnly ? (
                     <div className="lib-thumb-voice">

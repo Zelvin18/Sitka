@@ -850,6 +850,8 @@ export default function LiveSession({
   // The conversation so far, kept here so the chat panel can move (into the
   // pop-out window and back) and reopen exactly where it was.
   const chatLogRef = useRef<Parameters<typeof window.sitka.saveChat>[1]>([])
+  /** a question from the extension's card is waiting for its answer */
+  const cardAskRef = useRef(false)
   const onChatPersist = useCallback((messages: Parameters<typeof window.sitka.saveChat>[1]): void => {
     const id = sessionIdRef.current
     chatLogRef.current = messages
@@ -858,7 +860,30 @@ export default function LiveSession({
       .filter((m) => m.role === 'user')
       .map((m) => m.content)
       .slice(-5)
+    // the card asked: the answer, now part of the session's own conversation, goes back to it
+    const last = messages[messages.length - 1]
+    if (cardAskRef.current && last && last.role === 'assistant' && last.kind !== 'note') {
+      cardAskRef.current = false
+      window.dispatchEvent(new CustomEvent('sitka:answered', { detail: { text: last.content } }))
+    }
   }, [])
+  // A question typed into the extension's card is asked here, as if typed
+  // into this conversation: one conversation, kept with the session, there
+  // to be read and carried on after the meeting.
+  useEffect(() => {
+    const onAsk = (e: Event): void => {
+      const q = String((e as CustomEvent<{ question?: string }>).detail?.question || '').trim()
+      if (!q) return
+      if (!chatRef.current || phase !== 'recording') {
+        window.dispatchEvent(new CustomEvent('sitka:answered', { detail: { text: 'Start capturing first, then ask.' } }))
+        return
+      }
+      cardAskRef.current = true
+      chatRef.current.ask(q)
+    }
+    window.addEventListener('sitka:ask', onAsk)
+    return () => window.removeEventListener('sitka:ask', onAsk)
+  }, [phase])
 
   useEffect(() => {
     if (phase !== 'recording' || !hasChatKey || hosting) return undefined

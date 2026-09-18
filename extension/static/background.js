@@ -19,6 +19,8 @@
 
 const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/)/
 const APP = chrome.runtime.getURL('app.html')
+/** the website: a finished session is opened there, where its recording plays */
+const SITE = 'https://sitcaai.vercel.app/app'
 
 /** one session per meeting tab: what the card shows */
 const cards = new Map()
@@ -246,10 +248,15 @@ function stopCapture(tabId) {
   chrome.runtime.sendMessage({ type: 'sitca:engine:stop', tabId }).catch(() => undefined)
 }
 
-/** Sitca in a tab, on this session; an open Sitca tab is reused. */
-async function openViewer(sessionId) {
-  const url = sessionId ? `${APP}#open=${sessionId}` : APP
-  const tabs = await chrome.tabs.query({ url: APP + '*' }).catch(() => [])
+/**
+ * Sitca in a tab, on this session; an open Sitca tab is reused. A session
+ * still being captured opens in the extension's own page, which hears the
+ * engine as it writes; a finished one opens on the website.
+ */
+async function openViewer(sessionId, finished) {
+  const base = finished ? SITE : APP
+  const url = sessionId ? `${base}#open=${sessionId}` : base
+  const tabs = await chrome.tabs.query({ url: base + '*' }).catch(() => [])
   const mine = tabs.find((t) => t.id !== undefined)
   if (mine) {
     await chrome.tabs.update(mine.id, { url, active: true }).catch(() => undefined)
@@ -366,7 +373,9 @@ function handle(msg, sender, reply) {
     return undefined
   }
   if (msg.type === 'sitca:card:open') {
-    openViewer(cardOf(tabId).sessionId).then(() => reply({ ok: true }), () => reply({ ok: false }))
+    const c = cardOf(tabId)
+    const finished = c.state === 'ended' || c.state === 'ending'
+    openViewer(c.sessionId, finished).then(() => reply({ ok: true }), () => reply({ ok: false }))
     return true
   }
   if (msg.type === 'sitca:card:reset') {

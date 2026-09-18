@@ -11817,6 +11817,75 @@ video {
 }
 
 /* ============ a voice recording in the library ============ */
+/* a session being captured right now: dark, alive, unmistakable */
+.lib-thumb-live {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+  color: #f2f2f4;
+  background:
+    radial-gradient(ellipse at 50% 30%, #3a2624, #131316 70%),
+    #131316;
+}
+.lib-live-ring {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.lib-live-ring span {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid rgba(224, 101, 90, 0.45);
+  animation: lib-ripple 2.8s ease-out infinite;
+}
+.lib-live-ring span:nth-child(2) {
+  animation-delay: 0.9s;
+}
+.lib-live-ring span:nth-child(3) {
+  animation-delay: 1.8s;
+}
+@keyframes lib-ripple {
+  from {
+    transform: scale(0.35);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.lib-live-bars {
+  position: relative;
+  height: 30px;
+}
+.lib-live-bars i {
+  background: #e0655a;
+  opacity: 0.9;
+  animation: voice-bounce 1.1s ease-in-out infinite;
+}
+.lib-live-bars i:nth-child(2) { animation-delay: 0.12s; }
+.lib-live-bars i:nth-child(3) { animation-delay: 0.24s; }
+.lib-live-bars i:nth-child(4) { animation-delay: 0.36s; }
+.lib-live-bars i:nth-child(5) { animation-delay: 0.22s; }
+.lib-live-bars i:nth-child(6) { animation-delay: 0.1s; }
+.lib-live-bars i:nth-child(7) { animation-delay: 0.3s; }
+.lib-thumb-live-text {
+  position: relative;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #e8e8ec;
+}
 .lib-thumb-voice {
   width: 100%;
   height: 100%;

@@ -801,6 +801,11 @@ export default function App(): React.JSX.Element {
                 setRecordingSessionId(undefined)
                 setRecordingStartedAt(undefined)
                 void refreshSessions()
+                // the extension's invisible engine has nobody to show the session to
+                if ((window as unknown as { sitkaExt?: { engine?: boolean } }).sitkaExt?.engine) {
+                  replaceView({ name: 'homepage' })
+                  return
+                }
                 // the session takes the recorder's place: Back goes to where the recording was started from
                 replaceView({ name: 'session', id })
               }}
