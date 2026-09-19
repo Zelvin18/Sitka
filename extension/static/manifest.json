@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Sitca",
   "version": "0.1.0",
-  "description": "Sitca sits beside your Google Meet or Zoom class: live captions, private answers, notes, and a recap to share.",
+  "description": "Sitca sits beside your Google Meet, Zoom, Teams or YouTube session: live captions, private answers, notes, and a recap to share.",
   "icons": {
     "16": "icon-192.png",
     "48": "icon-192.png",
@@ -23,11 +23,25 @@
     "https://jadukkvulkxnttowxefu.supabase.co/*",
     "https://*.r2.cloudflarestorage.com/*",
     "https://meet.google.com/*",
-    "https://*.zoom.us/*"
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*",
+    "https://*.youtube.com/*",
+    "https://*.webex.com/*",
+    "https://whereby.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://meet.google.com/*", "https://*.zoom.us/wc/*", "https://*.zoom.us/j/*"],
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/wc/*",
+        "https://*.zoom.us/j/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.youtube.com/*",
+        "https://*.webex.com/*",
+        "https://whereby.com/*"
+      ],
       "js": ["meet.js"],
       "css": ["meet.css"],
       "run_at": "document_idle"
@@ -36,7 +50,15 @@
   "web_accessible_resources": [
     {
       "resources": ["meet.css"],
-      "matches": ["https://meet.google.com/*", "https://*.zoom.us/*"]
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.youtube.com/*",
+        "https://*.webex.com/*",
+        "https://whereby.com/*"
+      ]
     }
   ],
   "commands": {

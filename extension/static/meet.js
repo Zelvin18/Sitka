@@ -1,6 +1,7 @@
 // Sitca on the meeting page.
 //
-// A small card in the corner of a Google Meet or Zoom call. It never
+// A small card in the corner of a Google Meet, Zoom, Teams, Webex or Whereby
+// call, or a YouTube video. It never
 // records anything itself: it asks the extension's worker, shows what the
 // worker says back, and, on Google Meet, reads the call's own captions off
 // the page so the transcript carries each speaker's name as it happens.
@@ -23,8 +24,11 @@
 ;(() => {
   if (window.top !== window.self) return
   if (document.getElementById('sitca-card')) return
-  const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/)/
+  const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|whereby\.com\/[^/?#]+)/
   const IS_MEET = location.hostname === 'meet.google.com'
+  // what is on this page, for the card's words: a meeting, or a video
+  const IS_VIDEO = /youtube\.com$/.test(location.hostname)
+  const THING = IS_VIDEO ? 'video' : 'meeting'
   const CAN_FLOAT = 'documentPictureInPicture' in window
 
   const MARK =
@@ -157,14 +161,14 @@
       html = `<div class="sc-box">
         <div class="sc-head">${MARK}<b>Sitca</b><button type="button" class="sc-x" data-act="close" aria-label="Close">×</button></div>`
       if (st === 'choose') {
-        html += `<div class="sc-title">Capture this meeting</div>
+        html += `<div class="sc-title">Capture this ${THING}</div>
         <button type="button" class="sc-opt" data-act="start" data-mode="record">
           <span class="sc-opt-t">Just record</span>
           <span class="sc-opt-d">Recording, live captions, notes and a recap, for you.</span>
         </button>
         <button type="button" class="sc-opt" data-act="start" data-mode="host">
           <span class="sc-opt-t">Host on Sitca</span>
-          <span class="sc-opt-d">The same, plus a link so people in the room follow along and ask.</span>
+          <span class="sc-opt-d">${IS_VIDEO ? 'The same, plus a link so others watch along and ask.' : 'The same, plus a link so people in the room follow along and ask.'}</span>
         </button>`
       } else if (st === 'needIcon') {
         html += `<div class="sc-title">One more press</div>
@@ -455,12 +459,24 @@
   function captionBlock() {
     const region = captionsRegion()
     if (!region) return null
-    // up from the words to the top of Meet's caption block: the last
-    // ancestor that holds no video tile
-    let el = region
-    while (el.parentElement && el.parentElement !== document.body && !el.parentElement.querySelector('video')) {
-      el = el.parentElement
+    // Up from the words to the top of Meet's caption block, with hard
+    // limits: never past anything that holds the call's controls, a video
+    // tile, or most of the page. Cameras may all be off, so a video tile is
+    // not something to rely on; the controls and the size are.
+    const tooBig = (el) => {
+      const r = el.getBoundingClientRect()
+      return r.height > window.innerHeight * 0.5 || r.width > window.innerWidth * 0.95 && r.height > window.innerHeight * 0.35
     }
+    const holdsCall = (el) =>
+      Boolean(el.querySelector('video, [aria-label*="leave call" i], [aria-label*="Leave call" i], [data-tooltip*="Leave call" i], [aria-label*="microphone" i]'))
+    let el = region
+    for (let depth = 0; depth < 6; depth++) {
+      const parent = el.parentElement
+      if (!parent || parent === document.body || parent === document.documentElement) break
+      if (holdsCall(parent) || tooBig(parent)) break
+      el = parent
+    }
+    if (tooBig(el) || holdsCall(el)) return region
     return el
   }
   function foldCaptions() {

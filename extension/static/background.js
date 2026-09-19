@@ -17,7 +17,7 @@
 //   points at the icon, and the next press on the icon carries on from there.
 //   The side panel may only be opened in the same instant as such a press.
 
-const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/)/
+const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|whereby\.com\/[^/?#]+)/
 const APP = chrome.runtime.getURL('app.html')
 /** the website: a finished session is opened there, where its recording plays */
 const SITE = 'https://sitcaai.vercel.app/app'
@@ -57,9 +57,17 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: 'sitca-capture',
-      title: 'Capture this meeting with Sitca',
+      title: 'Capture this with Sitca',
       contexts: ['page'],
-      documentUrlPatterns: ['https://meet.google.com/*', 'https://*.zoom.us/*']
+      documentUrlPatterns: [
+        'https://meet.google.com/*',
+        'https://*.zoom.us/*',
+        'https://teams.microsoft.com/*',
+        'https://teams.live.com/*',
+        'https://*.youtube.com/*',
+        'https://*.webex.com/*',
+        'https://whereby.com/*'
+      ]
     })
   })
 })
