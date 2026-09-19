@@ -226,9 +226,12 @@
           <div class="sc-hello-d">Ask anything about what has been said, privately. Nobody in the call sees this.</div>
         </div>`
       }
-      for (const m of chat) {
-        html += `<div class="sc-msg sc-${m.role}">${esc(m.text)}</div>`
-      }
+      chat.forEach((m, i) => {
+        html +=
+          m.role === 'sitca'
+            ? `<div class="sc-msg sc-sitca">${esc(m.text)}<button type="button" class="sc-copy" data-act="copymsg" data-i="${i}" title="Copy this answer" aria-label="Copy this answer"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>`
+            : `<div class="sc-msg sc-you">${esc(m.text)}</div>`
+      })
       if (asking) html += `<div class="sc-msg sc-sitca sc-thinking"><span class="sc-dots"><span></span><span></span><span></span></span></div>`
       html += `</div>
         <div class="sc-foot">
@@ -344,6 +347,17 @@
       render()
     } else if (act === 'float') {
       void float()
+    } else if (act === 'copymsg') {
+      const m = chat[Number(b.getAttribute('data-i'))]
+      if (m) {
+        navigator.clipboard.writeText(m.text).then(
+          () => {
+            b.classList.add('done')
+            setTimeout(() => b.classList.remove('done'), 1600)
+          },
+          () => undefined
+        )
+      }
     } else if (act === 'cc') {
       showCc = !showCc
       hideCaptions(!showCc)
@@ -459,16 +473,18 @@
   function captionBlock() {
     const region = captionsRegion()
     if (!region) return null
-    // Up from the words to the top of Meet's caption block, with hard
-    // limits: never past anything that holds the call's controls, a video
-    // tile, or most of the page. Cameras may all be off, so a video tile is
-    // not something to rely on; the controls and the size are.
-    const tooBig = (el) => {
-      const r = el.getBoundingClientRect()
-      return r.height > window.innerHeight * 0.5 || r.width > window.innerWidth * 0.95 && r.height > window.innerHeight * 0.35
-    }
+    // Up from the words to the top of Meet's caption block: the language
+    // chip, the font controls and the band the lines sit in. Hard limits:
+    // never anything that holds the call's controls, a participant's tile,
+    // or more than most of the window. Cameras may all be off, so tiles are
+    // recognised by Meet's own participant marks, not by video.
     const holdsCall = (el) =>
-      Boolean(el.querySelector('video, [aria-label*="leave call" i], [aria-label*="Leave call" i], [data-tooltip*="Leave call" i], [aria-label*="microphone" i]'))
+      Boolean(
+        el.querySelector(
+          'video, [data-participant-id], [data-self-name], [data-requested-participant-id], [aria-label*="leave call" i], [aria-label*="Leave call" i], [data-tooltip*="Leave call" i], [aria-label*="microphone" i], [aria-label*="camera" i]'
+        )
+      )
+    const tooBig = (el) => el.getBoundingClientRect().height > window.innerHeight * 0.6
     let el = region
     for (let depth = 0; depth < 6; depth++) {
       const parent = el.parentElement
@@ -476,7 +492,7 @@
       if (holdsCall(parent) || tooBig(parent)) break
       el = parent
     }
-    if (tooBig(el) || holdsCall(el)) return region
+    if (holdsCall(el) || tooBig(el)) return region
     return el
   }
   function foldCaptions() {
