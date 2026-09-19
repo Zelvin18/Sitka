@@ -30,14 +30,22 @@ export function installFocusGuard(): () => void {
     // keep the element focusable for later, just without the keyboard now
     e.target.blur()
   }
+  // typing counts too: a phone keyboard composes words without key events,
+  // and the space that commits a word must never look like a stray focus
   document.addEventListener('pointerdown', noteIntent, true)
   document.addEventListener('touchstart', noteIntent, true)
   document.addEventListener('keydown', noteIntent, true)
+  document.addEventListener('input', noteIntent, true)
+  document.addEventListener('compositionstart', noteIntent, true)
+  document.addEventListener('compositionupdate', noteIntent, true)
   document.addEventListener('focusin', onFocus, true)
   return () => {
     document.removeEventListener('pointerdown', noteIntent, true)
     document.removeEventListener('touchstart', noteIntent, true)
     document.removeEventListener('keydown', noteIntent, true)
+    document.removeEventListener('input', noteIntent, true)
+    document.removeEventListener('compositionstart', noteIntent, true)
+    document.removeEventListener('compositionupdate', noteIntent, true)
     document.removeEventListener('focusin', onFocus, true)
   }
 }

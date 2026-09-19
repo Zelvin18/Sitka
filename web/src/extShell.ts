@@ -267,6 +267,8 @@ export interface EngineStatus {
   recapUrl?: string
   /** the latest thing heard */
   lastLine?: string
+  /** whether the person's microphone is in the recording */
+  mic?: boolean
   error?: string
 }
 
@@ -300,6 +302,11 @@ export function engineBridge(): void {
     }
     if (m.type === 'sitca:engine:release') {
       releaseTab()
+      reply({ ok: true })
+      return undefined
+    }
+    if (m.type === 'sitca:engine:mic') {
+      window.dispatchEvent(new CustomEvent('sitka:mic', { detail: { on: (m as { on?: boolean }).on } }))
       reply({ ok: true })
       return undefined
     }

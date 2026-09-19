@@ -435,12 +435,19 @@ html,body{overscroll-behavior:none}
 .proxychat .inputrow{margin-top:10px}
 #proxymsgs .bub-a{white-space:normal}
 
-/* the stage card as the whole screen: the picture fills it, and the card's own
-   buttons stay where they are (a bare video's built-in controls would pause a live stream) */
-.stagecard.full{aspect-ratio:auto!important;height:100%!important;max-height:none!important;width:100%;border-radius:0;margin:0;background:#000}
+/* the stage card as the whole screen: it fills the window by its own styling
+   (the same on every phone), and its own buttons stay above the picture */
+.stagecard.full{position:fixed!important;inset:0!important;z-index:1000;aspect-ratio:auto!important;height:100%!important;max-height:none!important;width:100%;border-radius:0;margin:0;background:#000}
+html.stage-full{overflow:hidden}
 .stagecard.full .stagevid{object-fit:contain}
-.stagecard.full .stageexp,.stagecard.full .stagemin{bottom:18px;width:40px;height:40px}
-.stagecard.full .stagemin{right:64px;width:auto;padding:0 14px;display:none}
-.stagecard.full .stageexp{right:18px}
-.stagecard.full .stagetag{top:14px;left:14px}
+.stagecard.full .stageexp,.stagecard.full .stagemin{bottom:calc(18px + env(safe-area-inset-bottom))}
+.stagecard.full .stageexp{right:18px;width:42px;height:42px}
+.stagecard.full .stagemin{display:none}
+.stagecard.full .stagetag{top:calc(14px + env(safe-area-inset-top));left:14px}
 .stagecard:fullscreen{aspect-ratio:auto;height:100%;max-height:none;border-radius:0}
+/* the buttons sit above the live picture, so they can be pressed */
+.stageexp{z-index:5}
+.stagetag{z-index:5}
+.stagepaused{z-index:5}
+/* a frame on its way: the card says so instead of showing black */
+.stagecard.connecting::after{content:'Connecting…';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;color:#e6e6ea;font:600 13px 'Inter',sans-serif;letter-spacing:.01em;background:rgba(0,0,0,.45);padding:6px 12px;border-radius:20px}

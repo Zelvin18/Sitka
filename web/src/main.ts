@@ -687,16 +687,20 @@ function openStageFull(): void {
     // The whole card goes full screen, not the bare video: a video element
     // on its own grows built-in controls in fullscreen, and a tap on them
     // pauses a live stream. The card keeps its own buttons instead.
-    const card = el('stagecard') as HTMLElement & { webkitRequestFullscreen?: () => void }
-    const v = el('stagevideo') as HTMLVideoElement & { webkitEnterFullscreen?: () => void }
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => undefined)
-    } else if (card.requestFullscreen) {
+    const card = el('stagecard') as HTMLElement
+    const v = el('stagevideo') as HTMLVideoElement
+    // The card fills the window by its own styling rather than the browser's
+    // fullscreen: that works on every phone alike (iPhones only fullscreen a
+    // bare video, whose built-in controls pause a live stream), and the
+    // card's own buttons stay where they are.
+    const full = !card.classList.contains('full')
+    card.classList.toggle('full', full)
+    document.documentElement.classList.toggle('stage-full', full)
+    if (full && document.fullscreenElement === null && card.requestFullscreen && !/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      // where the browser allows it, the whole screen as well
       void card.requestFullscreen().catch(() => undefined)
-    } else if (card.webkitRequestFullscreen) {
-      card.webkitRequestFullscreen()
-    } else if (v.webkitEnterFullscreen) {
-      v.webkitEnterFullscreen() // an iPhone: the phone's own player
+    } else if (!full && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined)
     }
     void v.play().catch(() => undefined)
     return
@@ -712,9 +716,16 @@ function openStageFull(): void {
     }
   })
   document.addEventListener('fullscreenchange', () => {
-    el('stagecard').classList.toggle('full', document.fullscreenElement === el('stagecard'))
+    // the browser's fullscreen left by other means (the Escape key): the card follows
+    if (!document.fullscreenElement) {
+      el('stagecard').classList.remove('full')
+      document.documentElement.classList.remove('stage-full')
+    }
     void v.play().catch(() => undefined)
   })
+  // a black frame is not a picture: the card says "connecting" until one arrives
+  v.addEventListener('playing', () => el('stagecard').classList.remove('connecting'))
+  v.addEventListener('loadeddata', () => el('stagecard').classList.remove('connecting'))
 }
 el('stageexpbtn').onclick = (e) => {
   e.stopPropagation()
@@ -836,7 +847,10 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
     // and browsers only allow sound after a tap anyway
     v.muted = !hearing
     void v.play().catch(() => undefined)
-    if (stream.getVideoTracks().length > 0) rtcMark(true)
+    if (stream.getVideoTracks().length > 0) {
+      el('stagecard').classList.add('connecting')
+      rtcMark(true)
+    }
     if (stream.getAudioTracks().length > 0) hearOffer()
   }
   pc.onconnectionstatechange = () => {

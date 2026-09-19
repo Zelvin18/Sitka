@@ -34,6 +34,9 @@
   const MARK =
     '<svg class="sc-mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="52" cy="22" r="6" fill="currentColor"/></svg>'
 
+  const MIC_ON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>'
+  const MIC_OFF = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9v5a3 3 0 0 0 5.1 2.1M15 10V6a3 3 0 0 0-6 0M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/></svg>'
+
   const root = document.createElement('div')
   root.id = 'sitca-card'
   root.setAttribute('data-state', 'idle')
@@ -268,6 +271,7 @@
           <span class="sc-dot"></span>
           <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
           <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
+          ${card.mic === undefined ? '' : `<button type="button" class="sc-mini sc-mic${card.mic ? '' : ' off'}" data-act="mic" title="${card.mic ? 'Your microphone is in the recording. Press to mute it.' : 'Your microphone is muted. Press to include it.'}" aria-label="Microphone">${card.mic ? MIC_ON : MIC_OFF}</button>`}
           <button type="button" class="sc-mini" data-act="open" title="Open this session in Sitca">Open</button>
           <button type="button" class="sc-mini sc-stop" data-act="stop">Stop</button>
         </div>`
@@ -417,6 +421,11 @@
           setTimeout(() => b.classList.remove('done'), 1600)
         })
       }
+    } else if (act === 'mic') {
+      const on = !card.mic
+      card = { ...card, mic: on }
+      render()
+      void ask({ type: 'sitca:card:mic', on })
     } else if (act === 'cc') {
       showCc = !showCc
       hideCaptions(!showCc)

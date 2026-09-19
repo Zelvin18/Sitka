@@ -90,6 +90,8 @@ interface EngineStatus {
   /** once ended: the recap link to share */
   recapUrl?: string
   lastLine?: string
+  /** whether the person's microphone is in the recording */
+  mic?: boolean
   error?: string
 }
 const tellEngine = (s: EngineStatus): void => {
@@ -1689,6 +1691,26 @@ export default function LiveSession({
     window.addEventListener('sitka:stop', onStop)
     return () => window.removeEventListener('sitka:stop', onStop)
   }, [])
+  // The microphone, switched from the card: the call's own sound carries on,
+  // only the person's side goes quiet. The track stays, muted, so it can
+  // come back without asking Chrome again.
+  const [micLive, setMicLive] = useState(true)
+  useEffect(() => {
+    const onMic = (e: Event): void => {
+      const want = (e as CustomEvent<{ on?: boolean }>).detail?.on
+      const mic = micStreamRef.current
+      const on = typeof want === 'boolean' ? want : !(mic?.getAudioTracks()[0]?.enabled ?? true)
+      mic?.getAudioTracks().forEach((t) => {
+        t.enabled = on
+      })
+      setMicLive(on)
+      if (meetTab && sessionRef.current) {
+        tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, mic: on })
+      }
+    }
+    window.addEventListener('sitka:mic', onMic)
+    return () => window.removeEventListener('sitka:mic', onMic)
+  }, [meetTab])
   // What the card and the viewer are told: the state, the link for the room
   // when hosting, and the latest line heard.
   useEffect(() => {
@@ -1701,14 +1723,15 @@ export default function LiveSession({
         startedAt: sessionStartRef.current,
         title: session.title,
         hostUrl: confUrl ?? undefined,
-        qr: confUrl ? qrData ?? undefined : undefined
+        qr: confUrl ? qrData ?? undefined : undefined,
+        mic: micStreamRef.current ? micLive : false
       })
     } else if (phase === 'picking' && error) {
       tellEngine({ state: 'failed', tabId: meetTab.tabId, error })
     } else if (phase === 'picking' || phase === 'intent') {
       tellEngine({ state: 'starting', tabId: meetTab.tabId })
     }
-  }, [meetTab, phase, session, confUrl, qrData, error])
+  }, [meetTab, phase, session, confUrl, qrData, error, micLive])
   const lastLine = segments.length > 0 ? segments[segments.length - 1].text : ''
   useEffect(() => {
     if (!meetTab || phase !== 'recording' || !session || !lastLine || lastLine.startsWith(ON_SCREEN_PREFIX)) return

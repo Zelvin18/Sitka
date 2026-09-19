@@ -702,3 +702,16 @@
   color: var(--sc-t2);
   white-space: nowrap;
 }
+
+/* ---- the microphone: in, or muted ---- */
+.sc-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  padding: 5px 0;
+}
+.sc-mic.off {
+  color: var(--sc-red);
+  background: rgba(224, 101, 90, 0.14);
+}

@@ -381,6 +381,11 @@ function handle(msg, sender, reply) {
     reply({ ok: true })
     return undefined
   }
+  if (msg.type === 'sitca:card:mic') {
+    chrome.runtime.sendMessage({ type: 'sitca:engine:mic', on: msg.on }).catch(() => undefined)
+    reply({ ok: true })
+    return undefined
+  }
   if (msg.type === 'sitca:card:open') {
     const c = cardOf(tabId)
     const finished = c.state === 'ended' || c.state === 'ending'
@@ -434,6 +439,7 @@ function handle(msg, sender, reply) {
       if (msg.hostUrl) patch.hostUrl = msg.hostUrl
       if (msg.qr) patch.qr = msg.qr
       if (msg.lastLine) patch.lastLine = msg.lastLine
+      if (typeof msg.mic === 'boolean') patch.mic = msg.mic
       setCard(t, patch)
     } else if (msg.state === 'ending') {
       const patch = { state: 'ending' }
