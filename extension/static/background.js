@@ -457,6 +457,11 @@ function handle(msg, sender, reply) {
     reply({ ok: true })
     return undefined
   }
+  if (msg.type === 'sitca:card:still') {
+    chrome.runtime.sendMessage({ type: 'sitca:engine:still' }).catch(() => undefined)
+    reply({ ok: true })
+    return undefined
+  }
   if (msg.type === 'sitca:card:mic') {
     chrome.runtime.sendMessage({ type: 'sitca:engine:mic', on: msg.on }).catch(() => undefined)
     reply({ ok: true })
@@ -521,6 +526,10 @@ function handle(msg, sender, reply) {
       if (msg.talkingMuted) {
         // a moment, not a state: told to the card once and not remembered
         chrome.tabs.sendMessage(t, { type: 'sitca:nudge', what: 'mic' }).catch(() => undefined)
+      }
+      if (msg.stillAsk) {
+        // "still there?": asked on the card, and taken back once answered
+        chrome.tabs.sendMessage(t, { type: 'sitca:nudge', what: 'still', why: msg.stillAsk }).catch(() => undefined)
       }
       setCard(t, patch)
     } else if (msg.state === 'ending') {

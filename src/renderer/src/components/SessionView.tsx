@@ -450,7 +450,7 @@ export default function SessionView({
         // read the whole of it before the first frame (a minute for a long
         // one). With its index written first, here and now, it starts at
         // once; if the rewrite is refused, the fragments play as they are.
-        if (kind === 'video/mp4' && isFragmentedMp4(bytes)) {
+        if (kind === 'video/mp4' && bytes.byteLength < 400 * 1024 * 1024 && isFragmentedMp4(bytes)) {
           try {
             const flat = defragmentMp4(bytes)
             if (flat) {

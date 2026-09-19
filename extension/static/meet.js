@@ -117,6 +117,10 @@
       nudgeMic()
       return
     }
+    if (msg && msg.type === 'sitca:nudge' && msg.what === 'still') {
+      askStill(msg.why)
+      return
+    }
     if (msg && msg.type === 'sitca:card' && msg.card) {
       const was = card.state
       const before = card
@@ -172,6 +176,31 @@
         mic.innerHTML = card.mic ? MIC_ON : MIC_OFF
       }
     }
+  }
+
+  /**
+   * "Still there?" on the card: nothing heard for a while, or the picture
+   * gone. One press keeps the session going; Stop ends it; no answer and
+   * the engine ends it by itself in a few minutes.
+   */
+  let stillBox = null
+  function askStill(why) {
+    if (why === 'no') {
+      if (stillBox) stillBox.remove()
+      stillBox = null
+      return
+    }
+    if (card.state !== 'recording') return
+    if (!stillBox) {
+      stillBox = (root.ownerDocument || document).createElement('div')
+      stillBox.className = 'sc-still'
+    }
+    stillBox.innerHTML = `<b>${why === 'gone' ? 'The picture has closed.' : 'Still there?'}</b><span>${
+      why === 'gone' ? 'The window being recorded is gone. Still going?' : 'Sitca has heard nothing for a while. Ends by itself in 3 minutes.'
+    }</span><div class="sc-still-b"><button type="button" class="sc-mini sc-stop" data-act="stop">End</button><button type="button" class="sc-mini sc-here" data-act="here">I’m here</button></div>`
+    const anchor = root.querySelector('.sc-anchor') || root.firstElementChild
+    if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(stillBox, anchor.nextSibling)
+    else root.appendChild(stillBox)
   }
 
   // ---------- the floating window ----------
@@ -552,6 +581,9 @@
           setTimeout(() => b.classList.remove('done'), 1600)
         })
       }
+    } else if (act === 'here') {
+      askStill('no')
+      void ask({ type: 'sitca:card:still' })
     } else if (act === 'mic') {
       const on = !card.mic
       card = { ...card, mic: on }

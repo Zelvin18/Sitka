@@ -816,3 +816,32 @@
   left: auto;
   right: 0;
 }
+
+/* "still there?" */
+.sc-still {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--sc-line);
+  border-radius: 12px;
+  background: var(--sc-bg2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  animation: sc-in 0.2s ease;
+}
+.sc-still b {
+  display: block;
+  margin-bottom: 2px;
+}
+.sc-still span {
+  color: var(--sc-t2);
+}
+.sc-still-b {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.sc-here {
+  background: var(--sc-text) !important;
+  color: #141416 !important;
+}

@@ -94,6 +94,8 @@ interface EngineStatus {
   mic?: boolean
   /** someone is talking into a muted microphone: the card should say so */
   talkingMuted?: boolean
+  /** the card is asked "still there?" ('quiet' | 'gone'), or told the question is over ('no') */
+  stillAsk?: 'quiet' | 'gone' | 'no'
   error?: string
 }
 const tellEngine = (s: EngineStatus): void => {
@@ -278,6 +280,13 @@ export default function LiveSession({
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
   const chunkPeakRef = useRef(0)
   const silentChunksRef = useRef(0)
+  // "Still there?": nothing heard for a long while, or the shared picture
+  // gone, and the session asks before it records an empty room for an hour.
+  // Unanswered, it ends by itself, the way a call does.
+  const lastHeardRef = useRef(0)
+  const [stillAsk, setStillAsk] = useState<{ askedAt: number; why: 'quiet' | 'gone' } | null>(null)
+  const stillAskRef = useRef<{ askedAt: number; why: 'quiet' | 'gone' } | null>(null)
+  stillAskRef.current = stillAsk
   const levelTimerRef = useRef<number | null>(null)
   const [noSound, setNoSound] = useState<'' | 'silent' | 'none'>('')
   const enableMicNow = useCallback(async (): Promise<void> => {
@@ -1260,6 +1269,7 @@ export default function LiveSession({
       }
       silentChunksRef.current = 0
       setNoSound('')
+      lastHeardRef.current = Date.now()
       // the meeting's own captions are flowing: they say it better, with names
       if (Date.now() - meetCaptionAtRef.current < 20000) {
         sttStatsRef.current.dropped++
@@ -1537,6 +1547,8 @@ export default function LiveSession({
       broadcastSoundRef.current = soundStream
 
       sessionStartRef.current = Date.now()
+      lastHeardRef.current = Date.now()
+      setStillAsk(null)
       stoppingRef.current = false
       sttPendingRef.current = Promise.resolve()
       sttStatsRef.current = { pieces: 0, bytes: 0, segments: 0, errors: 0, dropped: 0, rotatedByTimer: 0, heard: 0, container: '' }
@@ -1568,6 +1580,12 @@ export default function LiveSession({
       }
       recorder.onstop = () => {
         if (!stoppingRef.current) say(`recorder stopped on its own after ${Math.round((Date.now() - sessionStartRef.current) / 1000)} s`)
+      }
+      // the shared window or screen closed: the picture is gone, the session may be over
+      for (const t of desktopStream?.getVideoTracks() ?? []) {
+        t.addEventListener('ended', () => {
+          if (!stoppingRef.current && !stillAskRef.current) setStillAsk({ askedAt: Date.now(), why: 'gone' })
+        })
       }
       recorder.start(VIDEO_CHUNK_MS)
       recorderRef.current = recorder
@@ -1740,6 +1758,72 @@ export default function LiveSession({
     onFinished(id)
     tellEngine({ state: 'ended', sessionId: id, tabId: meetTab?.tabId, recapUrl })
   }, [onFinished, hosting, meetTab])
+
+  // ---- still there? ----
+  const STILL_AFTER_MS = 8 * 60000
+  const STILL_ANSWER_MS = 3 * 60000
+  const chime = useCallback((): void => {
+    try {
+      const ctx = new AudioContext()
+      const now = ctx.currentTime
+      for (const [i, f] of [660, 880].entries()) {
+        const o = ctx.createOscillator()
+        const g = ctx.createGain()
+        o.frequency.value = f
+        o.type = 'sine'
+        g.gain.setValueAtTime(0, now + i * 0.18)
+        g.gain.linearRampToValueAtTime(0.18, now + i * 0.18 + 0.02)
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.5)
+        o.connect(g).connect(ctx.destination)
+        o.start(now + i * 0.18)
+        o.stop(now + i * 0.18 + 0.55)
+      }
+      window.setTimeout(() => void ctx.close().catch(() => undefined), 1500)
+    } catch {
+      /* no sound: the words are enough */
+    }
+  }, [])
+  useEffect(() => {
+    if (phase !== 'recording') return undefined
+    const t = window.setInterval(() => {
+      if (stoppingRef.current) return
+      const ask = stillAskRef.current
+      if (!ask) {
+        // meeting captions count as hearing too
+        const heard = Math.max(lastHeardRef.current, meetCaptionAtRef.current)
+        if (Date.now() - heard > STILL_AFTER_MS) setStillAsk({ askedAt: Date.now(), why: 'quiet' })
+        return
+      }
+      if (Date.now() - ask.askedAt > STILL_ANSWER_MS) {
+        const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+        report?.('still-there', `session ended by itself: ${ask.why === 'gone' ? 'the shared picture had closed' : 'nothing heard'} and nobody answered in ${Math.round(STILL_ANSWER_MS / 60000)} min`)
+        setStillAsk(null)
+        void stopRef.current()
+      }
+    }, 15000)
+    return () => window.clearInterval(t)
+  }, [phase])
+  // asked: a sound, and the card too when the session runs from the extension
+  useEffect(() => {
+    if (!stillAsk) return
+    chime()
+    if (meetTab && sessionRef.current) {
+      tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, stillAsk: stillAsk.why })
+    }
+  }, [stillAsk, meetTab, chime])
+  const stillHere = useCallback((): void => {
+    lastHeardRef.current = Date.now()
+    setStillAsk(null)
+    if (meetTab && sessionRef.current) {
+      tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, stillAsk: 'no' })
+    }
+  }, [meetTab])
+  // the card's answer: "I'm here"
+  useEffect(() => {
+    const on = (): void => stillHere()
+    window.addEventListener('sitka:still', on)
+    return () => window.removeEventListener('sitka:still', on)
+  }, [stillHere])
 
   // ---- the extension's engine: orders in, progress out ----
   // Stop can come from the card on the meeting page.
@@ -2604,6 +2688,18 @@ export default function LiveSession({
   // ============ recording UI ============
   return (
     <div className={`session-layout${askOpen ? ' ask-open' : ''}`} ref={layoutRef}>
+      {stillAsk && phase === 'recording' && (
+        <StillThereDialog
+          why={stillAsk.why}
+          askedAt={stillAsk.askedAt}
+          answerMs={STILL_ANSWER_MS}
+          onHere={stillHere}
+          onEnd={() => {
+            setStillAsk(null)
+            void stopRef.current()
+          }}
+        />
+      )}
       <div className="session-left">
         <div className="session-header">
           <div className="session-header-row">
@@ -3344,5 +3440,57 @@ export default function LiveSession({
       </div>
       </PopHost>
     </div>
+  )
+}
+
+/**
+ * The question a call asks: still there? Nothing has been heard for a
+ * while, or the shared picture has closed. Left unanswered, the session
+ * ends on its own; the countdown says when.
+ */
+function StillThereDialog({
+  why,
+  askedAt,
+  answerMs,
+  onHere,
+  onEnd
+}: {
+  why: 'quiet' | 'gone'
+  askedAt: number
+  answerMs: number
+  onHere: () => void
+  onEnd: () => void
+}): React.JSX.Element {
+  const [left, setLeft] = useState(answerMs)
+  useEffect(() => {
+    const t = window.setInterval(() => setLeft(Math.max(0, answerMs - (Date.now() - askedAt))), 1000)
+    return () => window.clearInterval(t)
+  }, [askedAt, answerMs])
+  const m = Math.floor(left / 60000)
+  const sec = Math.floor((left % 60000) / 1000)
+  return createPortal(
+    <div className="dialog-overlay">
+      <div className="dialog still-dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dialog-title">{why === 'gone' ? 'The shared picture has closed' : 'Still there?'}</div>
+        <div className="dialog-message">
+          {why === 'gone'
+            ? 'The window or screen being recorded is gone. If the session is over, end it now; otherwise Sitca keeps listening.'
+            : 'Sitca has heard nothing for a while. If the session is over, end it now; if it is a quiet stretch, carry on.'}
+          <br />
+          <span className="still-countdown">
+            Ends by itself in {m}:{String(sec).padStart(2, '0')}
+          </span>
+        </div>
+        <div className="dialog-actions">
+          <button className="btn" onClick={onEnd}>
+            End the session
+          </button>
+          <button className="btn btn-primary" onClick={onHere} autoFocus>
+            I’m still here
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

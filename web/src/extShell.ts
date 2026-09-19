@@ -315,6 +315,11 @@ export function engineBridge(): void {
       reply({ ok: true })
       return undefined
     }
+    if (m.type === 'sitca:engine:still') {
+      window.dispatchEvent(new CustomEvent('sitka:still'))
+      reply({ ok: true })
+      return undefined
+    }
     if (m.type === 'sitca:engine:mic') {
       window.dispatchEvent(new CustomEvent('sitka:mic', { detail: { on: (m as { on?: boolean }).on } }))
       reply({ ok: true })

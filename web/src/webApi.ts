@@ -528,6 +528,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // length written in, so any player, on any phone, can play it natively and
   // start within a second or two. Runs once; a second call is a no-op.
   const consolidating = new Set<string>()
+  const JOIN_MAX_BYTES = 700 * 1024 * 1024
   async function consolidateRecording(id: string): Promise<void> {
     if (consolidating.has(id)) return
     consolidating.add(id)
@@ -535,6 +536,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const d = cache.get(id) ?? (await loadSession(id))
       if (!d || d.meta.whole || d.meta.readOnly || d.meta.sample) return
       if ((await localParts(id)).length > 0) return // not all in the cloud yet
+      // Joining happens in this page's memory: the parts, then the rewrite.
+      // Past a certain size that is more than a browser page should hold,
+      // and the parts play as a stream anyway; the join is left undone.
+      const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string; size?: number }[] }))
+      const total = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).reduce((n, f) => n + Number(f.size ?? 0), 0)
+      if (total > JOIN_MAX_BYTES) {
+        console.info('[sitka] recording left as parts: too large to join here', Math.round(total / 1e6), 'MB')
+        return
+      }
       const bytes = await api.readVideo(id, 'video')
       if (!bytes || bytes.byteLength < 5000) return
       const kind = mediaType(bytes.subarray(0, 12))
