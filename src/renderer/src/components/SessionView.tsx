@@ -430,6 +430,20 @@ export default function SessionView({
   // still being recorded (by the extension's engine, or another tab): there
   // is no file to play yet; the words arrive as they are said instead
   const stillRecording = data?.meta.status === 'recording'
+  // Just ended, and the whole file not yet made: the last pieces are still
+  // being uploaded and joined. Playing now would fail; the player says
+  // "preparing" and starts the moment the whole file is announced (or after
+  // a couple of minutes regardless, in case the announcement never comes).
+  const endedAt = data ? data.meta.createdAt + (data.meta.durationMs || 0) : 0
+  const wholeReady = Boolean(data?.meta.whole)
+  const [preparingOver, setPreparingOver] = useState(false)
+  const preparing =
+    Boolean(data) && !stillRecording && !wholeReady && data?.meta.store === 'r2' && !data?.meta.audioOnly && Date.now() - endedAt < 180000 && !preparingOver
+  useEffect(() => {
+    if (!preparing) return undefined
+    const t = window.setTimeout(() => setPreparingOver(true), 120000)
+    return () => window.clearTimeout(t)
+  }, [preparing])
   useEffect(() => {
     const gen = ++loadGenRef.current
     loadStartRef.current = Date.now()
@@ -446,7 +460,7 @@ export default function SessionView({
     // loader is slow to open a long file by its link. Elsewhere the whole
     // file by its link is the quickest, the stream next.
     ladderRef.current = { ways: IOS ? ['stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
-    if (!videoWanted || stillRecording) return undefined
+    if (!videoWanted || stillRecording || preparing) return undefined
     void (async () => {
       // Remux on first open if needed (desktop): a real duration and seek index.
       await window.sitka.prepareSession(sessionId).catch(() => undefined)
@@ -478,7 +492,7 @@ export default function SessionView({
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
     }
-  }, [sessionId, videoWanted, advance, stillRecording])
+  }, [sessionId, videoWanted, advance, stillRecording, preparing, wholeReady])
 
   // A source that shows nothing is not waited on for good: twenty seconds
   // without so much as its length, and the next way is tried.
@@ -867,6 +881,15 @@ export default function SessionView({
             {phonePrep?.error && <span className="phone-prep bad">{phonePrep.error}</span>}
           </div>
         )}
+        {preparing && (
+          <div className="live-block" style={{ margin: '12px 24px 0' }}>
+            <Mark size={14} live />
+            <div className="live-block-text">
+              <b>Preparing the recording.</b>
+              <span>The last pieces are being joined into one file. It plays here the moment that is done.</span>
+            </div>
+          </div>
+        )}
         {meta.status === 'recording' && (
           <div className="live-block" style={{ margin: '12px 24px 0' }}>
             <span className="live-block-dot" />
@@ -884,7 +907,7 @@ export default function SessionView({
           ref={videoWrapRef}
           style={{
             height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900),
-            display: meta.status === 'recording' ? 'none' : undefined
+            display: meta.status === 'recording' || preparing ? 'none' : undefined
           }}
         >
           <button

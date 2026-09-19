@@ -559,6 +559,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       d.meta.rewrite = REWRITE_VERSION
       await patchSession(id, { meta: d.meta })
       emitSession(d.meta)
+      // a viewer waiting for the whole file may now play it
+      tellOthers(id, d.meta)
     } catch (err) {
       console.warn('Sitca: could not consolidate the recording', err)
     } finally {
