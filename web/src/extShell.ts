@@ -269,6 +269,8 @@ export interface EngineStatus {
   lastLine?: string
   /** whether the person's microphone is in the recording */
   mic?: boolean
+  /** someone is talking into a muted microphone */
+  talkingMuted?: boolean
   error?: string
 }
 

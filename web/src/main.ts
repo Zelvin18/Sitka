@@ -881,11 +881,11 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   pc.ontrack = (e) => {
     const v = el('stagevideo') as HTMLVideoElement
     const stream = e.streams[0]
-    // as little buffering as the connection allows: this is live, a moment
-    // behind the room is the whole point
+    // a small buffer: enough to smooth the network's unevenness, not so
+    // much that the room runs a second ahead (none at all made the picture
+    // arrive in pieces)
     try {
-      ;(e.receiver as RTCRtpReceiver & { playoutDelayHint?: number; jitterBufferTarget?: number }).playoutDelayHint = 0
-      ;(e.receiver as RTCRtpReceiver & { jitterBufferTarget?: number }).jitterBufferTarget = 0
+      ;(e.receiver as RTCRtpReceiver & { playoutDelayHint?: number }).playoutDelayHint = 0.2
     } catch {
       /* not every browser offers the hint */
     }
@@ -928,13 +928,18 @@ function startRtc(): void {
     rtcMark(false)
     hearGone()
   })
+  // the host arriving after us says "here": we ask again at once
+  ch.on('broadcast', { event: 'here' }, () => {
+    if (!rtcPc || rtcPc.connectionState !== 'connected') rtcWant()
+  })
   ch.subscribe((status) => {
     if (status !== 'SUBSCRIBED') return
     rtcWant()
     if (rtcWantTimer) clearInterval(rtcWantTimer)
+    // asked again every few seconds until the picture is here
     rtcWantTimer = window.setInterval(() => {
       if (!rtcPc || rtcPc.connectionState !== 'connected') rtcWant()
-    }, 12000)
+    }, 4000)
   })
 }
 // ---------- hearing the room: the host's sound, live ----------
@@ -2176,11 +2181,11 @@ async function boot(): Promise<void> {
   let row: EventRow | null = null
   let failed = ''
   for (let attempt = 0; attempt < 3 && !row; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt))
+    if (attempt) await new Promise((r) => setTimeout(r, 800 * attempt))
     try {
       const res = await Promise.race([
         sb.from('events').select('*').eq('id', eventId).single(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000))
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 7000))
       ])
       if (res.data) row = res.data as EventRow
       else if (res.error && /PGRST116|0 rows|multiple/i.test(res.error.message)) break // truly not there

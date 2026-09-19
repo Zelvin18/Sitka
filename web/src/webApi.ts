@@ -4078,7 +4078,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (p.from !== 'attendee') return
         void rtc?.peers.get(p.id)?.addIceCandidate(p.candidate).catch(() => undefined)
       })
-      channel.subscribe()
+      channel.subscribe((status) => {
+        // phones that asked before the host was listening ask again at once
+        if (status === 'SUBSCRIBED') void channel.send({ type: 'broadcast', event: 'here', payload: {} })
+      })
     },
     stopVideoBroadcast: async () => stopRtcHost(),
     pushStageFrame: async (dataUrl: string) => {

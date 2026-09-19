@@ -92,6 +92,8 @@ interface EngineStatus {
   lastLine?: string
   /** whether the person's microphone is in the recording */
   mic?: boolean
+  /** someone is talking into a muted microphone: the card should say so */
+  talkingMuted?: boolean
   error?: string
 }
 const tellEngine = (s: EngineStatus): void => {
@@ -265,6 +267,10 @@ export default function LiveSession({
   const [pendingMats, setPendingMats] = useState<(SessionMaterial & { text: string })[]>([])
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
   const micStreamRef = useRef<MediaStream | null>(null)
+  /** the microphone's gain stage in the mix (a meeting captured by the extension): 0 is muted */
+  const micGainRef = useRef<GainNode | null>(null)
+  /** a meter on the raw microphone, to notice talking into a muted one */
+  const micMeterRef = useRef<AnalyserNode | null>(null)
   // ---- sound that never arrives is named, and never transcribed ----
   // A level meter listens to the mixed sound. A caption chunk with no sound in
   // it is not sent (Whisper invents words for silence), and after a few
@@ -1454,7 +1460,20 @@ export default function LiveSession({
       )
       let audioInputs = 0
       for (const st of audioSources) {
-        audioCtx.createMediaStreamSource(new MediaStream(st.getAudioTracks())).connect(dest)
+        const src = audioCtx.createMediaStreamSource(new MediaStream(st.getAudioTracks()))
+        if (st === micStream && meetTab) {
+          // The microphone passes through a gain stage: muted, the recording
+          // hears silence from it, while a meter on the raw microphone still
+          // notices someone talking into a muted microphone, and says so.
+          const gain = audioCtx.createGain()
+          gain.gain.value = 0 // a meeting starts with the microphone off, as the call itself does
+          src.connect(gain).connect(dest)
+          micGainRef.current = gain
+          const meter = audioCtx.createAnalyser()
+          meter.fftSize = 1024
+          src.connect(meter)
+          micMeterRef.current = meter
+        } else src.connect(dest)
         audioInputs++
       }
       const soundStream: MediaStream | null =
@@ -1626,6 +1645,8 @@ export default function LiveSession({
     await audioCtxRef.current?.close().catch(() => undefined)
     audioCtxRef.current = null
     destRef.current = null
+    micGainRef.current = null
+    micMeterRef.current = null
     if (levelTimerRef.current) clearInterval(levelTimerRef.current)
     levelTimerRef.current = null
     setNoSound('')
@@ -1694,15 +1715,20 @@ export default function LiveSession({
   // The microphone, switched from the card: the call's own sound carries on,
   // only the person's side goes quiet. The track stays, muted, so it can
   // come back without asking Chrome again.
-  const [micLive, setMicLive] = useState(true)
+  const [micLive, setMicLive] = useState(!meetTab)
+  const micLiveRef = useRef(!meetTab)
+  micLiveRef.current = micLive
   useEffect(() => {
     const onMic = (e: Event): void => {
       const want = (e as CustomEvent<{ on?: boolean }>).detail?.on
       const mic = micStreamRef.current
-      const on = typeof want === 'boolean' ? want : !(mic?.getAudioTracks()[0]?.enabled ?? true)
-      mic?.getAudioTracks().forEach((t) => {
-        t.enabled = on
-      })
+      const on = typeof want === 'boolean' ? want : !micLiveRef.current
+      const gain = micGainRef.current
+      if (gain) gain.gain.setTargetAtTime(on ? 1 : 0, gain.context.currentTime, 0.02)
+      else
+        mic?.getAudioTracks().forEach((t) => {
+          t.enabled = on
+        })
       setMicLive(on)
       if (meetTab && sessionRef.current) {
         tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, mic: on })
@@ -1711,6 +1737,31 @@ export default function LiveSession({
     window.addEventListener('sitka:mic', onMic)
     return () => window.removeEventListener('sitka:mic', onMic)
   }, [meetTab])
+  useEffect(() => {
+    if (!meetTab || phase !== 'recording') return undefined
+    const buf = new Float32Array(1024)
+    let loudFor = 0
+    let lastSaid = 0
+    const t = window.setInterval(() => {
+      const meter = micMeterRef.current
+      if (!meter || micLiveRef.current) {
+        loudFor = 0
+        return
+      }
+      meter.getFloatTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+      const rms = Math.sqrt(sum / buf.length)
+      // speech, not a cough: loud enough, for most of a second, and not said again for a while
+      loudFor = rms > 0.02 ? loudFor + 1 : 0
+      if (loudFor >= 4 && Date.now() - lastSaid > 12000 && sessionRef.current) {
+        lastSaid = Date.now()
+        loudFor = 0
+        tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, talkingMuted: true })
+      }
+    }, 200)
+    return () => window.clearInterval(t)
+  }, [meetTab, phase])
   // What the card and the viewer are told: the state, the link for the room
   // when hosting, and the latest line heard.
   useEffect(() => {

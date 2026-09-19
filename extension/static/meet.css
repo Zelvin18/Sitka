@@ -715,3 +715,58 @@
   color: var(--sc-red);
   background: rgba(224, 101, 90, 0.14);
 }
+
+/* ---- "are you talking?": a word under the microphone button ---- */
+.sc-anchor {
+  position: relative;
+}
+.sc-nudge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 3;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #f3f3f5;
+  color: #141416;
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.sc-nudge b {
+  font-weight: 700;
+}
+.sc-nudge i {
+  position: absolute;
+  top: -6px;
+  left: var(--sc-arrow-x, 50%);
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  background: #f3f3f5;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+.sc-nudge.in {
+  opacity: 1;
+  transform: none;
+}
+.sc-mic.nudged {
+  animation: sc-mic-pulse 0.9s ease-in-out 3;
+  box-shadow: 0 0 0 0 rgba(224, 101, 90, 0.6);
+}
+@keyframes sc-mic-pulse {
+  50% {
+    box-shadow: 0 0 0 6px rgba(224, 101, 90, 0);
+  }
+}
+.sc-slim .sc-nudge {
+  width: 280px;
+  left: auto;
+  right: 0;
+}

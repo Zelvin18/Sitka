@@ -83,7 +83,40 @@
     })
   }
 
+  // Talking into a muted microphone: a word from the card, the way the call
+  // itself does it, pointing at the microphone button. Gone by itself.
+  let nudgeTimer = null
+  function nudgeMic() {
+    if (card.state !== 'recording' || card.mic) return
+    const mic = root.querySelector('.sc-mic')
+    if (!mic) return
+    let n = root.querySelector('.sc-nudge')
+    if (!n) {
+      n = (root.ownerDocument || document).createElement('div')
+      n.className = 'sc-nudge'
+      n.innerHTML = '<b>Are you talking?</b> Your microphone is off. Press it to be in the recording.<i></i>'
+      mic.parentElement.appendChild(n)
+    }
+    // placed under the microphone button, its arrow pointing up at it
+    const row = mic.parentElement
+    const r = mic.getBoundingClientRect()
+    const rr = row.getBoundingClientRect()
+    const centre = r.left - rr.left + r.width / 2
+    n.style.setProperty('--sc-arrow-x', `${Math.round(centre)}px`)
+    n.classList.add('in')
+    mic.classList.add('nudged')
+    if (nudgeTimer) clearTimeout(nudgeTimer)
+    nudgeTimer = setTimeout(() => {
+      n.classList.remove('in')
+      mic.classList.remove('nudged')
+    }, 5000)
+  }
+
   chrome.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'sitca:nudge' && msg.what === 'mic') {
+      nudgeMic()
+      return
+    }
     if (msg && msg.type === 'sitca:card' && msg.card) {
       const was = card.state
       card = msg.card
@@ -256,7 +289,7 @@
       // what is being recorded, and the conversation must never be in it.
       // The conversation lives in the floating window or the Sitca tab.
       const live = card.mode === 'host' || Boolean(card.hostUrl)
-      html = `<div class="sc-bar sc-slim">
+      html = `<div class="sc-bar sc-slim sc-anchor">
         <span class="sc-dot"></span>
         <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
         <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
@@ -267,7 +300,7 @@
     } else if (st === 'recording') {
       const live = card.mode === 'host' || Boolean(card.hostUrl)
       html = `<div class="sc-panel">
-        <div class="sc-row sc-top">
+        <div class="sc-row sc-top sc-anchor">
           <span class="sc-dot"></span>
           <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
           <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
