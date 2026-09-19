@@ -226,6 +226,27 @@ export default function SessionView({
   const [reelError, setReelError] = useState<string | null>(null)
   const [reelSaved, setReelSaved] = useState(false)
   const [exported, setExported] = useState(false)
+  // the recording itself, as a file: fetched whole, then saved with the session's name
+  const [downloading, setDownloading] = useState<'' | 'busy' | 'done' | 'none'>('')
+  const downloadRecording = useCallback((): void => {
+    if (downloading === 'busy') return
+    setDownloading('busy')
+    void window.sitka
+      .readVideo(sessionId)
+      .then((bytes) => {
+        if (!bytes || bytes.byteLength === 0) {
+          setDownloading('none')
+          return
+        }
+        const kind = mediaType(bytes.subarray(0, 12))
+        const copy = new ArrayBuffer(bytes.byteLength)
+        new Uint8Array(copy).set(bytes)
+        const name = (metaRef.current?.title || 'recording').replace(/[^\w\- ]+/g, '').trim() || 'recording'
+        return window.sitka.saveBinaryFile(`${name}.${kind === 'video/mp4' ? 'mp4' : kind === 'audio/mp4' ? 'm4a' : 'webm'}`, copy).then(() => setDownloading('done'))
+      })
+      .catch(() => setDownloading('none'))
+      .then(() => window.setTimeout(() => setDownloading(''), 3000))
+  }, [downloading, sessionId])
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [slides, setSlides] = useState<Slide[]>([])
@@ -970,6 +991,17 @@ export default function SessionView({
             <IconChevron size={13} strokeWidth={2.4} />
             {videoHidden ? 'Show video' : 'Hide'}
           </button>
+          {!meta.readOnly && !meta.sample && (
+            <button
+              className="video-toggle video-download"
+              onClick={downloadRecording}
+              disabled={downloading === 'busy'}
+              title="Save the recording as a file on this device"
+            >
+              <IconDownload size={13} strokeWidth={2.2} />
+              {downloading === 'busy' ? 'Fetching…' : downloading === 'done' ? 'Saved ✓' : downloading === 'none' ? 'Nothing to save yet' : 'Download'}
+            </button>
+          )}
           {videoSrc ? (
             <>
               <video

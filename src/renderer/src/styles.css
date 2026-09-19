@@ -6252,6 +6252,19 @@ body.dragging-row .splitter-h {
   opacity: 1;
 }
 
+/* the recording as a file: beside Hide, same dress */
+.video-download {
+  right: auto;
+  left: 8px;
+}
+.video-download:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.video-wrap.collapsed .video-download {
+  display: none;
+}
+
 .video-toggle .icon {
   transform: rotate(180deg);
 }
