@@ -1643,7 +1643,7 @@ export default function LiveSession({
     if (recorder && recorder.state !== 'inactive') {
       await new Promise<void>((resolve) => {
         // a recorder that never says it stopped is not waited on forever
-        const done = window.setTimeout(resolve, 8000)
+        const done = window.setTimeout(resolve, 15000)
         recorder.onstop = () => {
           window.clearTimeout(done)
           resolve()
@@ -1656,6 +1656,11 @@ export default function LiveSession({
         }
       })
     }
+    await appendQueueRef.current
+    // Chrome's MP4 recorder hands its last fragments over in several pieces
+    // around the stop: a moment for any that landed while the queue was
+    // being waited on, then the queue again
+    await new Promise<void>((r) => setTimeout(r, 500))
     await appendQueueRef.current
 
     streamsRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()))

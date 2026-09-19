@@ -2993,8 +2993,32 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     appendChunk: async (id, chunk) => {
-      const b = recBuf.get(id)
-      if (!b) return
+      let b = recBuf.get(id)
+      if (!b) {
+        // A piece after the session closed: Chrome's MP4 recorder holds its
+        // fragments back for seconds and hands the last of them over late,
+        // and for a short session those are the whole picture. It still
+        // belongs to the recording: it goes up as one more part, and the
+        // whole file, if one was already made, is made again with it.
+        const d = cache.get(id) ?? (await loadSession(id))
+        if (!d || d.meta.readOnly || d.meta.sample) return
+        const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string }[] }))
+        const have = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).length
+        b = { parts: have, seq: 1, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve(), kind: d.meta.mime }
+        recBuf.set(id, b)
+        b.chunks.push({ seq: 0, buf: chunk })
+        b.bytes += chunk.byteLength
+        flushPart(id, true)
+        await b.chain
+        recBuf.delete(id)
+        reportError(location.pathname, `late recording piece kept (${id}, ${Math.round(chunk.byteLength / 1024)} KB as part ${have})`)
+        if (d.meta.whole) {
+          d.meta.whole = false
+          await patchSession(id, { meta: d.meta })
+          void consolidateRecording(id)
+        }
+        return
+      }
       const seq = b.seq++
       if (seq === 0) {
         // the first chunk says which format the recorder chose; the session keeps it
@@ -3330,6 +3354,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         } else {
           delete d.meta.recordingPending
           delete d.meta.uploadError
+        }
+        // a recording far too small for its length is a fault to look into,
+        // not a quiet mystery: a header without its fragments plays nothing
+        if (!d.meta.audioOnly && durationMs > 5000) {
+          const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string; size?: number }[] }))
+          const total = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).reduce((n, f) => n + Number(f.size ?? 0), 0)
+          if (total > 0 && total < 4000 + (durationMs / 1000) * 3000) {
+            reportError(location.pathname, `recording too small: ${total} bytes for ${Math.round(durationMs / 1000)} s (${id}) · ${navigator.userAgent.slice(0, 60)}`)
+          }
         }
         // every part is up: join them into the one whole file players start
         // fastest from; then, with the whole recording to hand, tell its voices apart
