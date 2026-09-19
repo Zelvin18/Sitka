@@ -642,7 +642,11 @@
   // ---------- on the page ----------
 
   function mount() {
-    const here = MEETING.test(location.href)
+    // the card belongs on a meeting or a video page; but once a session is
+    // running it stays wherever the tab goes on this site (YouTube's small
+    // player carries the video onto other pages)
+    const running = card.state === 'recording' || card.state === 'starting' || card.state === 'ending'
+    const here = MEETING.test(location.href) || running
     if (!here) {
       if (root.parentElement && !pip) root.remove()
       return

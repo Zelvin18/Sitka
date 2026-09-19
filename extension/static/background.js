@@ -222,7 +222,7 @@ async function startCapture(tab, mode) {
   }
   want(tabId, null)
   if (closeEngineTimer) clearTimeout(closeEngineTimer)
-  setCard(tabId, { state: 'starting', mode, error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
+  setCard(tabId, { state: 'starting', mode, url: tab.url || '', error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
   const e = await ensureEngine()
   if (!e.ready) {
     setCard(tabId, { state: 'failed', error: 'Sitca could not start. Reload the page and try again.' })
@@ -488,10 +488,25 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     want(tabId, null)
   })
 })
+/** the site a page belongs to: youtube.com for www. and m. alike, and so on */
+function siteOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^(www|m)\./, '')
+  } catch {
+    return ''
+  }
+}
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (!change.url) return
   void remembered.then(() => {
     const c = cardOf(tabId)
-    if ((c.state === 'recording' || c.state === 'starting') && !MEETING.test(change.url)) stopCapture(tabId)
+    if (c.state !== 'recording' && c.state !== 'starting') return
+    // Moving about within the site is not leaving it: YouTube's small player
+    // carries a video onto the home page, Meet stays on its address after a
+    // call. The capture follows the tab wherever the tab goes on that site;
+    // only another site altogether ends it.
+    const was = siteOf(c.url || '')
+    const now = siteOf(change.url)
+    if (was && now && was !== now) stopCapture(tabId)
   })
 })
