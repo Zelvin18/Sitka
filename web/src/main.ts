@@ -284,6 +284,11 @@ document.addEventListener('click', (e) => {
 installFocusGuard()
 
 // ---------- voice (Listen) ----------
+// Each new line, spoken in the listener's language. The natural voice comes
+// from /api/speak, the same one that reads Sitca's answers; the phone's own
+// voice is only the fallback when that cannot be reached. Sound is only
+// allowed after a tap, so one audio element is unlocked inside the tap and
+// every line is played through it.
 let voiceList: SpeechSynthesisVoice[] = []
 const refreshVoices = (): void => {
   if (window.speechSynthesis) voiceList = window.speechSynthesis.getVoices() || []
@@ -309,39 +314,131 @@ function pickVoice(): SpeechSynthesisVoice | null {
   }
   return [...match].sort((a, b) => score(b) - score(a))[0] ?? null
 }
-let speakQ: string[] = []
+/** A tenth of a second of silence as a WAV: enough to unlock playback. */
+function silentWav(): string {
+  const rate = 8000
+  const samples = rate / 10
+  const buf = new ArrayBuffer(44 + samples * 2)
+  const v = new DataView(buf)
+  const str = (at: number, t: string): void => {
+    for (let i = 0; i < t.length; i++) v.setUint8(at + i, t.charCodeAt(i))
+  }
+  str(0, 'RIFF')
+  v.setUint32(4, 36 + samples * 2, true)
+  str(8, 'WAVE')
+  str(12, 'fmt ')
+  v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true)
+  v.setUint16(22, 1, true)
+  v.setUint32(24, rate, true)
+  v.setUint32(28, rate * 2, true)
+  v.setUint16(32, 2, true)
+  v.setUint16(34, 16, true)
+  str(36, 'data')
+  v.setUint32(40, samples * 2, true)
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))
+}
+let voiceAudio: HTMLAudioElement | null = null
+let voiceServerDown = 0 // when the natural voice last failed: the phone's voice stands in for a while
+async function fetchVoice(text: string): Promise<Blob | null> {
+  if (Date.now() - voiceServerDown < 60000) return null
+  try {
+    const r = await fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang: myLang }),
+      signal: AbortSignal.timeout(12000)
+    })
+    if (!r.ok || !/^audio\//i.test(r.headers.get('content-type') || '')) {
+      voiceServerDown = Date.now()
+      return null
+    }
+    const b = await r.blob()
+    return b.size > 1000 ? b : null
+  } catch {
+    voiceServerDown = Date.now()
+    return null
+  }
+}
+function speakWithPhone(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) {
+      resolve()
+      return
+    }
+    const u = new SpeechSynthesisUtterance(text)
+    const v = pickVoice()
+    if (v) u.voice = v
+    u.lang = v?.lang || LANG_CODES[myLang] || 'en'
+    u.rate = 1.05
+    u.onend = () => resolve()
+    u.onerror = () => resolve()
+    window.speechSynthesis.speak(u)
+  })
+}
+function playVoice(blob: Blob): Promise<void> {
+  return new Promise((resolve) => {
+    const a = voiceAudio
+    if (!a) {
+      resolve()
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    const done = (): void => {
+      URL.revokeObjectURL(url)
+      a.onended = null
+      a.onerror = null
+      resolve()
+    }
+    a.onended = done
+    a.onerror = done
+    a.src = url
+    a.play().catch(done)
+  })
+}
+interface Spoken {
+  text: string
+  voice: Promise<Blob | null> | null
+}
+let speakQ: Spoken[] = []
 let speakingNow = false
-function speakNext(): void {
+async function speakNext(): Promise<void> {
   if (!listening || speakQ.length === 0) {
     speakingNow = false
     return
   }
   speakingNow = true
   speakStartedAt = Date.now()
-  const u = new SpeechSynthesisUtterance(speakQ.shift())
-  const v = pickVoice()
-  if (v) u.voice = v
-  u.lang = v?.lang || LANG_CODES[myLang] || 'en'
-  u.rate = 1.05
-  u.onend = speakNext
-  u.onerror = speakNext
-  window.speechSynthesis.speak(u)
+  const item = speakQ.shift() as Spoken
+  if (!item.voice) item.voice = fetchVoice(item.text)
+  // the line after this one is fetched while this one plays
+  const after = speakQ[0]
+  if (after && !after.voice) after.voice = fetchVoice(after.text)
+  const blob = await item.voice
+  if (!listening) {
+    speakingNow = false
+    return
+  }
+  if (blob) await playVoice(blob)
+  else await speakWithPhone(item.text)
+  void speakNext()
 }
 function speakText(text: string): void {
-  if (!listening || !window.speechSynthesis || !text) return
-  speakQ.push(text)
+  if (!listening || !text) return
+  speakQ.push({ text, voice: null })
+  // a listener who fell behind hears the newest lines, not a backlog
   while (speakQ.length > 3) speakQ.shift()
-  // a short pause after cancel(): Chrome drops an utterance queued in the same tick
-  if (!speakingNow) window.setTimeout(speakNext, 120)
+  if (!speakingNow) void speakNext()
 }
-// Chrome sometimes freezes mid-utterance; a stuck voice is reset, not endured.
+// A voice that never ends is reset, not endured.
 let speakStartedAt = 0
 window.setInterval(() => {
-  if (!listening || !window.speechSynthesis) return
-  if (speakingNow && Date.now() - speakStartedAt > 25000) {
-    window.speechSynthesis.cancel()
+  if (!listening) return
+  if (speakingNow && Date.now() - speakStartedAt > 40000) {
+    window.speechSynthesis?.cancel()
+    voiceAudio?.pause()
     speakingNow = false
-    speakNext()
+    void speakNext()
   }
 }, 5000)
 let resumeTimer: number | null = null
@@ -363,20 +460,23 @@ function setupListen(): void {
   listenLabel()
   b.onclick = () => {
     if (!listening) {
-      if (!window.speechSynthesis) {
-        el('voicenote').textContent = 'This browser cannot speak — live captions only.'
-        el('voicenote').classList.remove('hidden')
-        return
+      // unlocked inside the tap: from here on the page may make sound
+      if (!voiceAudio) {
+        voiceAudio = new Audio(silentWav())
+        voiceAudio.preload = 'auto'
       }
-      const unlock = new SpeechSynthesisUtterance(' ')
-      unlock.volume = 0
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(unlock)
-      refreshVoices()
+      void voiceAudio.play().catch(() => undefined)
+      if (window.speechSynthesis) {
+        const unlock = new SpeechSynthesisUtterance(' ')
+        unlock.volume = 0
+        window.speechSynthesis.cancel()
+        window.speechSynthesis.speak(unlock)
+        refreshVoices()
+      }
       listening = true
-      el('voicenote').textContent = pickVoice()
-        ? 'Speaking each new line in ' + myLang + '.'
-        : "Trying this device's " + myLang + " voice — if you hear nothing it isn't installed (captions still live)."
+      // one voice at a time: the spoken translation, or the room's own sound
+      if (hearing) el('hearbtn').click()
+      el('voicenote').textContent = 'Speaking each new line in ' + myLang + '.'
       el('voicenote').classList.remove('hidden')
       // say something at once, so the tap is answered by a voice, not silence
       speakQ = []
@@ -395,8 +495,9 @@ function setupListen(): void {
         clearInterval(resumeTimer)
         resumeTimer = null
       }
-      if (window.speechSynthesis) window.speechSynthesis.cancel()
-      el('voicenote').classList.add('hidden')
+      window.speechSynthesis?.cancel()
+      voiceAudio?.pause()
+      if (!hearing) el('voicenote').classList.add('hidden')
     }
     listenLabel()
   }
@@ -696,9 +797,14 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   }
   pc.ontrack = (e) => {
     const v = el('stagevideo') as HTMLVideoElement
-    v.srcObject = e.streams[0]
+    const stream = e.streams[0]
+    v.srcObject = stream
+    // muted until asked: someone in the room must not hear the host twice,
+    // and browsers only allow sound after a tap anyway
+    v.muted = !hearing
     void v.play().catch(() => undefined)
-    rtcMark(true)
+    if (stream.getVideoTracks().length > 0) rtcMark(true)
+    if (stream.getAudioTracks().length > 0) hearOffer()
   }
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
@@ -726,6 +832,7 @@ function startRtc(): void {
     rtcPc?.close()
     rtcPc = null
     rtcMark(false)
+    hearGone()
   })
   ch.subscribe((status) => {
     if (status !== 'SUBSCRIBED') return
@@ -736,10 +843,54 @@ function startRtc(): void {
     }, 12000)
   })
 }
+// ---------- hearing the room: the host's sound, live ----------
+// Off until asked. Someone sitting in the room hears the host already, and a
+// phone playing the host back would howl; someone joining from elsewhere
+// taps once and hears the room as if they were in it.
+let hearing = false
+function hearLabel(): void {
+  const b = el('hearbtn')
+  b.classList.toggle('on', hearing)
+  const icon = hearing
+    ? '<svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>'
+    : '<svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4a2 2 0 0 0 2 2h1l4 3.5v-15L6 8H5a2 2 0 0 0-2 2z"/><path d="M15 9.2a4 4 0 0 1 0 5.6"/></svg>'
+  b.innerHTML = icon + '<span>' + (hearing ? 'Mute the room' : 'Hear the room') + '</span>'
+}
+function hearOffer(): void {
+  const b = el('hearbtn')
+  if (!b.classList.contains('hidden')) return
+  b.classList.remove('hidden')
+  hearLabel()
+  b.onclick = () => {
+    hearing = !hearing
+    const v = el('stagevideo') as HTMLVideoElement
+    v.muted = !hearing
+    v.volume = 1
+    if (hearing) {
+      void v.play().catch(() => undefined)
+      // one voice at a time: the room's own sound, or the spoken translation
+      if (listening) el('listenbtn').click()
+      el('voicenote').textContent = "You are hearing the room. In the room itself, keep this off."
+      el('voicenote').classList.remove('hidden')
+    } else if (!listening) {
+      el('voicenote').classList.add('hidden')
+    }
+    hearLabel()
+  }
+}
+function hearGone(): void {
+  hearing = false
+  const b = el('hearbtn')
+  b.classList.add('hidden')
+  const v = el('stagevideo') as HTMLVideoElement
+  v.muted = true
+}
+
 function stopRtc(): void {
   rtcPc?.close()
   rtcPc = null
   rtcMark(false)
+  hearGone()
   if (rtcWantTimer) {
     clearInterval(rtcWantTimer)
     rtcWantTimer = null

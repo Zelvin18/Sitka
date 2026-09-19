@@ -74,6 +74,13 @@ function pcmToWav(pcm, rate = 24000) {
 async function geminiModels(key) {
   const hit = cached('g' + key)
   if (hit) return hit
+  // the known ids answer at once; the directory is read in the background
+  // for the next call, so a cold start never spends seconds listing
+  remember('g' + key, KNOWN_GEMINI)
+  void listGemini(key)
+  return KNOWN_GEMINI
+}
+async function listGemini(key) {
   let listed = []
   try {
     const r = await fetch(
@@ -150,6 +157,11 @@ async function geminiSpeak(keys, text, errors) {
 async function groqModels(key) {
   const hit = cached('q' + key)
   if (hit) return hit
+  remember('q' + key, KNOWN_GROQ)
+  void listGroq(key)
+  return KNOWN_GROQ
+}
+async function listGroq(key) {
   let listed = []
   try {
     const r = await fetch('https://api.groq.com/openai/v1/models', {
@@ -220,7 +232,7 @@ async function groqSpeak(keys, text, errors) {
   return null
 }
 
-async function synthesize(text) {
+async function synthesize(text, lang) {
   const errors = []
   const gemini = keysFrom('GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GEMINI_API_KEY')
   const groq = keysFrom('GROQ_API_KEY', 'GROQ_API_KEYS', 'GROQ_API_KEY')
@@ -228,10 +240,23 @@ async function synthesize(text) {
     errors.push('No GEMINI_API_KEY(S) or GROQ_API_KEY(S) set')
     return { wav: null, provider: null, errors }
   }
-  const g = await geminiSpeak(gemini, text, errors)
-  if (g) return { wav: g.wav, provider: 'gemini:' + g.model, errors }
-  const q = await groqSpeak(groq, text, errors)
-  if (q) return { wav: q.wav, provider: 'groq:' + q.model, errors }
+  // Groq's voices answer in about a second but speak English only; Gemini's
+  // speak most languages and take a few seconds. English goes to the quick
+  // one first, everything else to the one that can say it.
+  const english = !lang || /^(en|english)/i.test(String(lang).trim())
+  const tryGroq = async () => {
+    const q = await groqSpeak(groq, text, errors)
+    return q ? { wav: q.wav, provider: 'groq:' + q.model, errors } : null
+  }
+  const tryGemini = async () => {
+    const g = await geminiSpeak(gemini, text, errors)
+    return g ? { wav: g.wav, provider: 'gemini:' + g.model, errors } : null
+  }
+  const order = english ? [tryGroq, tryGemini] : [tryGemini, tryGroq]
+  for (const step of order) {
+    const out = await step()
+    if (out) return out
+  }
   return { wav: null, provider: null, errors }
 }
 
@@ -246,7 +271,7 @@ export default async function handler(req, res) {
   }
   // GET /api/speak — a check you can open in a browser: which voice answers.
   if (req.method === 'GET') {
-    const out = await synthesize('Sitca is ready.')
+    const out = await synthesize('Sitca is ready.', 'en')
     res.status(out.wav ? 200 : 503).json({
       ok: Boolean(out.wav),
       provider: out.provider,
@@ -260,7 +285,7 @@ export default async function handler(req, res) {
     return
   }
   // a voice costs money each time: a flood from one address is refused
-  if (overLimit(req, 40, 400)) {
+  if (overLimit(req, 60, 1500)) {
     res.status(429).json({ error: 'Slow down a little.' })
     return
   }
@@ -272,7 +297,8 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'Nothing to say.' })
     return
   }
-  const out = await synthesize(text)
+  const lang = String((req.body || {}).lang || '').slice(0, 40)
+  const out = await synthesize(text, lang)
   if (!out.wav) {
     res.status(503).json({ error: 'No voice available right now.', detail: out.errors.slice(0, 6) })
     return

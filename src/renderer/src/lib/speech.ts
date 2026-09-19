@@ -83,7 +83,8 @@ export function bestVoice(lang = 'en'): SpeechSynthesisVoice | null {
 function chunks(text: string): string[] {
   const out: string[] = []
   let rest = text.trim()
-  const FIRST = 220
+  // the first piece is small, so the voice starts within a second or two
+  const FIRST = 140
   if (rest.length > FIRST) {
     const slice = rest.slice(0, FIRST)
     const cut = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('? '), slice.lastIndexOf('! '), slice.lastIndexOf('\n'))
@@ -136,13 +137,15 @@ function speakWithBrowser(text: string, lang: string, onEnd: (ok: boolean) => vo
   }
 }
 
-async function fetchSpeech(text: string): Promise<Blob | null> {
+async function fetchSpeech(text: string, lang = 'en'): Promise<Blob | null> {
   if (SPEECH_BASE === null) return null
   try {
+    // the language chooses the voice: English has a quick one, the rest a
+    // voice that can say them
     const r = await fetch(`${SPEECH_BASE}/api/speak`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, lang })
     })
     if (!r.ok) return null
     // anything that is not audio (an HTML page, a JSON error) is no voice
@@ -211,7 +214,7 @@ export function speakText(
     })
 
   const run = async (): Promise<void> => {
-    let next: Promise<Blob | null> = fetchSpeech(parts[0])
+    let next: Promise<Blob | null> = fetchSpeech(parts[0], lang)
     for (let i = 0; i < parts.length; i++) {
       const blob = await next
       if (cancelled) return
@@ -224,7 +227,7 @@ export function speakText(
         }
         break
       }
-      if (i + 1 < parts.length) next = fetchSpeech(parts[i + 1])
+      if (i + 1 < parts.length) next = fetchSpeech(parts[i + 1], lang)
       const ok = await playBlob(blob)
       if (cancelled) return
       if (!ok) {
@@ -265,7 +268,7 @@ export interface PreparedSpeech {
 }
 export function prepareSpeech(text: string, lang: string): PreparedSpeech {
   const parts = chunks(text)
-  const fetched: Promise<Blob | null>[] = hasVoiceServer() ? parts.map((p) => fetchSpeech(p)) : []
+  const fetched: Promise<Blob | null>[] = hasVoiceServer() ? parts.map((p) => fetchSpeech(p, lang)) : []
   let arrived = false
   if (fetched.length) void fetched[0].then((b) => (arrived = Boolean(b)))
   return {

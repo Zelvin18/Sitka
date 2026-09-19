@@ -1702,6 +1702,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         void sender.setParameters(p).catch(() => undefined)
       }
     }
+    // the room's sound as well: someone joining from elsewhere hears the
+    // host as if they were there (their phone keeps it muted until they ask)
+    for (const t of r.stream.getAudioTracks()) pc.addTrack(t, r.stream)
     pc.onicecandidate = (e) => {
       if (e.candidate)
         void r.channel.send({

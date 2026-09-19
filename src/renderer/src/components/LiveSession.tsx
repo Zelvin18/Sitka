@@ -426,6 +426,8 @@ export default function LiveSession({
 
   const previewRef = useRef<HTMLVideoElement>(null)
   const previewStreamRef = useRef<MediaStream | null>(null)
+  /** the session's sound (the screen's and the microphone, mixed), sent to remote attendees */
+  const broadcastSoundRef = useRef<MediaStream | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -1028,9 +1030,14 @@ export default function LiveSession({
   // ---- live video: a direct connection to each phone that asks for one ----
   useEffect(() => {
     if (phase !== 'recording' || !hosting || !confUrl) return undefined
-    const stream = previewStreamRef.current
-    if (!stream) return undefined
-    void window.sitka.startVideoBroadcast(stream)
+    // the picture, and the sound: a sound-only session still reaches a
+    // remote attendee's ears even though there is nothing to show
+    const tracks = [
+      ...(previewStreamRef.current?.getVideoTracks() ?? []),
+      ...(broadcastSoundRef.current?.getAudioTracks() ?? [])
+    ]
+    if (tracks.length === 0) return undefined
+    void window.sitka.startVideoBroadcast(new MediaStream(tracks))
     return () => {
       void window.sitka.stopVideoBroadcast()
     }
@@ -1490,6 +1497,8 @@ export default function LiveSession({
       previewStreamRef.current = desktopStream
         ? new MediaStream(desktopStream.getVideoTracks())
         : null
+      // what the room hears, for attendees joining from elsewhere
+      broadcastSoundRef.current = soundStream
 
       sessionStartRef.current = Date.now()
       stoppingRef.current = false
