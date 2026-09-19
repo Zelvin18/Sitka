@@ -159,6 +159,9 @@ async function ensureEngine() {
   return engine
 }
 
+/** how many minutes the engine may be left to finish uploads after its last session */
+const BUSY_WAIT_MAX = 20
+let busyWaits = 0
 async function closeEngineIfIdle() {
   await remembered
   if (recordingTab() !== null) return
@@ -166,7 +169,18 @@ async function closeEngineIfIdle() {
     const has = await chrome.offscreen.hasDocument()
     // a start may have begun during that wait
     if (recordingTab() !== null) return
-    if (has) await chrome.offscreen.closeDocument()
+    if (has) {
+      // still sending the last parts up, or joining them into the whole
+      // file: closed now, that work would be lost. Asked again in a minute.
+      const alive = await pingEngine()
+      if (alive && alive.busy && busyWaits < BUSY_WAIT_MAX) {
+        busyWaits++
+        scheduleEngineClose()
+        return
+      }
+      busyWaits = 0
+      await chrome.offscreen.closeDocument()
+    }
   } catch {
     /* already gone */
   }

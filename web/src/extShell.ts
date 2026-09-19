@@ -294,7 +294,15 @@ export function engineBridge(): void {
     // the worker, restarted by Chrome, checking whether the engine it left is still here
     if (m.type === 'sitca:engine:ping') {
       const signedIn = Boolean((window as unknown as { sitka?: unknown }).sitka)
-      reply({ ready: true, signedIn })
+      const busyOf = (window as unknown as { sitkaBusy?: () => Promise<boolean> }).sitkaBusy
+      if (busyOf) {
+        busyOf().then(
+          (busy) => reply({ ready: true, signedIn, busy }),
+          () => reply({ ready: true, signedIn, busy: false })
+        )
+        return true
+      }
+      reply({ ready: true, signedIn, busy: false })
       return undefined
     }
     if (m.type === 'sitca:engine:stop') {

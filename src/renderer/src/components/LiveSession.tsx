@@ -1554,6 +1554,21 @@ export default function LiveSession({
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) enqueueAppend(e.data)
       }
+      // A recorder that fails, or stops on its own (the captured window
+      // closed, a device unplugged), is a fault to be seen, not a quiet
+      // recording that ends up shorter than the session.
+      const say = (what: string): void => {
+        const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+        report?.(location.pathname, what)
+      }
+      recorder.onerror = (e) => {
+        const err = (e as Event & { error?: { name?: string; message?: string } }).error
+        say(`recorder error: ${err?.name ?? ''} ${err?.message ?? ''}`.trim())
+        setSttError((cur) => cur ?? 'The recording stopped unexpectedly. The captions carry on; stop and start again for the picture.')
+      }
+      recorder.onstop = () => {
+        if (!stoppingRef.current) say(`recorder stopped on its own after ${Math.round((Date.now() - sessionStartRef.current) / 1000)} s`)
+      }
       recorder.start(VIDEO_CHUNK_MS)
       recorderRef.current = recorder
 

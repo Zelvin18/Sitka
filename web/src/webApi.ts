@@ -542,10 +542,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // player must read to the end before showing a frame. Rewritten with
       // the index first, it starts in a second however long the session ran.
       let flat = kind === 'video/mp4' ? flatten(bytes) : null
-      if (flat && !(await playable(flat, kind))) {
-        // the rewrite is not one this browser opens: the recording is kept as it was
-        reportError(location.pathname, `flattened recording failed its check (${id}, ${Math.round(bytes.byteLength / 1e6)} MB)`)
-        flat = null
+      if (flat) {
+        const verdict = await playable(flat, kind)
+        if (!verdict.ok) {
+          // the rewrite is not one this browser opens: the recording is kept as it was
+          reportError(location.pathname, `flattened recording failed its check (${id}, ${Math.round(bytes.byteLength / 1e6)} MB → ${Math.round(flat.byteLength / 1e6)} MB): ${verdict.why}`)
+          flat = null
+        }
       }
       const blob = new Blob([(flat ?? bytes).buffer as ArrayBuffer], { type: kind })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
@@ -713,7 +716,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (whole.size < 5000) return { ok: false, error: 'The prepared file came out empty.' }
       // index first, so phones start it at once
       const flatBytes = flatten(new Uint8Array(await whole.arrayBuffer()))
-      if (flatBytes && (await playable(flatBytes, 'video/mp4'))) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
+      if (flatBytes && (await playable(flatBytes, 'video/mp4')).ok) whole = new Blob([flatBytes.buffer as ArrayBuffer], { type: 'video/mp4' })
       const where: Where = (await store.ready()) ? 'r2' : whereOf(d.meta)
       d.meta.rewrite = REWRITE_VERSION
       const { error } = await store.upload(videoPath(id), whole, 'video/mp4')
@@ -1194,7 +1197,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   /** Upload one part from local storage (or memory). True once the cloud has it. */
   async function uploadPart(p: LocalPart): Promise<boolean> {
     const chunks = (await localChunks(p.sessionId)).filter((c) => c.seq >= p.fromSeq && c.seq <= p.toSeq)
-    const bufs = chunks.length > 0 ? chunks.map((c) => c.buf) : (memParts.get(partKey(p.sessionId, p.partNo)) ?? [])
+    // The device's store and this page's memory both hold the part; whichever
+    // is complete is sent. A store that kept the first chunk but lost the
+    // rest (a write that failed quietly) must never send a header alone.
+    const mem = memParts.get(partKey(p.sessionId, p.partNo)) ?? []
+    const expected = p.toSeq - p.fromSeq + 1
+    let bufs: ArrayBuffer[]
+    if (chunks.length >= expected) bufs = chunks.map((c) => c.buf)
+    else if (mem.length >= chunks.length) bufs = mem
+    else bufs = chunks.map((c) => c.buf)
+    if (chunks.length > 0 && chunks.length < expected) {
+      reportError(location.pathname, `part ${p.partNo} of ${p.sessionId}: the device's store held ${chunks.length} of ${expected} chunks; sent ${bufs === mem ? 'from memory' : 'what it had'}`)
+    }
     if (bufs.length === 0) {
       await forgetPart(p) // nothing to send: the record is stale
       return true
@@ -1369,9 +1383,56 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         emitSession(d.meta)
         if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(r.id)
       }
+      await sweepLooseChunks()
       void retryPendingUploads()
     } catch (err) {
       console.error('Sitca: recovery failed', err)
+    }
+  }
+
+  /**
+   * Chunks on this device that never became a part, for sessions no longer
+   * marked as recording: a session closed out from another page (a laptop
+   * tab, a phone) while this page, the one that recorded it, was gone. The
+   * row says complete, so the loop above never looks; the film is still
+   * here. It goes up as one more part, and the whole file is made again.
+   */
+  async function sweepLooseChunks(): Promise<void> {
+    const all = (await idb<LocalChunk[]>('chunks', 'readonly', (s) => s.getAll())) ?? []
+    const bySession = new Map<string, LocalChunk[]>()
+    for (const c of all) {
+      const list = bySession.get(c.sessionId) ?? []
+      list.push(c)
+      bySession.set(c.sessionId, list)
+    }
+    for (const [sid, chunks] of bySession) {
+      if (recBuf.has(sid) || sid === recordingState?.id || liveInAnotherTab(sid)) continue
+      chunks.sort((a, b) => a.seq - b.seq)
+      if (Date.now() - chunks[chunks.length - 1].at < 90000) continue
+      const parts = await localParts(sid)
+      const covered = new Set<number>()
+      for (const p of parts) for (let q = p.fromSeq; q <= p.toSeq; q++) covered.add(q)
+      const loose = chunks.filter((c) => !covered.has(c.seq))
+      if (loose.length === 0) continue
+      const d = cache.get(sid) ?? (await loadSession(sid))
+      if (!d || d.meta.status === 'recording' || d.meta.readOnly || d.meta.sample) continue
+      let maxNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) : -1
+      const listing = await store.list(`${user.id}/${sid}`).catch(() => ({ objects: [] as { name: string }[] }))
+      for (const f of listing.objects) {
+        const m = /^part-(\d+)\.webm$/.exec(f.name)
+        if (m) maxNo = Math.max(maxNo, Number(m[1]))
+      }
+      const partNo = maxNo + 1
+      await idb('parts', 'readwrite', (st) => {
+        st.put({ sessionId: sid, partNo, fromSeq: loose[0].seq, toSeq: loose[loose.length - 1].seq } as LocalPart)
+      })
+      reportError(location.pathname, `loose recording pieces found for ${sid}: ${loose.length} chunks become part ${partNo}`)
+      if (d.meta.whole) {
+        d.meta.whole = false
+        await patchSession(sid, { meta: d.meta })
+      }
+      d.meta.recordingPending = true
+      await patchSession(sid, { meta: d.meta })
     }
   }
 
@@ -3004,9 +3065,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (!d || d.meta.readOnly || d.meta.sample) return
         const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string }[] }))
         const have = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).length
-        b = { parts: have, seq: 1, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve(), kind: d.meta.mime }
+        // a number of its own, past any the session used, so it never reads as an earlier chunk
+        const seq = 1_000_000 + have * 1000 + (Date.now() % 1000)
+        b = { parts: have, seq: seq + 1, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve(), kind: d.meta.mime }
         recBuf.set(id, b)
-        b.chunks.push({ seq: 0, buf: chunk })
+        await idb('chunks', 'readwrite', (st) => {
+          st.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk)
+        })
+        b.chunks.push({ seq, buf: chunk })
         b.bytes += chunk.byteLength
         flushPart(id, true)
         await b.chain
@@ -4889,6 +4955,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   ;(window as unknown as { sitka: SitkaApi; sitkaWeb: boolean }).sitka = api
   ;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
+  // Work still in hand: a recording, parts on their way up, a whole file
+  // being made. The extension's worker asks before it closes the engine.
+  ;(window as unknown as { sitkaBusy?: () => Promise<boolean> }).sitkaBusy = async () =>
+    recBuf.size > 0 || memParts.size > 0 || consolidating.size > 0 || pendingBusy || (await allLocalParts()).length > 0
 
   // Close out anything a crash left open, and finish uploads the cloud is missing.
   // Once soon after opening, and once more two minutes on, for a session whose
@@ -4928,28 +4998,31 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * before it is stored as the file every player tries first; one that
    * fails the check is stored as it was recorded, and streamed instead.
    */
-  function playable(bytes: Uint8Array, kind: string): Promise<boolean> {
+  function playable(bytes: Uint8Array, kind: string): Promise<{ ok: boolean; why: string }> {
     return new Promise((resolve) => {
       let v: HTMLVideoElement | null = document.createElement('video')
       const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: kind }))
-      const done = (ok: boolean): void => {
+      const done = (ok: boolean, why = ''): void => {
         if (!v) return
         v.removeAttribute('src')
         v.load()
         v = null
         URL.revokeObjectURL(url)
-        resolve(ok)
+        resolve({ ok, why })
       }
-      const timer = setTimeout(() => done(false), 8000)
+      // a long file on a busy page takes its time; the wait is generous, and
+      // the reason for a refusal is kept so the next one can be understood
+      const timer = setTimeout(() => done(false, `no length read in 20 s (ready state ${v?.readyState ?? '?'}, network ${v?.networkState ?? '?'})`), 20000)
       v.muted = true
       v.preload = 'metadata'
       v.onloadedmetadata = () => {
         clearTimeout(timer)
-        done(Boolean(v && Number.isFinite(v.duration) && v.duration > 0))
+        const d = v?.duration
+        done(Boolean(v && Number.isFinite(d) && (d as number) > 0), `length ${String(d)}`)
       }
       v.onerror = () => {
         clearTimeout(timer)
-        done(false)
+        done(false, `player error ${v?.error?.code ?? '?'}: ${v?.error?.message ?? ''}`)
       }
       v.src = url
     })
@@ -5018,7 +5091,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return true
     }
     const flat = flatten(src)
-    if (!flat || !(await playable(flat, 'video/mp4'))) {
+    if (!flat || !(await playable(flat, 'video/mp4')).ok) {
       // not in fragments after all, or beyond this rewriter: leave it, and stop asking
       d.meta.flat = true
       await patchSession(id, { meta: d.meta })

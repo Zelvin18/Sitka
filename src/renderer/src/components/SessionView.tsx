@@ -15,6 +15,7 @@ import Loading, { LOADING_WORDS } from './Loading'
 import { shrinkImageFile } from '../lib/attach'
 import { IconPause, IconPlay, IconSpeaker } from '../lib/icons'
 import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
+import { defragmentMp4, isFragmentedMp4 } from '@shared/mp4'
 
 /** MediaSource, or Safari's managed one on iPhone */
 const hasStreamingEngine = (): boolean => typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
@@ -445,6 +446,21 @@ export default function SessionView({
         }
         const kind = mediaType(bytes.subarray(0, 12))
         diagRef.current = `the whole file in memory (${kind}, ${(bytes.byteLength / 1048576).toFixed(1)} MB)`
+        // A recording still in the recorder's fragments makes the player
+        // read the whole of it before the first frame (a minute for a long
+        // one). With its index written first, here and now, it starts at
+        // once; if the rewrite is refused, the fragments play as they are.
+        if (kind === 'video/mp4' && isFragmentedMp4(bytes)) {
+          try {
+            const flat = defragmentMp4(bytes)
+            if (flat) {
+              bytes = flat
+              diagRef.current += ', index first'
+            }
+          } catch {
+            /* as recorded */
+          }
+        }
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
         objectUrlRef.current = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: kind }))
         setVideoSrc(objectUrlRef.current)
