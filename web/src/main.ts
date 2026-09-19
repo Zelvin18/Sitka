@@ -707,6 +707,53 @@ function openStageFull(): void {
   }
   el('stagefull').classList.remove('hidden')
 }
+// ---------- Ask Sitca while the stage fills the screen ----------
+// The drawer borrows the Ask conversation and its input from the page (moved,
+// not copied, so nothing is lost or doubled) and gives them back on close.
+{
+  const card = el('stagecard')
+  const drawer = el('stagedrawer')
+  const body = el('stagedrawerbody')
+  const foot = el('stagedrawerfoot')
+  const chat = el('chat')
+  const row = el('askrow')
+  const chatHome = { parent: chat.parentElement as HTMLElement, next: chat.nextSibling }
+  const rowHome = { parent: row.parentElement as HTMLElement, next: row.nextSibling }
+  const rowWas = row.style.display
+  const openDrawer = (): void => {
+    body.appendChild(chat)
+    row.style.display = ''
+    foot.appendChild(row)
+    drawer.classList.remove('hidden')
+    card.classList.add('asking')
+    body.scrollTop = body.scrollHeight
+    // the field is focused only on a laptop: a phone keeps its keyboard down until tapped
+    if (!window.matchMedia('(pointer: coarse)').matches) (el('asktext') as HTMLTextAreaElement).focus()
+  }
+  const closeDrawer = (): void => {
+    if (drawer.classList.contains('hidden')) return
+    chatHome.parent.insertBefore(chat, chatHome.next)
+    rowHome.parent.insertBefore(row, rowHome.next)
+    row.style.display = rowWas
+    drawer.classList.add('hidden')
+    card.classList.remove('asking')
+  }
+  el('stageaskbtn').onclick = (e) => {
+    e.stopPropagation()
+    openDrawer()
+  }
+  el('stagedrawerclose').onclick = (e) => {
+    e.stopPropagation()
+    closeDrawer()
+  }
+  // taps inside the drawer are the drawer's own, not the stage's
+  drawer.addEventListener('click', (e) => e.stopPropagation())
+  // leaving the big view closes the drawer with it
+  new MutationObserver(() => {
+    if (!card.classList.contains('full')) closeDrawer()
+  }).observe(card, { attributes: true, attributeFilter: ['class'] })
+}
+
 // a live picture has no pause: if anything pauses it, it plays on
 {
   const v = el('stagevideo') as HTMLVideoElement

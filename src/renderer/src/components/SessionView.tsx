@@ -252,16 +252,24 @@ export default function SessionView({
   }, [sessionId])
 
   const roomEventId = data?.meta.hosted ? data.meta.eventId : undefined
+  const roomLive = data?.meta.status === 'recording'
   useEffect(() => {
     if (!roomEventId) return undefined
     let cancelled = false
-    void window.sitka.listRoomMessages(roomEventId).then((m) => {
-      if (!cancelled) setRoomMsgs(m)
-    })
+    const load = (): void => {
+      void window.sitka.listRoomMessages(roomEventId).then((m) => {
+        if (!cancelled) setRoomMsgs(m)
+      })
+    }
+    load()
+    // while the event is on, the room is read again every few seconds, so
+    // the host watching from here sees what the audience says as it comes
+    const t = roomLive ? window.setInterval(load, 4000) : null
     return () => {
       cancelled = true
+      if (t) clearInterval(t)
     }
-  }, [roomEventId])
+  }, [roomEventId, roomLive])
 
   // Visual memory: the key frames of what was on screen, as a filmstrip.
   useEffect(() => {
