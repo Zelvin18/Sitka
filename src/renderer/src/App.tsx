@@ -232,11 +232,18 @@ export default function App(): React.JSX.Element {
   // The extension's card opens Sitca "here": a tab showing one session, the
   // one being captured, growing as the engine writes it.
   useEffect(() => {
-    const m = /^#open=([\w-]+)/.exec(location.hash)
-    if (!m) return
-    history.replaceState(null, '', location.pathname)
-    setSpace(undefined)
-    setView({ name: 'session', id: m[1] })
+    const open = (): void => {
+      const m = /^#open=([\w-]+)/.exec(location.hash)
+      if (!m) return
+      history.replaceState(null, '', location.pathname)
+      setSpace(undefined)
+      setView({ name: 'session', id: m[1] })
+    }
+    open()
+    // a Sitca tab that was already open is pointed at a session by its
+    // address alone, with no reload: the change of address is the signal
+    window.addEventListener('hashchange', open)
+    return () => window.removeEventListener('hashchange', open)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

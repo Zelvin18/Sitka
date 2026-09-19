@@ -1694,17 +1694,32 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     r.peers.set(id, pc)
     for (const t of r.stream.getVideoTracks()) {
+      // live, not a film: keep up rather than polish, and drop detail before
+      // dropping time when the connection tightens
+      try {
+        t.contentHint = 'motion'
+      } catch {
+        /* older browser */
+      }
       const sender = pc.addTrack(t, r.stream)
       const p = sender.getParameters()
       if (p.encodings && p.encodings.length > 0) {
         p.encodings[0].maxBitrate = 900_000
         p.encodings[0].maxFramerate = 15
+        ;(p as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = 'maintain-framerate'
         void sender.setParameters(p).catch(() => undefined)
       }
     }
     // the room's sound as well: someone joining from elsewhere hears the
     // host as if they were there (their phone keeps it muted until they ask)
-    for (const t of r.stream.getAudioTracks()) pc.addTrack(t, r.stream)
+    for (const t of r.stream.getAudioTracks()) {
+      try {
+        t.contentHint = 'speech'
+      } catch {
+        /* older browser */
+      }
+      pc.addTrack(t, r.stream)
+    }
     pc.onicecandidate = (e) => {
       if (e.candidate)
         void r.channel.send({

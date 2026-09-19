@@ -684,12 +684,37 @@ function stopStage(): void {
 }
 function openStageFull(): void {
   if (el('stagecard').classList.contains('rtc')) {
+    // The whole card goes full screen, not the bare video: a video element
+    // on its own grows built-in controls in fullscreen, and a tap on them
+    // pauses a live stream. The card keeps its own buttons instead.
+    const card = el('stagecard') as HTMLElement & { webkitRequestFullscreen?: () => void }
     const v = el('stagevideo') as HTMLVideoElement & { webkitEnterFullscreen?: () => void }
-    if (v.requestFullscreen) void v.requestFullscreen().catch(() => undefined)
-    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen()
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined)
+    } else if (card.requestFullscreen) {
+      void card.requestFullscreen().catch(() => undefined)
+    } else if (card.webkitRequestFullscreen) {
+      card.webkitRequestFullscreen()
+    } else if (v.webkitEnterFullscreen) {
+      v.webkitEnterFullscreen() // an iPhone: the phone's own player
+    }
+    void v.play().catch(() => undefined)
     return
   }
   el('stagefull').classList.remove('hidden')
+}
+// a live picture has no pause: if anything pauses it, it plays on
+{
+  const v = el('stagevideo') as HTMLVideoElement
+  v.addEventListener('pause', () => {
+    if (el('stagecard').classList.contains('rtc') && v.srcObject) {
+      window.setTimeout(() => void v.play().catch(() => undefined), 150)
+    }
+  })
+  document.addEventListener('fullscreenchange', () => {
+    el('stagecard').classList.toggle('full', document.fullscreenElement === el('stagecard'))
+    void v.play().catch(() => undefined)
+  })
 }
 el('stageexpbtn').onclick = (e) => {
   e.stopPropagation()
@@ -798,6 +823,14 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   pc.ontrack = (e) => {
     const v = el('stagevideo') as HTMLVideoElement
     const stream = e.streams[0]
+    // as little buffering as the connection allows: this is live, a moment
+    // behind the room is the whole point
+    try {
+      ;(e.receiver as RTCRtpReceiver & { playoutDelayHint?: number; jitterBufferTarget?: number }).playoutDelayHint = 0
+      ;(e.receiver as RTCRtpReceiver & { jitterBufferTarget?: number }).jitterBufferTarget = 0
+    } catch {
+      /* not every browser offers the hint */
+    }
     v.srcObject = stream
     // muted until asked: someone in the room must not hear the host twice,
     // and browsers only allow sound after a tap anyway

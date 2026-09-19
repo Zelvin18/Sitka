@@ -44,6 +44,26 @@
   let tick = null
   let pip = null // the floating window, while open
   let showCc = false // Meet's captions on the screen itself; Sitca reads them either way
+  // the card's own stylesheet as text, kept from the start: the floating
+  // window is dressed from it, and it must be there even if the extension has
+  // been reloaded underneath this page since
+  let cssText = ''
+  try {
+    fetch(chrome.runtime.getURL('meet.css'))
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((t) => (cssText = t || ''))
+      .catch(() => undefined)
+  } catch {
+    /* no stylesheet text: the link is tried instead */
+  }
+  /** true when the extension was updated or reloaded while this page stayed open */
+  const stale = () => {
+    try {
+      return !chrome.runtime || !chrome.runtime.id
+    } catch {
+      return true
+    }
+  }
 
   // ---------- talking to the worker ----------
 
@@ -82,29 +102,42 @@
 
   async function float() {
     if (!CAN_FLOAT || pip) return
+    let w = null
     try {
-      const w = await window.documentPictureInPicture.requestWindow({ width: 380, height: 470 })
-      pip = w
-      const link = w.document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = chrome.runtime.getURL('meet.css')
-      w.document.head.appendChild(link)
+      w = await window.documentPictureInPicture.requestWindow({ width: 380, height: 470 })
+    } catch {
+      return
+    }
+    pip = w
+    // the window is never left blank: its colour first, then its stylesheet
+    // from the text kept at the start (or by link), then the card itself
+    try {
       w.document.title = 'Sitca'
       w.document.documentElement.style.cssText = 'overflow:hidden;height:100%;background:#131315'
       w.document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#131315'
-      root.classList.add('sc-float')
-      w.document.body.appendChild(root)
-      w.addEventListener('pagehide', () => {
-        // closed by the person: the card comes home to the page
-        pip = null
-        root.classList.remove('sc-float')
-        if (!document.body.contains(root)) document.body.appendChild(root)
-        render()
-      })
-      render()
+      if (cssText) {
+        const st = w.document.createElement('style')
+        st.textContent = cssText
+        w.document.head.appendChild(st)
+      } else {
+        const link = w.document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = chrome.runtime.getURL('meet.css')
+        w.document.head.appendChild(link)
+      }
     } catch {
-      pip = null
+      /* dressed as far as it could be */
     }
+    root.classList.add('sc-float')
+    w.document.body.appendChild(root)
+    w.addEventListener('pagehide', () => {
+      // closed by the person: the card comes home to the page
+      pip = null
+      root.classList.remove('sc-float')
+      if (!document.body.contains(root)) document.body.appendChild(root)
+      render()
+    })
+    render()
   }
   function unfloat() {
     if (pip) {
@@ -117,6 +150,32 @@
   }
 
   // ---------- the card ----------
+
+  /** Copy text from whichever window the card is in; the old way as a fallback. */
+  async function copyText(text) {
+    const win = (root.ownerDocument && root.ownerDocument.defaultView) || window
+    try {
+      await win.navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      /* the window may not count as focused: the older way below */
+    }
+    try {
+      const doc = root.ownerDocument || document
+      const ta = doc.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+      doc.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      const ok = doc.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
 
   function esc(s) {
     return String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -294,6 +353,11 @@
     const b = e.target.closest('[data-act]')
     if (!b || b.tagName === 'FORM') return
     const act = b.getAttribute('data-act')
+    if (stale() && act !== 'close' && act !== 'copy' && act !== 'copymsg') {
+      card = { state: 'failed', error: 'Sitca was updated while this page was open. Reload the page, then try again.' }
+      render()
+      return
+    }
     if (act === 'choose') {
       card = { ...card, state: 'choose' }
       render()
@@ -334,13 +398,10 @@
       const url = b.getAttribute('data-url') || ''
       if (url) {
         const was = b.textContent
-        navigator.clipboard.writeText(url).then(
-          () => {
-            b.textContent = 'Copied ✓'
-            setTimeout(() => (b.textContent = was), 1800)
-          },
-          () => undefined
-        )
+        void copyText(url).then((ok) => {
+          b.textContent = ok ? 'Copied ✓' : 'Could not copy'
+          setTimeout(() => (b.textContent = was), 1800)
+        })
       }
     } else if (act === 'qr') {
       showQr = !showQr
@@ -350,13 +411,11 @@
     } else if (act === 'copymsg') {
       const m = chat[Number(b.getAttribute('data-i'))]
       if (m) {
-        navigator.clipboard.writeText(m.text).then(
-          () => {
-            b.classList.add('done')
-            setTimeout(() => b.classList.remove('done'), 1600)
-          },
-          () => undefined
-        )
+        void copyText(m.text).then((ok) => {
+          if (!ok) return
+          b.classList.add('done')
+          setTimeout(() => b.classList.remove('done'), 1600)
+        })
       }
     } else if (act === 'cc') {
       showCc = !showCc

@@ -263,7 +263,8 @@ function stopCapture(tabId) {
  */
 async function openViewer(sessionId, finished) {
   const base = finished ? SITE : APP
-  const url = sessionId ? `${base}#open=${sessionId}` : base
+  // a stamp on the end, so opening the same session twice still counts as a change of address
+  const url = sessionId ? `${base}#open=${sessionId}&t=${Date.now()}` : base
   const tabs = await chrome.tabs.query({ url: base + '*' }).catch(() => [])
   const mine = tabs.find((t) => t.id !== undefined)
   if (mine) {
