@@ -804,7 +804,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     maxTokens = 2000,
     requireVision = false,
     fast = false,
-    kind = ''
+    kind = '',
+    onDelta?: (piece: string) => void
   ): Promise<{ text: string; vision: boolean }> {
     const k = storedSettings()
     let lastError = 'AI error'
@@ -823,11 +824,54 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             maxTokens,
             requireVision,
             fast,
-            kind
+            kind,
+            stream: Boolean(onDelta)
           })
         })
       } catch {
         lastError = 'Sitca could not reach its AI — check the connection.'
+        continue
+      }
+      // A streamed answer: lines of JSON as the words are written. The
+      // caller sees each piece at once, and the whole at the end.
+      if (r.ok && onDelta && r.body && /x-ndjson/.test(r.headers.get('content-type') || '')) {
+        const reader = r.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        let text = ''
+        let vision = false
+        let failed = ''
+        let ended = false
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          let nl
+          while ((nl = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, nl).trim()
+            buf = buf.slice(nl + 1)
+            if (!line) continue
+            let ev: { delta?: string; done?: boolean; vision?: boolean; error?: string; transient?: boolean }
+            try {
+              ev = JSON.parse(line)
+            } catch {
+              continue
+            }
+            if (typeof ev.delta === 'string' && ev.delta) {
+              text += ev.delta
+              onDelta(ev.delta)
+            } else if (ev.done) {
+              ended = true
+              vision = Boolean(ev.vision)
+            } else if (ev.error) {
+              failed = ev.error
+            }
+          }
+        }
+        if (ended || (text && !failed)) return { text, vision }
+        if (text) return { text, vision } // broke off after words: what was said stands
+        lastError = failed || 'The answer did not arrive.'
+        if (!/busy|broke off|try again/i.test(lastError)) break
         continue
       }
       const j = (await r.json().catch(() => ({}))) as { text?: string; vision?: boolean; error?: string }
@@ -1484,6 +1528,49 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     analysisRuns.set(id, run)
     return run
   }
+  // A session is named after what it was about. That used to wait for the
+  // end and the full analysis; now, a couple of minutes in, once enough has
+  // been said, a quick name is written so the library, the card and a recap
+  // link opened straight after the end already show it. The analysis at the
+  // end may still choose a better one.
+  const earlyNamed = new Set<string>()
+  const isDefaultTitle = (t: string): boolean => /^Session — |^Untitled session$|^Session \d/.test(t || '')
+  async function nameEarly(id: string): Promise<void> {
+    if (earlyNamed.has(id)) return
+    const d = cache.get(id)
+    if (!d || d.meta.analyzed || d.meta.status !== 'recording' || !isDefaultTitle(d.meta.title)) return
+    const words = d.segments.reduce((n, s) => n + s.text.split(/\s+/).length, 0)
+    if (words < 120) return
+    earlyNamed.add(id)
+    try {
+      const text = d.segments
+        .slice(0, 80)
+        .map((s) => s.text)
+        .join(' ')
+        .slice(0, 6000)
+      const out = await aiChatFull(
+        'You name recorded sessions. Reply with only a short, specific title of at most 8 words for what this session is about: the subject, not the format. No quotes, no trailing full stop.',
+        [{ role: 'user', content: text }],
+        60,
+        false,
+        true
+      )
+      const title = out.text.replace(/^["'“”]+|["'“”.]+$/g, '').trim().slice(0, 80)
+      if (!title || title.split(/\s+/).length > 12) return
+      const now = cache.get(id)
+      if (!now || !isDefaultTitle(now.meta.title)) return
+      now.meta.title = title
+      await patchSession(id, { meta: now.meta })
+      emitSession(now.meta)
+      tellOthers(id, now.meta)
+      if (now.meta.recapUrl) {
+        void sb.from('recaps').update({ title, updated_at: new Date().toISOString() }).eq('id', id).then(() => undefined, () => undefined)
+      }
+    } catch {
+      earlyNamed.delete(id) // another try when more has been said
+    }
+  }
+
   async function analyzeWebSessionNow(id: string): Promise<void> {
     const d = await loadSession(id)
     if (!d) return
@@ -1761,7 +1848,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       } catch {
         /* older browser */
       }
-      const sender = pc.addTrack(t, r.stream)
+      // the picture and the sound travel as separate streams on purpose: sent
+      // together, a phone holds the picture back to line it up with the sound
+      // (lip sync), and the room runs a second or two behind the host
+      const sender = pc.addTrack(t, new MediaStream([t]))
       const p = sender.getParameters()
       if (p.encodings && p.encodings.length > 0) {
         p.encodings[0].maxBitrate = 900_000
@@ -1778,7 +1868,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       } catch {
         /* older browser */
       }
-      pc.addTrack(t, r.stream)
+      pc.addTrack(t, new MediaStream([t]))
     }
     pc.onicecandidate = (e) => {
       if (e.candidate)
@@ -2898,6 +2988,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (d) d.chat = merged
       // a kept recap's conversation is the student's own, on their row
       await patchWork(id, Boolean(d), { chat: merged })
+      // a page watching this session reads the conversation again
+      if (d) tellOthers(id, d.meta)
     },
 
     appendChunk: async (id, chunk) => {
@@ -3314,6 +3406,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await patchSession(id, { transcript: d.segments, meta: d.meta })
       tellOthers(id, d.meta)
       if (conf?.sessionId === id) void confPushSegments(added, d.segments.length - added.length)
+      void nameEarly(id)
       return { speakers, segments: d.segments }
     },
     nameSpeaker: async (id: string, speaker: number, name: string) => {
@@ -3379,6 +3472,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             await patchSession(id, { transcript: d.segments })
             tellOthers(id, d.meta)
             if (conf?.sessionId === id) void confPushSegments(segments, startIdx)
+            void nameEarly(id)
           }
         }
         return { segments }
@@ -3459,9 +3553,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
                 content: [...parts, { type: 'text', text: `${notes.join('\n')}\n\n${folded.question}` }]
               }
             : { role: 'user', content: folded.question }
-        // no picture to read: the quick models answer first
-        const text = (await aiChatFull(system, [...history, last], 2000, false, parts.length === 0, 'ask')).text
-        emitAi({ requestId: req.requestId, type: 'delta', text })
+        // no picture to read: the quick models answer first; the words
+        // reach the chat as they are written
+        let streamed = 0
+        const out = await aiChatFull(system, [...history, last], 2000, false, parts.length === 0, 'ask', (piece) => {
+          streamed += piece.length
+          emitAi({ requestId: req.requestId, type: 'delta', text: piece })
+        })
+        if (out.text.length > streamed) emitAi({ requestId: req.requestId, type: 'delta', text: out.text.slice(streamed) })
         emitAi({ requestId: req.requestId, type: 'done' })
       } catch (err) {
         emitAi({
@@ -4129,6 +4228,38 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       void confPollStats()
     },
     // ---------- the room chat: attendees talking, the host listening and joining in ----------
+    listSpeakerQuestions: async (eventId: string) => {
+      // the questions attendees sent the speaker, grouped as the host's live
+      // view groups them: for a host watching from a session page, and for
+      // reading them again after the event
+      const { data: subs } = await sb
+        .from('speaker_questions')
+        .select('id,refined,text,topic,created_at')
+        .eq('event_id', eventId)
+        .eq('status', 'submitted')
+        .order('created_at', { ascending: true })
+        .limit(200)
+      const qids = (subs ?? []).map((q) => q.id as string)
+      const voteCount = new Map<string, number>()
+      if (qids.length > 0) {
+        const { data: qv } = await sb.from('question_votes').select('question_id').in('question_id', qids)
+        for (const v of qv ?? []) {
+          const k = v.question_id as string
+          voteCount.set(k, (voteCount.get(k) ?? 0) + 1)
+        }
+      }
+      const byTopic = new Map<string, { text: string; at: number; votes: number }[]>()
+      for (const q of subs ?? []) {
+        const topic = (q.topic as string) || 'General'
+        const list = byTopic.get(topic) ?? []
+        list.push({ text: (q.refined as string) || (q.text as string), at: new Date(q.created_at as string).getTime(), votes: voteCount.get(q.id as string) ?? 0 })
+        byTopic.set(topic, list)
+      }
+      return [...byTopic.entries()]
+        .map(([topic, items]) => ({ topic, items: items.sort((a, b) => b.votes - a.votes || a.at - b.at) }))
+        .sort((a, b) => b.items.length - a.items.length)
+    },
+
     listRoomMessages: async (eventId?: string) => {
       // the live event by default; any past event by id, so a host can
       // read the room again after it ended

@@ -240,6 +240,7 @@ export default function SessionView({
   // again beside Ask Sitca, long after the event ended.
   const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.session.right', 'ask')
   const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
+  const [roomQs, setRoomQs] = useState<{ topic: string; items: { text: string; at: number; votes: number }[] }[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -252,6 +253,7 @@ export default function SessionView({
   }, [sessionId])
 
   const roomEventId = data?.meta.hosted ? data.meta.eventId : undefined
+  const roomQCount = roomQs.reduce((n, g) => n + g.items.length, 0)
   const roomLive = data?.meta.status === 'recording'
   useEffect(() => {
     if (!roomEventId) return undefined
@@ -259,6 +261,9 @@ export default function SessionView({
     const load = (): void => {
       void window.sitka.listRoomMessages(roomEventId).then((m) => {
         if (!cancelled) setRoomMsgs(m)
+      })
+      void window.sitka.listSpeakerQuestions(roomEventId).then((q) => {
+        if (!cancelled) setRoomQs(q)
       })
     }
     load()
@@ -449,6 +454,35 @@ export default function SessionView({
     !data?.meta.audioOnly &&
     Date.now() - endedAt < 180000 &&
     !preparingOver
+  // While another page records this session (the extension's engine, or a
+  // laptop watched from a phone), this one reads the row again every few
+  // seconds: the words, the conversation from the card, and then the end,
+  // the recording and the title as they are written. It keeps reading for a
+  // short while after the end, until the title has been written.
+  const settledAfterEnd = Boolean(data?.meta.analyzed) || (endedAt > 0 && Date.now() - endedAt > 240000)
+  const following = Boolean(data) && !data?.meta.readOnly && !data?.meta.saved && !data?.meta.sample && (stillRecording || !settledAfterEnd)
+  useEffect(() => {
+    if (!following) return undefined
+    let busy = false
+    const look = window.setInterval(() => {
+      if (busy || document.visibilityState === 'hidden') return
+      busy = true
+      void window.sitka
+        .refreshSession(sessionId)
+        .then(() => window.sitka.getSession(sessionId))
+        .then((d) => {
+          if (d) {
+            metaRef.current = d.meta
+            setData((cur) => (cur && cur.meta.id === d.meta.id ? d : cur))
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false
+        })
+    }, 3000)
+    return () => window.clearInterval(look)
+  }, [following, sessionId])
   useEffect(() => {
     if (!preparing) return undefined
     const t = window.setTimeout(() => setPreparingOver(true), 120000)
@@ -1623,14 +1657,38 @@ export default function SessionView({
               Ask Sitca
             </button>
             <button className={rightTab === 'room' ? 'on' : ''} onClick={() => setRightTab('room')}>
-              Room{roomMsgs.length > 0 ? ` · ${roomMsgs.length}` : ''}
+              Room{roomMsgs.length + roomQCount > 0 ? ` · ${roomMsgs.length + roomQCount}` : ''}
             </button>
           </div>
         )}
         {roomEventId && rightTab === 'room' && (
           <div className="room-panel">
-            <div className="room-note">The room, as it happened. Attendees talked here during the event.</div>
+            <div className="room-note">{roomLive ? 'The room, live. What attendees ask you, and what they say to each other.' : 'The room, as it happened. Attendees talked here during the event.'}</div>
             <div className="room-list room-list-tall">
+              <div className="section-title" style={{ margin: '4px 0 10px' }}>
+                {roomLive ? 'Questions for you' : 'Questions they asked'}
+                {roomQCount > 0 && <span className="duration-chip" style={{ marginLeft: 8 }}>{roomQCount}</span>}
+              </div>
+              {roomQs.length === 0 && <div className="room-empty">{roomLive ? 'Nothing yet — questions sent to you appear here.' : 'No questions were sent to the speaker.'}</div>}
+              {roomQs.map((g) => (
+                <div key={g.topic} className="qgroup">
+                  <div className="qgroup-head">
+                    {g.topic}
+                    <span className="duration-chip">{g.items.length}</span>
+                  </div>
+                  {g.items.map((q, i) => (
+                    <div key={i} className="qgroup-item">
+                      {q.votes > 0 && (
+                        <span className="vote-chip" title="Attendee upvotes">
+                          ▲ {q.votes}
+                        </span>
+                      )}
+                      {q.text}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div className="section-title" style={{ margin: '18px 0 10px' }}>Said in the room</div>
               {roomMsgs.length === 0 ? (
                 <div className="room-empty">Nobody wrote in the room during this event.</div>
               ) : (

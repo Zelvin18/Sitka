@@ -872,6 +872,7 @@ function registerIpc(): void {
   ipcMain.handle('conference:closePoll', () => (isCloudActive() ? cloudClosePoll() : undefined))
   // The room chat lives in the online workspace; the desktop host reads it there.
   ipcMain.handle('room:list', () => [])
+  ipcMain.handle('room:questions', () => [])
   ipcMain.handle('room:send', () => ({ error: 'The room chat is available when hosting from the web app.' }))
   ipcMain.handle('replay:publish', (_e, sessionId: string, enable: boolean) =>
     cloudConfigured()

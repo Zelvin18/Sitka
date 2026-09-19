@@ -1776,8 +1776,8 @@ export default function LiveSession({
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
       const rms = Math.sqrt(sum / buf.length)
       // speech, not a cough: loud enough, for most of a second, and not said again for a while
-      loudFor = rms > 0.02 ? loudFor + 1 : 0
-      if (loudFor >= 4 && Date.now() - lastSaid > 12000 && sessionRef.current) {
+      loudFor = rms > 0.012 ? loudFor + 1 : 0
+      if (loudFor >= 3 && Date.now() - lastSaid > 10000 && sessionRef.current) {
         lastSaid = Date.now()
         loudFor = 0
         tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, talkingMuted: true })

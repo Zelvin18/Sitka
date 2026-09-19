@@ -96,6 +96,7 @@ export function installBrowserMockIfNeeded(): void {
     launchPoll: async () => ({ error: 'unavailable in browser preview' }),
     closePoll: async () => undefined,
     listRoomMessages: async () => [],
+    listSpeakerQuestions: async () => [],
     sendRoomMessage: async () => ({ error: 'unavailable in browser preview' }),
     publishReplay: async () => ({ error: 'unavailable in browser preview' }),
     publishRecap: async () => ({ error: 'unavailable in browser preview' }),

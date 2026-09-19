@@ -406,6 +406,40 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+.sc-rich {
+  white-space: normal;
+}
+.sc-rich p {
+  margin: 0 0 6px;
+}
+.sc-rich p:last-child,
+.sc-rich ul:last-child,
+.sc-rich ol:last-child {
+  margin-bottom: 0;
+}
+.sc-rich h4 {
+  margin: 4px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.sc-rich ul,
+.sc-rich ol {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.sc-rich li {
+  margin: 2px 0;
+}
+.sc-rich b {
+  font-weight: 700;
+}
+.sc-rich code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--sc-bg2);
+  padding: 0 4px;
+  border-radius: 4px;
+}
 .sc-you {
   align-self: flex-end;
   background: var(--sc-text);

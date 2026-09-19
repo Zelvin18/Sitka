@@ -47,6 +47,43 @@ const isDead = (id) => (deadModels.get(id) || 0) > Date.now()
 const markDead = (id) => deadModels.set(id, Date.now() + DEAD_MS)
 
 // Reasoning models sometimes leak their private chain-of-thought — never show it.
+/**
+ * Reads a provider's server-sent events and hands each piece of text to
+ * `sink` as it arrives. `pick` turns one parsed event into text ('' when the
+ * event carries none). Returns the whole text once the stream ends.
+ */
+async function drainSse(body, pick, sink) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let text = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let nl
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (!line.startsWith('data:')) continue
+      const data = line.slice(5).trim()
+      if (!data || data === '[DONE]') continue
+      let ev
+      try {
+        ev = JSON.parse(data)
+      } catch {
+        continue
+      }
+      const piece = pick(ev)
+      if (piece) {
+        text += piece
+        sink(piece)
+      }
+    }
+  }
+  return text
+}
+
 function stripThinking(text) {
   return String(text || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -176,7 +213,7 @@ function overLimit(ip) {
 const MODEL_ERROR_RE = /model|decommission|terms|not found|does not exist|not support|deprecated|unavailable/i
 
 /** One Groq call. Returns {text} or {error, kind: 'model'|'key'|'transient'|'request'}. */
-async function groqOnce(key, modelId, system, messages, maxTokens, keepImages) {
+async function groqOnce(key, modelId, system, messages, maxTokens, keepImages, sink) {
   let r
   try {
     r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -187,11 +224,25 @@ async function groqOnce(key, modelId, system, messages, maxTokens, keepImages) {
         model: modelId,
         max_tokens: maxTokens,
         messages: [{ role: 'system', content: system }, ...toGroq(messages, keepImages)],
-        ...(REASONING_RE.test(modelId) ? { reasoning_format: 'hidden' } : {})
+        ...(REASONING_RE.test(modelId) ? { reasoning_format: 'hidden' } : {}),
+        ...(sink ? { stream: true } : {})
       })
     })
   } catch (err) {
     return { error: String((err && err.message) || err), kind: 'transient' }
+  }
+  if (r.ok && sink && r.body) {
+    // the words go out as they come; a stream that breaks after it began
+    // still counts for what was said
+    let text = ''
+    try {
+      text = await drainSse(r.body, (ev) => ev.choices?.[0]?.delta?.content || '', sink)
+    } catch (err) {
+      if (!text) return { error: String((err && err.message) || err), kind: 'transient' }
+    }
+    text = stripThinking(text)
+    if (!text) return { error: 'empty answer', kind: 'transient' }
+    return { text }
   }
   const j = await r.json().catch(() => ({}))
   if (r.ok) {
@@ -243,7 +294,7 @@ function orderKeys(keys, ownKey) {
  * try the vision models first; if none can answer the images are dropped
  * (with a note so the model does not invent what it cannot see).
  */
-async function groqChain(keys, system, messages, maxTokens, withImages, requireVision, fast = false) {
+async function groqChain(keys, system, messages, maxTokens, withImages, requireVision, fast = false, sink = null) {
   let lastError = 'no Groq key'
   let keyErrors = 0
   for (const key of keys) {
@@ -271,7 +322,7 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
     }
     let transientOnThisKey = 0
     for (const step of plan) {
-      const out = await groqOnce(key, step.id, system, messages, maxTokens, step.keepImages)
+      const out = await groqOnce(key, step.id, system, messages, maxTokens, step.keepImages, sink)
       if (out.text) return { text: out.text, vision: step.keepImages, model: step.id }
       lastError = `${step.id}: ${out.error}`
       if (out.kind === 'key') {
@@ -391,7 +442,7 @@ async function geminiChain(keys, system, messages, maxTokens) {
   return { error: lastError }
 }
 
-async function anthropicOnce(key, system, messages, maxTokens) {
+async function anthropicOnce(key, system, messages, maxTokens, sink) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     signal: AbortSignal.timeout(50000),
     method: 'POST',
@@ -404,9 +455,20 @@ async function anthropicOnce(key, system, messages, maxTokens) {
       model: 'claude-opus-5',
       max_tokens: maxTokens,
       system,
-      messages: toAnthropic(messages)
+      messages: toAnthropic(messages),
+      ...(sink ? { stream: true } : {})
     })
   })
+  if (r.ok && sink && r.body) {
+    let text = ''
+    try {
+      text = await drainSse(r.body, (ev) => (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' ? ev.delta.text : ''), sink)
+    } catch (err) {
+      if (!text) return { error: String((err && err.message) || err) }
+    }
+    text = stripThinking(text)
+    return text ? { text } : { error: 'empty answer' }
+  }
   const j = await r.json().catch(() => ({}))
   if (!r.ok) return { error: j.error?.message || `HTTP ${r.status}` }
   const text = stripThinking(
@@ -424,7 +486,49 @@ export default async function handler(req, res) {
     return
   }
   try {
-    const { keys = {}, system = '', messages = [], requireVision = false, fast = false, kind = '' } = req.body || {}
+    const { keys = {}, system = '', messages = [], requireVision = false, fast = false, kind = '', stream = false } = req.body || {}
+    // Streaming: the answer leaves as lines of JSON, {"delta"} as the words
+    // come, then {"done"}; a failure before any word is {"error"}. The
+    // status is 200 either way, since it is sent before the answer is known.
+    let streaming = false
+    let streamedAny = false
+    const sink = stream
+      ? (piece) => {
+          if (!streaming) {
+            streaming = true
+            res.status(200)
+            res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+            res.setHeader('Cache-Control', 'no-cache, no-transform')
+            res.setHeader('X-Accel-Buffering', 'no')
+            if (typeof res.flushHeaders === 'function') res.flushHeaders()
+          }
+          streamedAny = true
+          res.write(JSON.stringify({ delta: piece }) + '\n')
+        }
+      : null
+    const finish = (out) => {
+      if (streaming) {
+        res.write(JSON.stringify({ done: true, vision: out.vision, model: out.model }) + '\n')
+        res.end()
+      } else if (stream) {
+        // an answer that came whole (a provider without streaming): one line, then done
+        res.status(200)
+        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+        res.write(JSON.stringify({ delta: out.text }) + '\n')
+        res.write(JSON.stringify({ done: true, vision: out.vision, model: out.model }) + '\n')
+        res.end()
+      } else {
+        res.status(200).json(out)
+      }
+    }
+    const fail = (status, body) => {
+      if (streaming) {
+        res.write(JSON.stringify({ error: body.error || 'failed', transient: Boolean(body.transient) }) + '\n')
+        res.end()
+      } else {
+        res.status(status).json(body)
+      }
+    }
     // what a caller may ask for is bounded, so one request cannot run the
     // function to its limit
     const maxTokens = Math.min(4000, Math.max(64, Number((req.body || {}).maxTokens) || 1600))
@@ -481,12 +585,16 @@ export default async function handler(req, res) {
     if (anthropicKey.startsWith('sk-')) {
       // a network fault on the way to Anthropic is one more reason to move
       // down the chain, never a reason to stop here
-      const out = await anthropicOnce(anthropicKey, system, messages, maxTokens).catch((err) => ({
+      const out = await anthropicOnce(anthropicKey, system, messages, maxTokens, sink).catch((err) => ({
         text: '',
         error: String((err && err.message) || err)
       }))
       if (out.text) {
-        res.status(200).json({ text: out.text, vision: withImages, model: 'claude' })
+        finish({ text: out.text, vision: withImages, model: 'claude' })
+        return
+      }
+      if (streamedAny) {
+        fail(502, { error: 'The answer broke off. Ask again.', transient: true })
         return
       }
       errors.push('Anthropic: ' + out.error)
@@ -497,21 +605,25 @@ export default async function handler(req, res) {
     if (geminiKey && withImages) {
       const out = await geminiChain(geminiKeys, system, messages, maxTokens)
       if (out.text) {
-        res.status(200).json({ text: out.text, vision: true, model: out.model })
+        finish({ text: out.text, vision: true, model: out.model })
         return
       }
       errors.push('Gemini: ' + out.error)
     }
 
     if (groqKeys.length > 0) {
-      const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision, Boolean(fast))
+      const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision, Boolean(fast), sink)
       if (out.text) {
-        res.status(200).json({ text: out.text, vision: out.vision, model: out.model })
+        finish({ text: out.text, vision: out.vision, model: out.model })
+        return
+      }
+      if (streamedAny) {
+        fail(502, { error: 'The answer broke off. Ask again.', transient: true })
         return
       }
       errors.push('Groq: ' + out.error)
       if (out.keyErrors >= groqKeys.length && errors.length === 1 && !geminiKey) {
-        res.status(502).json({ error: 'Groq: ' + out.error })
+        fail(502, { error: 'Groq: ' + out.error })
         return
       }
     }
@@ -520,7 +632,7 @@ export default async function handler(req, res) {
     if (geminiKey && !withImages) {
       const out = await geminiChain(geminiKeys, system, messages, maxTokens)
       if (out.text) {
-        res.status(200).json({ text: out.text, vision: false, model: out.model })
+        finish({ text: out.text, vision: false, model: out.model })
         return
       }
       errors.push('Gemini: ' + out.error)
@@ -528,19 +640,31 @@ export default async function handler(req, res) {
 
     if (requireVision) {
       // No model could see the image: report that honestly instead of failing.
-      res.status(200).json({ text: '', vision: false })
+      finish({ text: '', vision: false })
       return
     }
 
     if (errors.length === 0) {
-      res.status(400).json({ error: 'missing-key' })
+      fail(400, { error: 'missing-key' })
       return
     }
-    res.status(502).json({
+    fail(502, {
       error: `Sitca's AI is busy right now — it will try again automatically. (${errors[errors.length - 1]})`,
       transient: true
     })
   } catch (err) {
+    if (res.headersSent) {
+      try {
+        res.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n')
+        res.end()
+      } catch {
+        /* gone */
+      }
+      return
+    }
     res.status(500).json({ error: String((err && err.message) || err) })
   }
 }
+
+// the words leave as they are written: Vercel must not hold the response
+export const config = { supportsResponseStreaming: true }

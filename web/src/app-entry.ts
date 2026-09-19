@@ -170,6 +170,9 @@ function showOpenProblem(stage: string, detail: string): void {
 async function launch(): Promise<void> {
   el('gatecard').classList.add('hidden')
   el('gateload').classList.remove('hidden')
+  // on a phone the picture fills the screen while the workspace opens,
+  // with the words at the bottom, instead of a strip of photo over a void
+  el('gate').classList.add('booting')
   lockFrame()
   let stage = 'fetching the app'
   const began = Date.now()

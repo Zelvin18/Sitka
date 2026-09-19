@@ -112,6 +112,20 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamText])
 
+  // The conversation may be written elsewhere too: from the extension's card
+  // while this page watches, or from another device. Whatever arrives that
+  // this page does not have is joined in, in time order; nothing here is lost.
+  useEffect(() => {
+    if (streaming) return
+    setMessages((prev) => {
+      const key = (m: ChatMessage): string => `${m.at}|${m.role}|${m.content.slice(0, 80)}`
+      const have = new Set(prev.map(key))
+      const fresh = initialChat.filter((m) => !have.has(key(m)))
+      if (fresh.length === 0) return prev
+      return [...prev, ...fresh].sort((a, b) => a.at - b.at)
+    })
+  }, [initialChat, streaming])
+
   useEffect(() => {
     const off = window.sitka.onAiStream((event: AiStreamEvent) => {
       if (event.requestId !== activeRequest.current) return

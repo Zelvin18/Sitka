@@ -901,23 +901,28 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   }
   const early: RTCIceCandidateInit[] = []
   let offered = false
+  // the host sends the picture and the sound as two streams so the phone
+  // never holds one back for the other; here they are put on one element
+  const shown = new MediaStream()
   pc.ontrack = (e) => {
     const v = el('stagevideo') as HTMLVideoElement
-    const stream = e.streams[0]
     // a small buffer: enough to smooth the network's unevenness, not so
-    // much that the room runs a second ahead (none at all made the picture
+    // much that the room runs a second behind (none at all made the picture
     // arrive in pieces)
     try {
-      ;(e.receiver as RTCRtpReceiver & { playoutDelayHint?: number }).playoutDelayHint = 0.2
+      ;(e.receiver as RTCRtpReceiver & { playoutDelayHint?: number }).playoutDelayHint = e.track.kind === 'video' ? 0.08 : 0.15
+      ;(e.receiver as RTCRtpReceiver & { jitterBufferTarget?: number }).jitterBufferTarget = e.track.kind === 'video' ? 80 : 150
     } catch {
       /* not every browser offers the hint */
     }
+    if (!shown.getTracks().includes(e.track)) shown.addTrack(e.track)
+    const stream = shown
     // the same stream, set once: setting it again restarts the element
     if (v.srcObject !== stream) v.srcObject = stream
     // muted until asked: someone in the room must not hear the host twice,
     // and browsers only allow sound after a tap anyway
     v.muted = !hearing
-    void v.play().catch(() => undefined)
+    keepPlaying(v)
     if (stream.getVideoTracks().length > 0) {
       el('stagecard').classList.add('connecting')
       rtcMark(true)
@@ -997,6 +1002,35 @@ function startRtc(): void {
     }, 4000)
   })
 }
+// A live picture must never sit behind a play button. Some phones refuse
+// autoplay (low power mode, a slow first frame), so the element is started
+// again whenever it becomes able to play, and on the first tap anywhere.
+let keptPlaying: HTMLVideoElement | null = null
+function keepPlaying(v: HTMLVideoElement): void {
+  const kick = (): void => {
+    if (!v.srcObject || !v.paused) return
+    void v.play().catch(() => {
+      // sound refused without a tap: the picture still plays, silent
+      if (!v.muted) {
+        v.muted = true
+        hearing = false
+        hearLabel()
+        void v.play().catch(() => undefined)
+      }
+    })
+  }
+  kick()
+  if (keptPlaying === v) return
+  keptPlaying = v
+  v.addEventListener('loadedmetadata', kick)
+  v.addEventListener('canplay', kick)
+  v.addEventListener('pause', () => window.setTimeout(kick, 400))
+  document.addEventListener('pointerdown', kick, { passive: true })
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') kick()
+  })
+}
+
 // ---------- hearing the room: the host's sound, live ----------
 // Off until asked. Someone sitting in the room hears the host already, and a
 // phone playing the host back would howl; someone joining from elsewhere

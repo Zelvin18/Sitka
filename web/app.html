@@ -117,6 +117,12 @@
 
 @media(max-width:860px){
   #gate{grid-template-columns:1fr;grid-template-rows:auto 1fr;overflow-y:auto}
+  #gate.booting{grid-template-rows:1fr auto;overflow:hidden}
+  #gate.booting .gbrand-side{min-height:0;justify-content:flex-end;padding-bottom:28px}
+  #gate.booting .gclaim{margin:0}
+  #gate.booting .gform-side{padding:18px 20px calc(22px + env(safe-area-inset-bottom));align-items:center;justify-content:center;background:#111114;color:#f1f1f3;min-height:0}
+  #gate.booting .gcard{background:transparent;border:0;box-shadow:none;padding:0;max-width:none}
+  #gate.booting .gwait{color:#c9c9d0}
   .gbrand-side{padding:22px 22px 26px}
   .gclaim{margin:22px 0 0}
   .gclaim h1{font-size:28px;margin-bottom:10px}

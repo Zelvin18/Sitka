@@ -119,9 +119,18 @@
     }
     if (msg && msg.type === 'sitca:card' && msg.card) {
       const was = card.state
+      const before = card
       card = msg.card
       if (card.state !== 'recording') showQr = false
       if (card.state === 'idle' || card.state === 'choose' || card.state === 'starting') chat = []
+      // While recording, the engine writes every few seconds (the last line
+      // heard, the microphone). Redrawing the whole card each time would
+      // blink, drop the scroll and reload the QR code: only the words that
+      // changed are touched, unless the card's shape itself has changed.
+      if (was === 'recording' && card.state === 'recording' && sameShape(before, card)) {
+        touchRecording()
+        return
+      }
       render()
       if (card.state === 'recording' && was !== 'recording') {
         captionsOn()
@@ -133,6 +142,37 @@
       }
     }
   })
+
+  /** Two recording cards drawn the same way, give or take the words. */
+  function sameShape(a, b) {
+    return (
+      a.mode === b.mode &&
+      (a.hostUrl || '') === (b.hostUrl || '') &&
+      (a.qr || '') === (b.qr || '') &&
+      (a.mic === undefined) === (b.mic === undefined) &&
+      a.startedAt === b.startedAt
+    )
+  }
+  /** The words on a recording card that change while it runs. */
+  function touchRecording() {
+    const last = root.querySelector('.sc-last')
+    if (last) {
+      const text = card.lastLine || 'Listening…'
+      if (last.textContent !== text) {
+        last.textContent = text
+        last.title = card.lastLine || ''
+      }
+    }
+    const mic = root.querySelector('.sc-mic')
+    if (mic && card.mic !== undefined) {
+      const off = !card.mic
+      if (mic.classList.contains('off') !== off) {
+        mic.classList.toggle('off', off)
+        mic.title = card.mic ? 'Your microphone is in the recording. Press to mute it.' : 'Your microphone is muted. Press to include it.'
+        mic.innerHTML = card.mic ? MIC_ON : MIC_OFF
+      }
+    }
+  }
 
   // ---------- the floating window ----------
 
@@ -224,6 +264,59 @@
       .replace(/^#+\s*/gm, '')
       .replace(/^\s*[-*]\s+/gm, '• ')
       .trim()
+  }
+  /**
+   * An answer, drawn: bold, headings, bullet and numbered lists, paragraphs.
+   * Everything is escaped first; only the marks Sitca itself writes become
+   * markup. The copy button still copies the words (see `plain`).
+   */
+  function rich(s) {
+    const text = String(s || '')
+      .replace(/\[\[(\d+:\d{2}(?::\d{2})?)\]\]/g, '(at $1)')
+      .trim()
+    const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
+    const out = []
+    let list = null // 'ul' | 'ol'
+    let para = []
+    const flushPara = () => {
+      if (para.length) out.push('<p>' + para.map(inline).join('<br>') + '</p>')
+      para = []
+    }
+    const closeList = () => {
+      if (list) out.push('</' + list + '>')
+      list = null
+    }
+    for (const raw of text.split('\n')) {
+      const line = raw.trim()
+      if (!line) {
+        flushPara()
+        closeList()
+        continue
+      }
+      const h = line.match(/^#{1,4}\s+(.+)$/)
+      const ul = line.match(/^[-*•]\s+(.+)$/)
+      const ol = line.match(/^\d+[.)]\s+(.+)$/)
+      if (h) {
+        flushPara()
+        closeList()
+        out.push('<h4>' + inline(h[1]) + '</h4>')
+      } else if (ul || ol) {
+        flushPara()
+        const kind = ul ? 'ul' : 'ol'
+        if (list !== kind) {
+          closeList()
+          list = kind
+          out.push('<' + kind + '>')
+        }
+        out.push('<li>' + inline((ul || ol)[1]) + '</li>')
+      } else {
+        closeList()
+        para.push(line)
+      }
+    }
+    flushPara()
+    closeList()
+    return out.join('')
   }
   function clock(startedAt) {
     const s = Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000))
@@ -328,7 +421,7 @@
       chat.forEach((m, i) => {
         html +=
           m.role === 'sitca'
-            ? `<div class="sc-msg sc-sitca">${esc(m.text)}<button type="button" class="sc-copy" data-act="copymsg" data-i="${i}" title="Copy this answer" aria-label="Copy this answer"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>`
+            ? `<div class="sc-msg sc-sitca sc-rich">${rich(m.text)}<button type="button" class="sc-copy" data-act="copymsg" data-i="${i}" title="Copy this answer" aria-label="Copy this answer"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>`
             : `<div class="sc-msg sc-you">${esc(m.text)}</div>`
       })
       if (asking) html += `<div class="sc-msg sc-sitca sc-thinking"><span class="sc-dots"><span></span><span></span><span></span></span></div>`
@@ -453,7 +546,7 @@
     } else if (act === 'copymsg') {
       const m = chat[Number(b.getAttribute('data-i'))]
       if (m) {
-        void copyText(m.text).then((ok) => {
+        void copyText(plain(m.text)).then((ok) => {
           if (!ok) return
           b.classList.add('done')
           setTimeout(() => b.classList.remove('done'), 1600)
@@ -483,7 +576,7 @@
     render()
     void ask({ type: 'sitca:card:ask', text }).then((r) => {
       asking = false
-      chat.push({ role: 'sitca', text: plain((r && r.answer) || 'Sitca could not answer just now.') })
+      chat.push({ role: 'sitca', text: String((r && r.answer) || 'Sitca could not answer just now.') })
       if (chat.length > 40) chat = chat.slice(-40)
       render()
     })
@@ -501,6 +594,14 @@
   let goneFor = 0
   let wasInCall = false
   function inCall() {
+    if (IS_VIDEO) {
+      // on YouTube the "call" is the video: the watch page, or the small
+      // player that carries it onto other pages. Back to the home page with
+      // no player, and there is nothing left to record.
+      const onVideo = /^\/(watch|live\/)/.test(location.pathname)
+      const mini = document.querySelector('ytd-app[miniplayer-is-active], ytd-miniplayer[active], ytd-miniplayer[is-open]')
+      return onVideo || Boolean(mini)
+    }
     if (!IS_MEET) return true
     return Boolean(document.querySelector('[aria-label*="leave call" i], [aria-label*="Leave call" i], [data-tooltip*="Leave call" i]'))
   }
