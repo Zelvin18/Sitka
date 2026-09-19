@@ -1,6 +1,7 @@
-// Read text aloud in a natural voice. Gemini's speech models first (the same
-// GEMINI_API_KEY / GEMINI_API_KEYS as chat), then Groq's speech models on the
-// GROQ_API_KEY(S) backups, then 503 so the browser falls back to its own voice.
+// Read text aloud in a natural voice. For English, Deepgram's quick voice
+// (DEEPGRAM_API_KEY) first, then Groq's; for other languages Gemini's speech
+// models (the same GEMINI_API_KEY / GEMINI_API_KEYS as chat). Then 503 so
+// the browser falls back to its own voice.
 // Returns a WAV body. Nothing is stored.
 //
 // Model ids are discovered from what each account lists, so a renamed or
@@ -43,12 +44,13 @@ function keysFrom(single, many, prefix) {
   ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i)
 }
 
+const tail = (key) => key.slice(0, 1) + key.slice(-8)
 function cached(key) {
-  const c = listCache.get(key.slice(-8))
+  const c = listCache.get(tail(key))
   return c && Date.now() - c.at < 10 * 60 * 1000 ? c.ids : null
 }
 function remember(key, ids) {
-  listCache.set(key.slice(-8), { ids, at: Date.now() })
+  listCache.set(tail(key), { ids, at: Date.now() })
 }
 
 // Gemini returns raw 16-bit PCM at 24 kHz; wrap it as WAV so <audio> plays it.
@@ -232,18 +234,54 @@ async function groqSpeak(keys, text, errors) {
   return null
 }
 
+// ---------- Deepgram ----------
+// The quickest voice of all for English, from the same account that tells
+// speakers apart: a sentence in well under a second.
+const DEEPGRAM_VOICE = 'aura-2-thalia-en'
+async function deepgramSpeak(key, text, errors) {
+  if (!key || isDead('deepgram:aura')) return null
+  try {
+    const r = await fetch(
+      `https://api.deepgram.com/v1/speak?model=${DEEPGRAM_VOICE}&encoding=linear16&sample_rate=24000&container=wav`,
+      {
+        signal: AbortSignal.timeout(15000),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Token ${key}` },
+        body: JSON.stringify({ text })
+      }
+    )
+    if (!r.ok) {
+      const body = (await r.text().catch(() => '')).slice(0, 300)
+      errors.push(`Deepgram ${r.status} ${body}`)
+      if (r.status === 401 || r.status === 403 || r.status === 404) markDead('deepgram:aura')
+      return null
+    }
+    const wav = Buffer.from(await r.arrayBuffer())
+    return wav.length > 1000 ? { wav, model: DEEPGRAM_VOICE } : null
+  } catch (err) {
+    errors.push('Deepgram ' + String(err && err.message ? err.message : err))
+    return null
+  }
+}
+
 async function synthesize(text, lang) {
   const errors = []
   const gemini = keysFrom('GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GEMINI_API_KEY')
   const groq = keysFrom('GROQ_API_KEY', 'GROQ_API_KEYS', 'GROQ_API_KEY')
-  if (gemini.length === 0 && groq.length === 0) {
-    errors.push('No GEMINI_API_KEY(S) or GROQ_API_KEY(S) set')
+  const deepgram = clean(process.env.DEEPGRAM_API_KEY)
+  if (gemini.length === 0 && groq.length === 0 && !deepgram) {
+    errors.push('No DEEPGRAM_API_KEY, GEMINI_API_KEY(S) or GROQ_API_KEY(S) set')
     return { wav: null, provider: null, errors }
   }
-  // Groq's voices answer in about a second but speak English only; Gemini's
-  // speak most languages and take a few seconds. English goes to the quick
-  // one first, everything else to the one that can say it.
+  // English has quick voices (Deepgram's in well under a second, Groq's in
+  // about one); Gemini's speak most languages and take a few seconds.
+  // English goes to the quick ones first, everything else to the one that
+  // can say it.
   const english = !lang || /^(en|english)/i.test(String(lang).trim())
+  const tryDeepgram = async () => {
+    const d = await deepgramSpeak(deepgram, text, errors)
+    return d ? { wav: d.wav, provider: 'deepgram:' + d.model, errors } : null
+  }
   const tryGroq = async () => {
     const q = await groqSpeak(groq, text, errors)
     return q ? { wav: q.wav, provider: 'groq:' + q.model, errors } : null
@@ -252,7 +290,9 @@ async function synthesize(text, lang) {
     const g = await geminiSpeak(gemini, text, errors)
     return g ? { wav: g.wav, provider: 'gemini:' + g.model, errors } : null
   }
-  const order = english ? [tryGroq, tryGemini] : [tryGemini, tryGroq]
+  // (the English-only voices would read other languages as gibberish rather
+  // than refuse, so for those the browser's own voice is the better fallback)
+  const order = english ? [tryDeepgram, tryGroq, tryGemini] : [tryGemini]
   for (const step of order) {
     const out = await step()
     if (out) return out
@@ -285,7 +325,7 @@ export default async function handler(req, res) {
     return
   }
   // a voice costs money each time: a flood from one address is refused
-  if (overLimit(req, 60, 1500)) {
+  if (overLimit(req, 60, 1500, String((req.body || {}).who || ''))) {
     res.status(429).json({ error: 'Slow down a little.' })
     return
   }

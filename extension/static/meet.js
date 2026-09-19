@@ -24,7 +24,7 @@
 ;(() => {
   if (window.top !== window.self) return
   if (document.getElementById('sitca-card')) return
-  const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|whereby\.com\/[^/?#]+)/
+  const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|teams\.cloud\.microsoft\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|[a-z0-9.-]*whereby\.com\/[^/?#]+)/
   const IS_MEET = location.hostname === 'meet.google.com'
   // what is on this page, for the card's words: a meeting, or a video
   const IS_VIDEO = /youtube\.com$/.test(location.hostname)
@@ -293,6 +293,7 @@
         <span class="sc-dot"></span>
         <span class="sc-time" data-clock>${clock(card.startedAt)}</span>
         <span class="sc-label">${live ? 'Live on Sitca' : 'Recording'}</span>
+        ${card.mic === undefined ? '' : `<button type="button" class="sc-mini sc-mic${card.mic ? '' : ' off'}" data-act="mic" title="${card.mic ? 'Your microphone is in the recording. Press to mute it.' : 'Your microphone is muted. Press to include it.'}" aria-label="Microphone">${card.mic ? MIC_ON : MIC_OFF}</button>`}
         ${CAN_FLOAT ? '<button type="button" class="sc-mini" data-act="float" title="Chat with Sitca privately, in a window the recording never sees">Chat</button>' : ''}
         <button type="button" class="sc-mini" data-act="open" title="Open this session in Sitca">Open</button>
         <button type="button" class="sc-mini sc-stop" data-act="stop">Stop</button>
@@ -422,6 +423,8 @@
       })
     } else if (act === 'stop') {
       void ask({ type: 'sitca:card:stop' })
+      captionsOff()
+      unwatchCall()
       card = { ...card, state: 'ending' }
       render()
     } else if (act === 'open') {
@@ -520,6 +523,7 @@
       goneFor++
       if (goneFor >= 3) {
         unwatchCall()
+        captionsOff()
         void ask({ type: 'sitca:card:left' })
         card = { ...card, state: 'ending' }
         render()
@@ -655,7 +659,8 @@
     const leaves = []
     const walk = (el) => {
       for (const c of el.children) {
-        if (c.tagName === 'IMG' || c.tagName === 'SVG' || c.tagName === 'BUTTON') continue
+        const tag = String(c.tagName || '').toUpperCase()
+        if (tag === 'IMG' || tag === 'SVG' || tag === 'BUTTON' || c instanceof SVGElement) continue
         if (c.children.length === 0) {
           const t = (c.textContent || '').trim()
           if (t) leaves.push(t)

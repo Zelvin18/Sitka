@@ -454,6 +454,8 @@ export default function LiveSession({
   /** start(), reachable from the pickers that run before it is defined: a pick starts the session */
   const startRef = useRef<(overrideSource?: string) => Promise<void>>(async () => undefined)
   const stoppingRef = useRef(false)
+  /** a stop that arrived while the session was still being set up */
+  const cancelledRef = useRef(false)
   const lastNotesCountRef = useRef(0)
   const notesBusyRef = useRef(false)
   const segmentsRef = useRef<TranscriptSegment[]>([])
@@ -892,7 +894,17 @@ export default function LiveSession({
       chatRef.current.ask(q)
     }
     window.addEventListener('sitka:ask', onAsk)
-    return () => window.removeEventListener('sitka:ask', onAsk)
+    // an answer that failed is still an answer to the card
+    const offAi = window.sitka.onAiStream((e) => {
+      if (e.type === 'error' && cardAskRef.current) {
+        cardAskRef.current = false
+        window.dispatchEvent(new CustomEvent('sitka:answered', { detail: { text: e.error === 'missing-key' ? 'Sitca has no AI key set up.' : e.error || 'Sitca could not answer just now.' } }))
+      }
+    })
+    return () => {
+      window.removeEventListener('sitka:ask', onAsk)
+      offAi()
+    }
   }, [phase])
 
   useEffect(() => {
@@ -1165,7 +1177,7 @@ export default function LiveSession({
     if (!id) return
     // the heartbeat rides on the recorder's own clock as well as the timer:
     // an invisible page's timers can be slowed, its media pipeline is not
-    if (sessionRef.current) writeLiveBeat(id, sessionRef.current.title, sessionStartRef.current)
+    if (sessionRef.current && !stoppingRef.current) writeLiveBeat(id, sessionRef.current.title, sessionStartRef.current)
     // Each chunk stands alone in the queue: one that fails to store is
     // written down and skipped, and every chunk after it still lands. A
     // rejection left in the chain would silently drop the rest of the session.
@@ -1293,6 +1305,7 @@ export default function LiveSession({
   const start = useCallback(async (overrideSource?: string): Promise<void> => {
     // a screen just picked is ready before the state that records it settles
     if (captureMode === 'screen' && !selectedSource && !overrideSource && !webStreamRef.current) return
+    cancelledRef.current = false
     // one session at a time, across every tab of the account
     const other = readLive()
     if (other && !isThisTab(other)) {
@@ -1328,7 +1341,7 @@ export default function LiveSession({
         orgSpaceId
       )
       created = meta
-      if (!mountedRef.current) throw new Error('left')
+      if (!mountedRef.current || cancelledRef.current) throw new Error('left')
       setSession(meta)
       sessionIdRef.current = meta.id
 
@@ -1433,6 +1446,8 @@ export default function LiveSession({
       if (captureMode !== 'screen' && !micStream) {
         throw new Error('Microphone access is needed for this session — the sound comes from the room.')
       }
+      // Stop may have been pressed while the microphone was being asked for
+      if (cancelledRef.current) throw new Error('left')
       micStreamRef.current = micStream
       setAudioOnlyRec(captureMode === 'audio')
 
@@ -1576,6 +1591,9 @@ export default function LiveSession({
       // so it never shows up as a phantom recording.
       streamsRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()))
       streamsRef.current = []
+      webStreamRef.current?.getTracks().forEach((t) => t.stop())
+      webStreamRef.current = null
+      if (cancelledRef.current && meetTab) tellEngine({ state: 'ended', tabId: meetTab.tabId })
       if (created) {
         void window.sitka.deleteSession(created.id).catch(() => undefined)
         setSession(null)
@@ -1707,8 +1725,13 @@ export default function LiveSession({
   // Stop can come from the card on the meeting page.
   const stopRef = useRef(stop)
   stopRef.current = stop
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
   useEffect(() => {
-    const onStop = (): void => void stopRef.current()
+    const onStop = (): void => {
+      if (phaseRef.current === 'recording') void stopRef.current()
+      else cancelledRef.current = true
+    }
     window.addEventListener('sitka:stop', onStop)
     return () => window.removeEventListener('sitka:stop', onStop)
   }, [])
@@ -1730,13 +1753,13 @@ export default function LiveSession({
           t.enabled = on
         })
       setMicLive(on)
-      if (meetTab && sessionRef.current) {
+      if (meetTab && sessionRef.current && phase === 'recording') {
         tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: sessionRef.current.id, startedAt: sessionStartRef.current, mic: on })
       }
     }
     window.addEventListener('sitka:mic', onMic)
     return () => window.removeEventListener('sitka:mic', onMic)
-  }, [meetTab])
+  }, [meetTab, phase])
   useEffect(() => {
     if (!meetTab || phase !== 'recording') return undefined
     const buf = new Float32Array(1024)

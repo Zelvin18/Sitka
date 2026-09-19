@@ -318,7 +318,9 @@ export default function SessionView({
         d.meta.status === 'complete' &&
         !d.meta.analyzed &&
         d.segments.length > 2 &&
-        autoAnalyzedRef.current !== d.meta.id
+        autoAnalyzedRef.current !== d.meta.id &&
+        // just ended: the page that recorded it is writing the title now
+        Date.now() - (d.meta.createdAt + (d.meta.durationMs || 0)) > 90000
       ) {
         autoAnalyzedRef.current = d.meta.id
         setReanalyzing(true)
@@ -438,12 +440,28 @@ export default function SessionView({
   const wholeReady = Boolean(data?.meta.whole)
   const [preparingOver, setPreparingOver] = useState(false)
   const preparing =
-    Boolean(data) && !stillRecording && !wholeReady && data?.meta.store === 'r2' && !data?.meta.audioOnly && Date.now() - endedAt < 180000 && !preparingOver
+    Boolean(data) &&
+    !stillRecording &&
+    !wholeReady &&
+    !data?.meta.readOnly &&
+    !data?.meta.saved &&
+    !data?.meta.sample &&
+    !data?.meta.audioOnly &&
+    Date.now() - endedAt < 180000 &&
+    !preparingOver
   useEffect(() => {
     if (!preparing) return undefined
     const t = window.setTimeout(() => setPreparingOver(true), 120000)
-    return () => window.clearTimeout(t)
-  }, [preparing])
+    const look = window.setInterval(() => {
+      void window.sitka.refreshSession(sessionId).then((m) => {
+        if (m && m.whole) setData((d) => (d ? { ...d, meta: { ...d.meta, ...m } } : d))
+      })
+    }, 4000)
+    return () => {
+      window.clearTimeout(t)
+      window.clearInterval(look)
+    }
+  }, [preparing, sessionId])
   useEffect(() => {
     const gen = ++loadGenRef.current
     loadStartRef.current = Date.now()
@@ -492,7 +510,7 @@ export default function SessionView({
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
     }
-  }, [sessionId, videoWanted, advance, stillRecording, preparing, wholeReady])
+  }, [sessionId, videoWanted, advance, stillRecording, preparing])
 
   // A source that shows nothing is not waited on for good: twenty seconds
   // without so much as its length, and the next way is tried.

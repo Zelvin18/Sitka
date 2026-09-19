@@ -259,16 +259,19 @@ export default function Home({
                       </span>
                     )}
                   </span>
-                  <button
-                    className="lib-delete"
-                    title="Delete session"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPendingDelete(s)
-                    }}
-                  >
-                    <IconTrash size={13} />
-                  </button>
+                  {s.status !== 'recording' && (
+                    // a session being captured right now is not one to delete from here
+                    <button
+                      className="lib-delete"
+                      title="Delete session"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingDelete(s)
+                      }}
+                    >
+                      <IconTrash size={13} />
+                    </button>
+                  )}
                 </div>
                 <div className="lib-body">
                   <div className="lib-title">{s.title}</div>

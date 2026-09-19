@@ -17,7 +17,7 @@
 //   points at the icon, and the next press on the icon carries on from there.
 //   The side panel may only be opened in the same instant as such a press.
 
-const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|whereby\.com\/[^/?#]+)/
+const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0-9.-]*zoom\.us\/(wc|j)\/|teams\.(microsoft|live)\.com\/|teams\.cloud\.microsoft\/|(www\.|m\.)?youtube\.com\/(watch|live\/)|[a-z0-9.-]*webex\.com\/(meet|join|wbxmjs|webappng)|[a-z0-9.-]*whereby\.com\/[^/?#]+)/
 const APP = chrome.runtime.getURL('app.html')
 /** the website: a finished session is opened there, where its recording plays */
 const SITE = 'https://sitcaai.vercel.app/app'
@@ -28,7 +28,6 @@ const cards = new Map()
 const wanted = new Map()
 /** the engine page: whether it is up and signed in */
 const engine = { starting: null, ready: false, signedIn: false, waiting: [] }
-let closeEngineTimer = null
 
 // Chrome stops this worker after half a minute of quiet and starts it again
 // on the next event, with its memory gone. What the cards show, and a choice
@@ -64,9 +63,10 @@ chrome.runtime.onInstalled.addListener(() => {
         'https://*.zoom.us/*',
         'https://teams.microsoft.com/*',
         'https://teams.live.com/*',
+        'https://teams.cloud.microsoft/*',
         'https://*.youtube.com/*',
         'https://*.webex.com/*',
-        'https://whereby.com/*'
+        'https://*.whereby.com/*'
       ]
     })
   })
@@ -140,6 +140,7 @@ async function ensureEngine() {
         })
       }
       // the engine says when it is up (or that nobody is signed in)
+      if (engine.ready) return
       await new Promise((resolve) => {
         engine.waiting.push(resolve)
         setTimeout(resolve, 45000)
@@ -153,9 +154,13 @@ async function ensureEngine() {
 }
 
 async function closeEngineIfIdle() {
+  await remembered
   if (recordingTab() !== null) return
   try {
-    if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument()
+    const has = await chrome.offscreen.hasDocument()
+    // a start may have begun during that wait
+    if (recordingTab() !== null) return
+    if (has) await chrome.offscreen.closeDocument()
   } catch {
     /* already gone */
   }
@@ -163,12 +168,19 @@ async function closeEngineIfIdle() {
   engine.signedIn = false
 }
 
+// The engine goes a minute after its last session ends. An alarm, not a
+// timer: Chrome stops this worker after half a minute of quiet and a timer
+// would go with it, leaving the engine (and its hold on the tab) behind.
+const CLOSE_ALARM = 'sitca-close-engine'
 function scheduleEngineClose() {
-  if (closeEngineTimer) clearTimeout(closeEngineTimer)
-  // the last uploads finish inside the engine before it says "ended"; a
-  // little grace, then it goes
-  closeEngineTimer = setTimeout(() => void closeEngineIfIdle(), 60000)
+  chrome.alarms.create(CLOSE_ALARM, { delayInMinutes: 1 })
 }
+function clearEngineClose() {
+  chrome.alarms.clear(CLOSE_ALARM).catch(() => undefined)
+}
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === CLOSE_ALARM) void closeEngineIfIdle()
+})
 
 // ---------- starting a session ----------
 
@@ -221,8 +233,18 @@ async function startCapture(tab, mode) {
     return { ok: false, error: m }
   }
   want(tabId, null)
-  if (closeEngineTimer) clearTimeout(closeEngineTimer)
+  clearEngineClose()
   setCard(tabId, { state: 'starting', mode, url: tab.url || '', error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
+  try {
+    return await startWithEngine(tab, mode)
+  } catch (err) {
+    setCard(tabId, { state: 'failed', error: 'Sitca could not start: ' + String((err && err.message) || err) })
+    return { ok: false }
+  }
+}
+
+async function startWithEngine(tab, mode) {
+  const tabId = tab.id
   const e = await ensureEngine()
   if (!e.ready) {
     setCard(tabId, { state: 'failed', error: 'Sitca could not start. Reload the page and try again.' })
@@ -244,6 +266,10 @@ async function startCapture(tab, mode) {
     setCard(tabId, { state: 'failed', error: 'The meeting tab could not be captured: ' + String((err && err.message) || err) })
     return { ok: false }
   }
+  if (cardOf(tabId).state !== 'starting') {
+    // Stop was pressed while the engine was waking: nothing starts
+    return { ok: false, cancelled: true }
+  }
   const req = { tabId, title: tab.title || '', url: tab.url || '', at: Date.now(), mode, streamId }
   chrome.runtime.sendMessage({ type: 'sitca:engine:start', ...req }).catch(() => undefined)
   return { ok: true }
@@ -252,6 +278,16 @@ async function startCapture(tab, mode) {
 function stopCapture(tabId) {
   const c = cardOf(tabId)
   if (c.state !== 'recording' && c.state !== 'starting') return
+  if (c.state === 'starting') {
+    // nothing is recording yet: the start is called off (the engine, if it
+    // was already told to begin, lets go) and the card is free
+    chrome.runtime.sendMessage({ type: 'sitca:engine:stop', tabId }).catch(() => undefined)
+    cards.delete(tabId)
+    want(tabId, null)
+    chrome.tabs.sendMessage(tabId, { type: 'sitca:card', card: { state: 'idle', tabId } }).catch(() => undefined)
+    scheduleEngineClose()
+    return
+  }
   setCard(tabId, { state: 'ending' })
   chrome.runtime.sendMessage({ type: 'sitca:engine:stop', tabId }).catch(() => undefined)
 }
@@ -312,11 +348,20 @@ chrome.action.onClicked.addListener((tab) => {
   }
   void remembered.then(() => invited(tab))
 })
+function pressed(tab) {
+  if (!tab || !tab.id) return
+  // the panel must open in the same instant as the press: that path first
+  if (!tab.url || !MEETING.test(tab.url)) {
+    chrome.sidePanel.open({ tabId: tab.id }).catch(() => undefined)
+    return
+  }
+  void remembered.then(() => invited(tab))
+}
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'sitca-capture') void remembered.then(() => invited(tab))
+  if (info.menuItemId === 'sitca-capture') pressed(tab)
 })
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command === 'capture') void remembered.then(() => invited(tab))
+  if (command === 'capture') pressed(tab)
 })
 
 // ---------- messages ----------
@@ -429,7 +474,9 @@ function handle(msg, sender, reply) {
   }
   if (msg.type === 'sitca:engine:status') {
     const t = msg.tabId
-    if (typeof t !== 'number') {
+    if (typeof t !== 'number' || !cards.has(t)) {
+      // a tab already closed, or a start already called off: nothing to show it to
+      if (msg.state === 'ended' || msg.state === 'failed') scheduleEngineClose()
       reply({ ok: true })
       return undefined
     }

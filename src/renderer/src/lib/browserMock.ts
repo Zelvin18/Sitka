@@ -57,6 +57,7 @@ export function installBrowserMockIfNeeded(): void {
     signOut: async () => undefined,
     deleteAccount: async () => ({ error: 'unavailable in browser preview' }),
     reanalyzeSession: async () => null,
+    refreshSession: async () => null,
     identifySpeakers: async () => ({ error: 'unavailable in browser preview' }),
     nameSpeaker: async () => ({ error: 'unavailable in browser preview' }),
     addCaptions: async () => ({ error: 'unavailable in browser preview' }),

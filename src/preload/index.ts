@@ -170,6 +170,9 @@ const api = {
   /** Re-run the title/summary/highlights analysis (after a failure). */
   reanalyzeSession: (id: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:reanalyze', id),
+  /** The session's record read afresh, for a page waiting on what another page writes. */
+  refreshSession: (id: string): Promise<SessionMeta | null> =>
+    ipcRenderer.invoke('session:prepare', id),
   finalizeSession: (id: string, durationMs: number): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:finalize', id, durationMs),
 

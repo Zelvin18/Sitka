@@ -843,7 +843,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     liveChannel.onmessage = (e: MessageEvent<{ id?: string; meta?: SessionMeta }>) => {
       const id = e.data?.id
       if (!id) return
-      cache.delete(id)
+      // a page recording this very session keeps its copy: it is the one writing it
+      if (!recBuf.has(id)) cache.delete(id)
       allCache = null
       if (e.data.meta) emitSession(e.data.meta)
     }
@@ -858,6 +859,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     marks: number[]
     report: EventReport | null
     thumb: string | null
+    /** when the row was last written: a session being recorded is written every few seconds */
+    updated_at?: string
   }
   function rowToData(r: Row): SessionData {
     return {
@@ -1228,10 +1231,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const rows = await allSessions()
       for (const r of rows) {
         if (r.meta.status !== 'recording' || r.id === recordingState?.id) continue
+        // one this very page is recording right now (its heartbeat may not be up yet)
+        if (recBuf.has(r.id)) continue
         // A session that is live in another tab is not interrupted. Recovering
         // it from here once wrote its last minutes over its first ones and
         // called it finished while it was still going.
         if (liveInAnotherTab(r.id)) continue
+        // Live somewhere this page cannot see (the extension's engine, another
+        // device): its row is written every few seconds while it records, so
+        // a row touched in the last two minutes is left alone.
+        const touched = r.updated_at ? Date.now() - new Date(r.updated_at).getTime() : Infinity
+        if (touched < 120000) continue
         const chunks = await localChunks(r.id)
         const lastAt = chunks.length ? chunks[chunks.length - 1].at : 0
         if (lastAt && Date.now() - lastAt < 90000) continue // still being written to
@@ -2142,7 +2152,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (allCache && Date.now() - allCache.at < 60_000) return allCache.rows
     const { data, error } = await sb
       .from('sessions')
-      .select('id,meta,transcript,chat,notes,study,marks,report')
+      .select('id,meta,transcript,chat,notes,study,marks,report,updated_at')
       .order('created_at', { ascending: false })
     if (error) storageProblem(error.message)
     const rows = ((data as Row[]) || []).slice()
@@ -2284,7 +2294,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       } catch {
         /* ignore */
       }
-      location.href = '/app'
+      location.href =
+        location.protocol === 'chrome-extension:'
+          ? (globalThis as unknown as { chrome?: { runtime?: { getURL?: (p: string) => string } } }).chrome?.runtime?.getURL?.('app.html') || location.pathname
+          : '/app'
     },
     deleteAccount: async (confirmEmail: string) => {
       // the server removes everything that was theirs, then the account; the
@@ -2807,9 +2820,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
     saveChat: async (id, chat) => {
       const d = await loadSession(id)
-      if (d) d.chat = chat
+      let merged = chat
+      if (d && !d.meta.readOnly && !d.meta.saved) {
+        // Two pages may hold this conversation at once (the extension's
+        // engine and a viewer, a laptop and a phone): what the row already
+        // has is kept, and this page's messages joined to it, in time order.
+        try {
+          const { data } = await sb.from('sessions').select('chat').eq('id', id).single()
+          const theirs = ((data as { chat?: ChatMessage[] } | null)?.chat ?? []) as ChatMessage[]
+          const seen = new Set<string>()
+          merged = [...theirs, ...chat]
+            .filter((m) => {
+              const k = `${m.at}|${m.role}|${m.content.slice(0, 80)}`
+              if (seen.has(k)) return false
+              seen.add(k)
+              return true
+            })
+            .sort((a, b) => a.at - b.at)
+        } catch {
+          merged = chat
+        }
+      }
+      if (d) d.chat = merged
       // a kept recap's conversation is the student's own, on their row
-      await patchWork(id, Boolean(d), { chat })
+      await patchWork(id, Boolean(d), { chat: merged })
     },
 
     appendChunk: async (id, chunk) => {
@@ -3002,6 +3036,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     saveReel: async () => ({ error: 'Not available on the web version.' }),
 
     prepareSession: async (id: string) => (await loadSession(id))?.meta ?? null,
+    refreshSession: async (id: string) => {
+      // past the cache: for a page waiting on what another page is writing
+      if (!recBuf.has(id)) cache.delete(id)
+      allCache = null
+      return (await loadSession(id))?.meta ?? null
+    },
 
     renameSession: async (id, title) => {
       const d = await loadSession(id)
@@ -3153,6 +3193,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       backupSession(id) // belt-and-braces: text survives even if the row write above failed
       emitSession(d.meta)
       tellOthers(id, d.meta)
+      // a recap shared before the end (the extension's card does, so the link
+      // is ready at once) now gets the whole transcript and the true length
+      if (d.meta.recapUrl) {
+        void sb
+          .from('recaps')
+          .update({ transcript: d.segments, duration_ms: d.meta.durationMs, notes: d.notes?.markdown ?? '', updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .then(() => undefined, () => undefined)
+      }
 
       // analysis in the background
       if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)

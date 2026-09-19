@@ -185,50 +185,6 @@
   </main>
 </div>
 <div id="root"></div>
-<script>
-// Sign in / Create account: one form, two moods. The buttons app-entry.ts
-// wires (gsignin, gsignup, gforgot) keep their ids; only what is shown changes.
-(function () {
-  var $ = function (id) { return document.getElementById(id) }
-  var mode = 'in'
-  function setMode(m) {
-    mode = m
-    var up = m === 'up'
-    $('gtab-in').classList.toggle('on', !up)
-    $('gtab-up').classList.toggle('on', up)
-    $('gtitle').textContent = up ? 'Create your account.' : 'Welcome back.'
-    $('gsubtitle').textContent = up ? 'Free to start. Your sessions stay yours.' : 'Sign in to open your workspace.'
-    $('gsignin').classList.toggle('hidden', up)
-    $('gsignup').classList.toggle('hidden', !up)
-    $('gname').classList.toggle('hidden', !up)
-    $('gnamelabel').classList.toggle('hidden', !up)
-    $('gforgot').classList.toggle('hidden', up)
-    $('gterms').classList.toggle('hidden', !up)
-    $('gswitch').innerHTML = up
-      ? 'Already have an account? <button type="button" id="gto-in">Sign in</button>'
-      : 'New to Sitca? <button type="button" id="gto-up">Create an account</button>'
-    $('gpassword').setAttribute('autocomplete', up ? 'new-password' : 'current-password')
-    $('gerr').textContent = ''
-    var sw = $('gto-in') || $('gto-up')
-    if (sw) sw.addEventListener('click', function () { setMode(mode === 'in' ? 'up' : 'in') })
-  }
-  $('gtab-in').addEventListener('click', function () { setMode('in') })
-  $('gtab-up').addEventListener('click', function () { setMode('up') })
-  $('gto-up').addEventListener('click', function () { setMode('up') })
-  $('geye').addEventListener('click', function () {
-    var p = $('gpassword')
-    var show = p.type === 'password'
-    p.type = show ? 'text' : 'password'
-    $('geye').textContent = show ? 'Hide' : 'Show'
-  })
-  // a recap being kept by someone without an account starts on Create account; the app keeps it once they are in
-  if (location.hash === '#create' || location.hash.indexOf('#keep=') === 0) setMode('up')
-})()
-</script>
-<script>
-// Loading words move on as the wait grows, and settle on the last line.
-(function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0,t=null;function tick(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')}function stop(){if(t)clearInterval(t);t=null}function start(){stop();i=0;el.textContent=w[0];t=setInterval(tick,2400)}if('IntersectionObserver'in window){new IntersectionObserver(function(es){es.forEach(function(e){e.isIntersecting?start():stop()})}).observe(el)}else start()})})();
-</script>
 <script type="module" src="/src/app-entry.ts"></script>
 </body>
 </html>

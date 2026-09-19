@@ -346,7 +346,7 @@ async function fetchVoice(text: string): Promise<Blob | null> {
     const r = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang: myLang }),
+      body: JSON.stringify({ text, lang: myLang, who: attId || '' }),
       signal: AbortSignal.timeout(12000)
     })
     if (!r.ok || !/^audio\//i.test(r.headers.get('content-type') || '')) {
@@ -402,11 +402,14 @@ interface Spoken {
 }
 let speakQ: Spoken[] = []
 let speakingNow = false
+/** bumped when the voice is reset or switched off: an older run stops at its next step */
+let speakGen = 0
 async function speakNext(): Promise<void> {
   if (!listening || speakQ.length === 0) {
     speakingNow = false
     return
   }
+  const gen = speakGen
   speakingNow = true
   speakStartedAt = Date.now()
   const item = speakQ.shift() as Spoken
@@ -415,12 +418,10 @@ async function speakNext(): Promise<void> {
   const after = speakQ[0]
   if (after && !after.voice) after.voice = fetchVoice(after.text)
   const blob = await item.voice
-  if (!listening) {
-    speakingNow = false
-    return
-  }
+  if (!listening || gen !== speakGen) return
   if (blob) await playVoice(blob)
   else await speakWithPhone(item.text)
+  if (gen !== speakGen) return
   void speakNext()
 }
 function speakText(text: string): void {
@@ -435,6 +436,7 @@ let speakStartedAt = 0
 window.setInterval(() => {
   if (!listening) return
   if (speakingNow && Date.now() - speakStartedAt > 40000) {
+    speakGen++
     window.speechSynthesis?.cancel()
     voiceAudio?.pause()
     speakingNow = false
@@ -489,6 +491,7 @@ function setupListen(): void {
       }, 5000)
     } else {
       listening = false
+      speakGen++
       speakQ = []
       speakingNow = false
       if (resumeTimer) {
@@ -682,7 +685,20 @@ function stopStage(): void {
   el('stagewait').classList.add('hidden')
   el('stagecard').classList.remove('paused')
 }
+function leaveStageFull(): void {
+  const card = el('stagecard')
+  if (!card.classList.contains('full')) return
+  card.classList.remove('full')
+  document.documentElement.classList.remove('stage-full')
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+}
 function openStageFull(): void {
+  // already filling the screen: the same tap always leads out, whatever the
+  // stream is doing now (it may have dropped since)
+  if (el('stagecard').classList.contains('full')) {
+    leaveStageFull()
+    return
+  }
   if (el('stagecard').classList.contains('rtc')) {
     // The whole card goes full screen, not the bare video: a video element
     // on its own grows built-in controls in fullscreen, and a tap on them
@@ -719,8 +735,9 @@ function openStageFull(): void {
   const row = el('askrow')
   const chatHome = { parent: chat.parentElement as HTMLElement, next: chat.nextSibling }
   const rowHome = { parent: row.parentElement as HTMLElement, next: row.nextSibling }
-  const rowWas = row.style.display
+  let rowWas = row.style.display
   const openDrawer = (): void => {
+    rowWas = row.style.display
     body.appendChild(chat)
     row.style.display = ''
     foot.appendChild(row)
@@ -859,6 +876,10 @@ function rtcWant(): void {
 function rtcMark(on: boolean): void {
   const card = el('stagecard')
   card.classList.toggle('rtc', on)
+  if (!on) {
+    card.classList.remove('connecting')
+    leaveStageFull()
+  }
   if (on) {
     card.classList.remove('hidden')
     el('stagewait').classList.add('hidden')
@@ -878,6 +899,8 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
         payload: { id: attId, from: 'attendee', candidate: e.candidate.toJSON() }
       })
   }
+  const early: RTCIceCandidateInit[] = []
+  let offered = false
   pc.ontrack = (e) => {
     const v = el('stagevideo') as HTMLVideoElement
     const stream = e.streams[0]
@@ -889,7 +912,8 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
     } catch {
       /* not every browser offers the hint */
     }
-    v.srcObject = stream
+    // the same stream, set once: setting it again restarts the element
+    if (v.srcObject !== stream) v.srcObject = stream
     // muted until asked: someone in the room must not hear the host twice,
     // and browsers only allow sound after a tap anyway
     v.muted = !hearing
@@ -901,15 +925,33 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
     if (stream.getAudioTracks().length > 0) hearOffer()
   }
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-      if (rtcPc === pc) rtcMark(false)
+    if (rtcPc !== pc) return
+    // "disconnected" often mends itself within seconds: the picture stays;
+    // only a failed or closed connection takes it down
+    if (pc.connectionState === 'connected') {
+      rtcOfferedAt = 0
+      if ((pc.getReceivers() || []).some((r) => r.track && r.track.kind === 'video')) rtcMark(true)
+    } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      rtcMark(false)
     }
   }
+  rtcOfferedAt = Date.now()
+  rtcAddIce = (c) => {
+    if (offered) void pc.addIceCandidate(c).catch(() => undefined)
+    else early.push(c)
+  }
   await pc.setRemoteDescription(sdp)
+  offered = true
+  // candidates that arrived before the offer was in are added now
+  for (const c of early.splice(0)) void pc.addIceCandidate(c).catch(() => undefined)
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
   void rtcChannel?.send({ type: 'broadcast', event: 'answer', payload: { id: attId, sdp: pc.localDescription } })
 }
+/** how a host candidate reaches the connection being set up (kept until the offer is in) */
+let rtcAddIce: ((c: RTCIceCandidateInit) => void) | null = null
+/** when the last offer arrived: a connection still being made is left to finish */
+let rtcOfferedAt = 0
 function startRtc(): void {
   if (rtcChannel || !attId || typeof RTCPeerConnection === 'undefined') return
   const ch = sb.channel('rtc-' + eventId, { config: { broadcast: { self: false } } })
@@ -920,7 +962,10 @@ function startRtc(): void {
   })
   ch.on('broadcast', { event: 'ice' }, ({ payload }) => {
     const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
-    if (p.id === attId && p.from === 'host' && rtcPc) void rtcPc.addIceCandidate(p.candidate).catch(() => undefined)
+    if (p.id === attId && p.from === 'host' && rtcPc) {
+      if (rtcAddIce) rtcAddIce(p.candidate)
+      else void rtcPc.addIceCandidate(p.candidate).catch(() => undefined)
+    }
   })
   ch.on('broadcast', { event: 'bye' }, () => {
     rtcPc?.close()
@@ -928,9 +973,19 @@ function startRtc(): void {
     rtcMark(false)
     hearGone()
   })
+  // not connected, and not in the middle of connecting either: a connection
+  // still being made (the phone's network can take ten seconds) is left to
+  // finish rather than torn down by a fresh ask
+  const needsAsk = (): boolean => {
+    if (!rtcPc) return true
+    const st = rtcPc.connectionState
+    if (st === 'connected') return false
+    const making = (st === 'new' || st === 'connecting') && Date.now() - rtcOfferedAt < 12000
+    return !making
+  }
   // the host arriving after us says "here": we ask again at once
   ch.on('broadcast', { event: 'here' }, () => {
-    if (!rtcPc || rtcPc.connectionState !== 'connected') rtcWant()
+    if (needsAsk()) rtcWant()
   })
   ch.subscribe((status) => {
     if (status !== 'SUBSCRIBED') return
@@ -938,7 +993,7 @@ function startRtc(): void {
     if (rtcWantTimer) clearInterval(rtcWantTimer)
     // asked again every few seconds until the picture is here
     rtcWantTimer = window.setInterval(() => {
-      if (!rtcPc || rtcPc.connectionState !== 'connected') rtcWant()
+      if (needsAsk()) rtcWant()
     }, 4000)
   })
 }
@@ -978,11 +1033,14 @@ function hearOffer(): void {
   }
 }
 function hearGone(): void {
+  const was = hearing
   hearing = false
   const b = el('hearbtn')
   b.classList.add('hidden')
+  hearLabel()
   const v = el('stagevideo') as HTMLVideoElement
   v.muted = true
+  if (was && !listening) el('voicenote').classList.add('hidden')
 }
 
 function stopRtc(): void {
@@ -1773,8 +1831,17 @@ async function join(newJoin: boolean): Promise<void> {
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'events', filter: 'id=eq.' + eventId },
       (payload) => {
+        // the host's heartbeat updates the row every few seconds: the page
+        // is only re-laid when something that shows has changed
+        const before = ev
         ev = payload.new as EventRow
-        applyEventState()
+        const changed =
+          !before ||
+          before.status !== ev.status ||
+          before.title !== ev.title ||
+          JSON.stringify(before.replay) !== JSON.stringify(ev.replay) ||
+          JSON.stringify(before.live_voice) !== JSON.stringify(ev.live_voice)
+        if (changed) applyEventState()
       }
     )
     .on(

@@ -63,7 +63,7 @@ function restoreView(saved: View | undefined): View {
   if (!saved || typeof saved !== 'object' || typeof saved.name !== 'string') {
     return { name: 'homepage' }
   }
-  if (saved.name === 'live') return { ...saved, quick: undefined }
+  if (saved.name === 'live') return { ...saved, quick: undefined, meet: undefined }
   if (saved.name === 'session') return { name: 'session', id: saved.id }
   return saved
 }
@@ -214,7 +214,7 @@ export default function App(): React.JSX.Element {
     const open = (req: Req): void => {
       delete w.sitkaMeetRequest
       // a recording already running is left alone: one session at a time
-      if (recordingSessionId !== undefined) return
+      if (recordingIdRef.current !== undefined) return
       setSpace(undefined)
       setView({
         name: 'live',
@@ -272,6 +272,8 @@ export default function App(): React.JSX.Element {
   }, [sessionsLoaded])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [recordingSessionId, setRecordingSessionId] = useState<string | undefined>()
+  const recordingIdRef = useRef<string | undefined>(undefined)
+  recordingIdRef.current = recordingSessionId
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | undefined>()
   const [refreshToken, setRefreshToken] = useState(0)
   const [sidebarOpen, setSidebarOpen] = usePersistedBool(

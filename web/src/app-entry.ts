@@ -6,6 +6,7 @@
  * start downloading the moment the page opens, while the sign-in check runs.
  * The app renders as soon as the backend is installed — nothing waits in line.
  */
+import './gate'
 import { createClient } from '@supabase/supabase-js'
 import {
   IN_ENGINE,
