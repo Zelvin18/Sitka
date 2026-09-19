@@ -21,6 +21,8 @@ const MEETING = /^https:\/\/(meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|[a-z0
 const APP = chrome.runtime.getURL('app.html')
 /** the website: a finished session is opened there, where its recording plays */
 const SITE = 'https://sitcaai.vercel.app/app'
+/** the extension's own page on the website: opened once, the moment it is installed */
+const WELCOME = 'https://sitcaai.vercel.app/extension#installed'
 
 /** one session per meeting tab: what the card shows */
 const cards = new Map()
@@ -51,8 +53,12 @@ function remember() {
 }
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
+  if (details && details.reason === 'install') {
+    // the first time only: the page that says to pin the icon and sign in
+    chrome.tabs.create({ url: WELCOME, active: true }).catch(() => undefined)
+  }
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: 'sitca-capture',
@@ -184,6 +190,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // ---------- starting a session ----------
 
+/** the keyboard shortcut as Chrome shows it on this computer ('' when none) */
+async function shortcut() {
+  try {
+    const all = await chrome.commands.getAll()
+    const c = all.find((x) => x.name === 'capture')
+    return (c && c.shortcut) || ''
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Chrome's handle on the tab. Chrome allows one capture of a tab at a time:
  * when an earlier one is still held (a session that ended untidily), the
@@ -226,7 +243,7 @@ async function startCapture(tab, mode) {
     const m = String((err && err.message) || err)
     if (/invoked|activeTab|not been|permission/i.test(m)) {
       want(tabId, mode)
-      setCard(tabId, { state: 'needIcon', mode })
+      setCard(tabId, { state: 'needIcon', mode, key: await shortcut() })
       return { ok: false, needIcon: true }
     }
     setCard(tabId, { state: 'failed', error: 'The meeting tab could not be captured: ' + m })

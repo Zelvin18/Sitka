@@ -114,6 +114,18 @@
 .sc-p b {
   color: var(--sc-text);
 }
+.sc-key {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--sc-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--sc-bg2);
+  color: var(--sc-text);
+  font: 600 12px/1.6 inherit;
+  font-family: inherit;
+  white-space: nowrap;
+}
 .sc-opt {
   display: flex;
   flex-direction: column;

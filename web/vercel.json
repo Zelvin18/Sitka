@@ -56,6 +56,10 @@
       "destination": "/legal.html"
     },
     {
+      "source": "/extension",
+      "destination": "/extension.html"
+    },
+    {
       "source": "/host",
       "destination": "/host.html"
     },

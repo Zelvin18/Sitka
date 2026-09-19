@@ -266,8 +266,10 @@
           <span class="sc-opt-d">${IS_VIDEO ? 'The same, plus a link so others watch along and ask.' : 'The same, plus a link so people in the room follow along and ask.'}</span>
         </button>`
       } else if (st === 'needIcon') {
-        html += `<div class="sc-title">One more press</div>
-        <p class="sc-p">Press the <b>Sitca icon</b> in Chrome’s toolbar, top right. Chrome asks for that once, and then this card does the rest.</p>
+        // Chrome's one rule: a tab is only recorded once the person has
+        // pressed the extension itself. The shortcut is the quickest press.
+        html += `<div class="sc-title">One press, and Sitca is in</div>
+        <p class="sc-p">${card.key ? `Press <kbd class="sc-key">${esc(card.key)}</kbd>, or the ` : 'Press the '}<b>Sitca icon</b> in Chrome’s toolbar, top right. Chrome asks for that once per tab; then this card does the rest.</p>
         <div class="sc-arrow" aria-hidden="true">↗</div>`
       } else if (st === 'signin') {
         html += `<div class="sc-title">Sign in first</div>

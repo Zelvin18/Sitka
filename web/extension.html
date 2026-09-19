@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitca for Chrome — the AI that sits in on your meeting</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#141416">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<meta name="description" content="A small card on Google Meet, Zoom, Teams, Webex and YouTube. One press: Sitca records, captions, tells the speakers apart, answers you privately, and hands you a recap link at the end.">
+<meta property="og:title" content="Sitca for Chrome">
+<meta property="og:description" content="The AI that sits in on your meeting. One press on the card, and it records, captions, answers privately and writes the recap.">
+<meta property="og:image" content="https://sitcaai.vercel.app/og-default.png">
+<style>
+:root{--bg:#fff;--soft:#f6f6f4;--softer:#eeeeec;--text:#1a1a1c;--t2:#62626a;--t3:#9c9ca3;--border:#e6e6e3;--shadow:rgba(20,20,22,.09)}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--soft:#1f1f22;--softer:#28282c;--text:#ededf0;--t2:#a3a3ab;--t3:#6e6e76;--border:#2e2e33;--shadow:rgba(0,0,0,.4)}}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+kbd{display:inline-block;padding:1px 8px;border:1px solid var(--border);border-bottom-width:2px;border-radius:7px;background:var(--soft);font:600 .86em/1.7 inherit;white-space:nowrap}
+
+/* ---- nav ---- */
+nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:62px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:16.5px;letter-spacing:-.01em}
+.mark{width:20px;height:20px;flex:none;display:block}
+.brand:hover .mark circle:last-child{transform-box:view-box;transform-origin:32px 32px;animation:orbit 1.6s linear infinite}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.nav-links{display:flex;align-items:center;gap:24px;font-size:14px;font-weight:600;color:var(--t2)}
+.nav-links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;border:1px solid var(--text);border-radius:12px;background:var(--text);color:var(--bg);font-size:14.5px;font-weight:650;cursor:pointer;transition:transform .12s ease,box-shadow .2s ease}
+.btn:hover{box-shadow:0 8px 24px var(--shadow)}
+.btn:active{transform:scale(.97)}
+.btn2{background:var(--bg);color:var(--text);border-color:var(--border)}
+.btn2:hover{border-color:var(--t3);background:var(--soft);box-shadow:none}
+.btn-sm{padding:8px 16px;font-size:13.5px}
+.btn-lg{padding:15px 30px;font-size:16px;border-radius:14px}
+.btn.soon{background:var(--soft);color:var(--t2);border-color:var(--border);cursor:default;box-shadow:none}
+.btn .ic{width:18px;height:18px;display:block}
+@media(max-width:700px){.nav-links a:not(.btn){display:none}}
+
+/* ---- hero ---- */
+.hero{position:relative;padding:76px 0 56px;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 70% 40%,var(--softer),transparent 70%);pointer-events:none}
+.hero::after{content:'';position:absolute;inset:0;background-image:radial-gradient(var(--border) 1px,transparent 1.2px);background-size:22px 22px;opacity:.6;-webkit-mask-image:radial-gradient(ellipse 60% 60% at 72% 40%,#000 20%,transparent 72%);mask-image:radial-gradient(ellipse 60% 60% at 72% 40%,#000 20%,transparent 72%);pointer-events:none}
+.hero .wrap{position:relative;z-index:1}
+.hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:var(--t2);border:1px solid var(--border);border-radius:999px;padding:5px 12px 5px 8px;background:var(--bg);margin-bottom:22px}
+.eyebrow .mark{width:16px;height:16px}
+h1{font-size:clamp(38px,5.4vw,64px);line-height:1.03;letter-spacing:-.035em;font-weight:800;margin:0 0 18px}
+.hl{position:relative;display:inline-block}
+.hl::after{content:'';position:absolute;left:-.04em;right:-.04em;bottom:.06em;height:.16em;background:var(--text);opacity:.12;border-radius:4px}
+.hero-sub{font-size:clamp(16px,1.9vw,19px);color:var(--t2);max-width:540px;margin:0 0 28px;line-height:1.55}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.hero-trust{margin-top:16px;font-size:13.5px;color:var(--t3);line-height:1.7}
+.hero-trust b{color:var(--t2);font-weight:600}
+.hero-wrong{display:none;margin-top:18px;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--soft);font-size:14px;color:var(--t2);line-height:1.55}
+.hero-wrong b{color:var(--text)}
+body.wrong .hero-wrong{display:block}
+body.wrong .hero-cta{display:none}
+
+/* the meeting mock: a dark call with the card sitting on it */
+.mock{position:relative;aspect-ratio:16/10.6;border-radius:22px;background:#0f0f11;box-shadow:0 30px 80px -20px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06);overflow:hidden;color:#ededf0;font-size:12px}
+.mock-tiles{position:absolute;inset:14px 14px 58px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px}
+.tile{position:relative;border-radius:14px;background:linear-gradient(160deg,#242428,#18181b);overflow:hidden}
+.tile i{position:absolute;left:50%;top:50%;width:44px;height:44px;border-radius:50%;transform:translate(-50%,-50%);background:#3a3a40;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:700;color:#c9c9d0;font-size:16px}
+.tile span{position:absolute;left:10px;bottom:8px;font-size:11px;color:#b9b9c0;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:6px}
+.tile.talk::after{content:'';position:absolute;inset:0;border:2px solid #7c9cff;border-radius:14px;opacity:.85}
+.mock-bar{position:absolute;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;justify-content:center;gap:10px}
+.mock-bar b{width:34px;height:34px;border-radius:50%;background:#2a2a2f;display:block}
+.mock-bar b.red{background:#e05252;width:52px;border-radius:17px}
+.card{position:absolute;right:16px;bottom:60px;width:min(230px,52%);border-radius:16px;padding:12px;background:rgba(20,20,22,.92);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);box-shadow:0 20px 40px rgba(0,0,0,.45)}
+.card-h{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;margin-bottom:8px}
+.card-h .mark{width:14px;height:14px}
+.card-t{font-size:13.5px;font-weight:700;letter-spacing:-.02em;margin-bottom:8px}
+.card-o{border-radius:10px;padding:8px 10px;margin-bottom:6px;background:#ededf0;color:#141416}
+.card-o.two{background:rgba(255,255,255,.06);color:#ededf0;border:1px solid rgba(255,255,255,.1)}
+.card-o small{display:block;font-weight:500;font-size:10.5px;opacity:.75;line-height:1.35;margin-top:1px}
+.card-o b{font-size:12px}
+.mock .pulse{position:absolute;right:26px;top:22px;width:10px;height:10px;border-radius:50%;background:#ededf0}
+.mock .pulse::after{content:'';position:absolute;inset:-8px;border-radius:50%;border:2px solid #ededf0;opacity:0;animation:ring 1.8s ease-out infinite}
+@keyframes ring{0%{transform:scale(.4);opacity:.7}100%{transform:scale(1.4);opacity:0}}
+@media(prefers-reduced-motion:reduce){.mock .pulse::after,.mark circle{animation:none!important}}
+@media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:36px}.hero{padding:52px 0 40px}}
+@media(max-width:560px){.card{width:48%;padding:10px}.card-o small{display:none}.card-o{padding:7px 9px}.tile i{width:34px;height:34px;font-size:13px}}
+
+/* ---- after install ---- */
+.welcome{display:none;padding:64px 0 40px}
+body.installed .welcome{display:block}
+body.installed .hero{display:none}
+.welcome-head{max-width:640px;margin-bottom:34px}
+.welcome-head p{color:var(--t2);font-size:17px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{position:relative;padding:24px 22px 22px;border:1px solid var(--border);border-radius:20px;background:var(--bg)}
+.step-n{width:30px;height:30px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:750;font-size:13.5px;margin-bottom:16px}
+.step h3{font-size:18px;letter-spacing:-.02em;margin-bottom:8px}
+.step p{color:var(--t2);font-size:14.5px}
+.step .btn{margin-top:14px}
+.pin{margin-top:16px;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--soft);font-size:13px;color:var(--t2)}
+.pin svg{width:18px;height:18px;flex:none;color:var(--text)}
+.pin b{color:var(--text)}
+.pin .arr{margin:0 2px;color:var(--t3)}
+.welcome-tip{margin-top:22px;font-size:14px;color:var(--t2)}
+@media(max-width:860px){.steps{grid-template-columns:1fr}}
+
+/* ---- sections ---- */
+section{padding:72px 0}
+.sec-head{max-width:620px;margin-bottom:40px}
+.sec-head h2{font-size:clamp(28px,3.6vw,40px);letter-spacing:-.03em;line-height:1.1;margin-bottom:12px}
+.sec-head p{color:var(--t2);font-size:17px}
+.alt{background:var(--soft);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.how-card{padding:26px 24px;border:1px solid var(--border);border-radius:20px;background:var(--bg)}
+.how-card .n{font-size:13px;font-weight:700;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+.how-card h3{font-size:19px;letter-spacing:-.02em;margin-bottom:8px}
+.how-card p{color:var(--t2);font-size:14.5px}
+@media(max-width:860px){.how{grid-template-columns:1fr}}
+
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.f{padding:24px 22px;border:1px solid var(--border);border-radius:20px;background:var(--bg)}
+.f svg{width:22px;height:22px;margin-bottom:14px;color:var(--text)}
+.f h3{font-size:16.5px;letter-spacing:-.015em;margin-bottom:6px}
+.f p{color:var(--t2);font-size:14px}
+@media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+
+.sites{display:flex;flex-wrap:wrap;gap:10px}
+.site{padding:10px 16px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-weight:600;font-size:14px}
+
+.priv{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.priv ul{list-style:none;display:grid;gap:12px}
+.priv li{display:flex;gap:12px;font-size:15px;color:var(--t2)}
+.priv li b{color:var(--text);font-weight:650}
+.priv li svg{width:20px;height:20px;flex:none;margin-top:2px;color:var(--text)}
+@media(max-width:860px){.priv{grid-template-columns:1fr}}
+
+.faq{max-width:760px}
+details{border-top:1px solid var(--border);padding:18px 0}
+details:last-child{border-bottom:1px solid var(--border)}
+summary{cursor:pointer;font-weight:650;font-size:16.5px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:'+';color:var(--t3);font-weight:500;font-size:20px;line-height:1}
+details[open] summary::after{content:'–'}
+details p{margin-top:10px;color:var(--t2);font-size:15px;max-width:640px}
+
+.cta{padding:80px 0;text-align:center}
+.cta h2{font-size:clamp(28px,3.6vw,42px);letter-spacing:-.03em;margin-bottom:12px}
+.cta p{color:var(--t2);font-size:17px;margin-bottom:26px}
+
+footer{border-top:1px solid var(--border);background:var(--soft);padding:36px 0 28px;font-size:13px;color:var(--t3)}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.foot .mark{width:14px;height:14px;display:inline-block;vertical-align:-2px;margin-right:6px}
+.foot a{color:var(--t2);font-weight:600;margin-left:18px}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap nav-in">
+  <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitca</a>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#what">What it does</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#faq">Questions</a>
+    <a href="/app">Sign in</a>
+    <a class="btn btn2 btn-sm" href="/app">Open Sitca</a>
+  </div>
+</div></nav>
+
+<!-- after install: the three things to do, shown instead of the hero -->
+<section class="welcome"><div class="wrap">
+  <div class="welcome-head">
+    <div class="eyebrow"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Installed</div>
+    <h1>Sitca is in your browser.</h1>
+    <p>Three things, one minute, and your next meeting has Sitca sitting in.</p>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-n">1</div>
+      <h3>Pin the icon</h3>
+      <p>Chrome tucks new extensions behind the puzzle piece, top right. Open it and press the pin next to Sitca, so the icon is always one press away.</p>
+      <div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h4.5a1.5 1.5 0 0 1 1.5 1.5V9a2 2 0 1 1 0 4v4.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 0-4 0H5.5A1.5 1.5 0 0 1 4 17.5V13a2 2 0 1 0 0-4V4.5A1.5 1.5 0 0 1 5.5 3H10a2 2 0 1 1 4 0z"/></svg><span>Puzzle piece <span class="arr">→</span> <b>Sitca</b> <span class="arr">→</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6z"/></svg></div>
+    </div>
+    <div class="step">
+      <div class="step-n">2</div>
+      <h3>Sign in once</h3>
+      <p>Your sessions, recaps and conversations live in your Sitca account. Sign in here and the card knows you from then on.</p>
+      <a class="btn" href="/app" target="_blank" rel="noopener">Sign in to Sitca</a>
+    </div>
+    <div class="step">
+      <div class="step-n">3</div>
+      <h3>Open a meeting</h3>
+      <p>Join a Google Meet, Zoom, Teams or Webex call, or open a YouTube lecture. A small <b>Capture with Sitca</b> card is waiting on the page.</p>
+      <p class="welcome-tip">Quickest way in: <kbd data-key>Alt+Shift+S</kbd> on the meeting tab.</p>
+    </div>
+  </div>
+</div></section>
+
+<header class="hero"><div class="wrap hero-grid">
+  <div class="hero-copy">
+    <div class="eyebrow"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitca for Chrome</div>
+    <h1>The AI that <span class="hl">sits in</span> on your meeting.</h1>
+    <p class="hero-sub">A small card on Google Meet, Zoom, Teams, Webex and YouTube. One press, and Sitca records, captions, tells the speakers apart, answers you privately, and hands you a recap link when it ends.</p>
+    <div class="hero-cta">
+      <a class="btn btn-lg" id="add" href="#" rel="noopener"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3.5"/><path d="M21.2 9H12M6.9 6l4.5 7.8M7.4 20.5l4.6-7.8"/></svg><span>Add to Chrome — it's free</span></a>
+      <a class="btn btn2 btn-lg" href="#how">See how it works</a>
+    </div>
+    <div class="hero-trust"><b>Chrome, Edge, Brave and Arc</b> · Windows, Mac, Linux and ChromeOS<br>No bot joins your call. Nothing is recorded until you press.</div>
+    <div class="hero-wrong" id="wrong"></div>
+  </div>
+  <div class="mock" aria-hidden="true">
+    <div class="mock-tiles">
+      <div class="tile talk"><i>MK</i><span>Mr Kamau</span></div>
+      <div class="tile"><i>AN</i><span>Amina</span></div>
+      <div class="tile"><i>JO</i><span>Joseph</span></div>
+      <div class="tile"><i>You</i><span>You</span></div>
+    </div>
+    <div class="pulse"></div>
+    <div class="card">
+      <div class="card-h"><svg class="mark" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Sitca</div>
+      <div class="card-t">Capture this meeting</div>
+      <div class="card-o"><b>Just record</b><small>Recording, live captions, notes and a recap, for you.</small></div>
+      <div class="card-o two"><b>Host on Sitca</b><small>The same, plus a link so others follow along and ask.</small></div>
+    </div>
+    <div class="mock-bar"><b></b><b></b><b class="red"></b><b></b><b></b></div>
+  </div>
+</div></header>
+
+<section id="how"><div class="wrap">
+  <div class="sec-head"><h2>Three presses, start to finish.</h2><p>No bot in the participant list, no second app to open. The card lives on the page you are already looking at.</p></div>
+  <div class="how">
+    <div class="how-card"><div class="n">Before</div><h3>Press the card</h3><p>Open a meeting and press <b>Capture with Sitca</b>. Choose <b>Just record</b> for yourself, or <b>Host on Sitca</b> to get a link others can watch along with and ask questions on.</p></div>
+    <div class="how-card"><div class="n">During</div><h3>Talk to Sitca privately</h3><p>A small floating window carries your conversation with Sitca: what did she just say, summarise the last ten minutes, what was the deadline. The recording never sees it.</p></div>
+    <div class="how-card"><div class="n">After</div><h3>Copy the recap link</h3><p>The moment the call ends, the card hands you a link: recording, transcript with the speakers named, notes and highlights. Send it to everyone who missed it.</p></div>
+  </div>
+</div></section>
+
+<section id="what" class="alt"><div class="wrap">
+  <div class="sec-head"><h2>What the card does.</h2><p>Everything Sitca does on a laptop or a phone, from a card the size of a sticky note.</p></div>
+  <div class="grid">
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><h3>Records the whole call</h3><p>Picture and sound of the meeting tab, with your own microphone if you switch it on. Saved to your library while it runs.</p></div>
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg><h3>Live captions, speakers named</h3><p>Every sentence with who said it. Afterwards, ask "what did Mr Kamau say about the exam?" and get the answer.</p></div>
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.4A8 8 0 1 1 21 12z"/></svg><h3>A private conversation</h3><p>Ask Sitca anything about the meeting as it happens. The window floats beside the call and stays out of the recording.</p></div>
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><h3>Host on Sitca</h3><p>A link and a QR code for people in the room or far away: they follow the live captions in their language, hear the room, and ask.</p></div>
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><h3>A microphone that behaves</h3><p>Off until you say so. If you start talking while it is muted, the card taps you on the shoulder.</p></div>
+    <div class="f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 12l3 3 5-6"/></svg><h3>A recap the moment it ends</h3><p>Recording, transcript, notes, highlights and your conversation, on one page you can share. Leaving the call ends the session by itself.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="sec-head"><h2>Where it works.</h2><p>The card appears on these pages by itself; you decide whether to press it.</p></div>
+  <div class="sites"><span class="site">Google Meet</span><span class="site">Zoom</span><span class="site">Microsoft Teams</span><span class="site">Webex</span><span class="site">Whereby</span><span class="site">YouTube</span></div>
+</div></section>
+
+<section id="privacy" class="alt"><div class="wrap priv">
+  <div class="sec-head" style="margin-bottom:0"><h2>Nothing happens until you press.</h2><p>Sitca is a companion you invite in, not a bot that turns up. That is also why Chrome asks you for one press on the icon before the first recording on a tab.</p></div>
+  <ul>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span><b>Not recording by default.</b> The card only listens after you choose to record, and stops when you press Stop or leave the call.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span><b>Your conversation stays yours.</b> The Sitca window is never part of the recording or the recap others see.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span><b>Microphone off until you switch it on.</b> And it is one press to mute again.</span></li>
+    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span><b>Only on meeting pages.</b> The extension does nothing on any other website. <a href="/legal" style="text-decoration:underline">Privacy &amp; Terms</a></span></li>
+  </ul>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <div class="sec-head"><h2>Questions.</h2></div>
+  <div class="faq">
+    <details><summary>Why does Chrome want me to press the Sitca icon first?</summary><p>Recording what a tab shows and plays is something Chrome only allows after you have pressed the extension yourself: the toolbar icon, the keyboard shortcut <kbd data-key>Alt+Shift+S</kbd>, or "Capture this with Sitca" in the right-click menu. Ad blockers and download helpers never need this, because they never record anything. It is once per tab, and the card remembers.</p></details>
+    <details><summary>Which browsers and computers?</summary><p>Any browser built on Chrome: Google Chrome, Microsoft Edge, Brave, Arc, Opera and Vivaldi, on Windows, Mac, Linux and Chromebooks. Chrome 116 or newer. It does not run on phones or iPads: Chrome and Safari on iOS and Android do not take extensions. On a phone, use Sitca in the browser at sitcaai.vercel.app, or join a hosted session with its link.</p></details>
+    <details><summary>Does it join the call as a participant?</summary><p>No. Nobody sees a "Sitca bot" in the list. It records the meeting from your own screen, so it works on any call you are in, even ones you do not host.</p></details>
+    <details><summary>Does it turn on Meet's captions?</summary><p>On Google Meet the card switches Meet's own captions on and reads them, so the speakers' names come straight from the call. They are kept off your screen so the video tiles stay where they are; a switch on the card shows them again.</p></details>
+    <details><summary>What about YouTube?</summary><p>Open a recorded lecture or a live stream and press the card: Sitca records, captions and answers on it just like a meeting, and the recap is ready when you stop.</p></details>
+    <details><summary>Is my session safe if I close the card?</summary><p>Yes. The recording runs in the extension itself, not in the card. Close the floating window, change tabs, work elsewhere; it carries on until you press Stop or leave the call.</p></details>
+  </div>
+</div></section>
+
+<section class="cta alt"><div class="wrap">
+  <h2>Your next meeting, with Sitca sitting in.</h2>
+  <p>Free to add. Free to use on your own sessions.</p>
+  <a class="btn btn-lg" id="add2" href="#">Add to Chrome</a>
+</div></section>
+
+<footer><div class="wrap foot">
+  <span><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>© 2026 Sitca. All rights reserved.</span>
+  <span><a href="/">Sitca</a><a href="/app">Open Sitca</a><a href="/legal">Privacy &amp; Terms</a></span>
+</div></footer>
+
+<script type="module" src="/src/extension.ts"></script>
+</body>
+</html>
