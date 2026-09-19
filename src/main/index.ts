@@ -1002,6 +1002,8 @@ function registerIpc(): void {
     }
   })
 
+  // the desktop's own workspace has no plan: nothing is metered here
+  ipcMain.handle('usage:get', () => null)
   ipcMain.handle('profile:get', () => {
     const given = (store.getSettings().profileName || '').trim()
     let name = given || 'You'

@@ -2,6 +2,7 @@
 // OpenAI preferred when its key is present, otherwise Groq's free Whisper.
 
 import { overLimit } from './_limit.js'
+import { allow, tokenOf } from './_plan.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,6 +15,14 @@ export default async function handler(req, res) {
     if (!(keys.openaiApiKey || keys.groqApiKey) && overLimit(req, 60, 1500)) {
       res.status(429).json({ error: 'Slow down a little.' })
       return
+    }
+    // the month's hours, for a signed-in person; a session under way may finish
+    if (!(keys.openaiApiKey || keys.groqApiKey)) {
+      const may = await allow(tokenOf(req), 'hours')
+      if (!may.ok) {
+        res.status(402).json({ error: may.message, plan: may.plan, limit: 'hours' })
+        return
+      }
     }
     const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
     const openaiKey = clean(keys.openaiApiKey) || clean(process.env.OPENAI_API_KEY)

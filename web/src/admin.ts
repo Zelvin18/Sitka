@@ -5,6 +5,7 @@
  * database (supabase/admin.sql); this page only draws.
  */
 import { createClient } from '@supabase/supabase-js'
+import { PLANS, formatMoney, planOf, priceIn, type PlanId } from '../../src/shared/plans'
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -72,13 +73,40 @@ interface Cohort {
 interface Person {
   id: string
   email: string
+  name: string
   joined: string
   last_seen: string
   sessions: number
   hours: number
+  hours_month: number
   hosted: number
   asks: number
+  asks_month: number
+  plan: PlanId
+  plan_ends: string | null
   admin: boolean
+}
+interface PaidRow {
+  id: string
+  email: string | null
+  plan: PlanId
+  status: string
+  since: string
+  ends: string | null
+  source: string
+  note: string | null
+  active: boolean
+}
+interface PlansData {
+  counts: Record<PlanId, number>
+  paid: PaidRow[]
+  lapsing: number
+  new_30d: number
+}
+interface TeamRow {
+  id: string
+  email: string | null
+  since: string
 }
 interface ErrRow {
   at: string
@@ -278,6 +306,39 @@ function renderKpis(o: Overview, series: DayRow[]): void {
   el('overview-sub').textContent = `${fmtInt(o.users_total)} people all time · ${fmtInt(o.sessions_total)} sessions · ${fmtHours(o.hours_total)} hours · ${fmtInt(o.events_total)} events hosted · ${o.storage_gb} GB of recordings`
 }
 
+/** A month's revenue in US dollars from the plans in force, at list price. */
+function mrr(pd: PlansData): number {
+  let total = 0
+  for (const r of pd.paid) {
+    if (!r.active) continue
+    const p = planOf(r.plan)
+    if (p.usd > 0) total += p.usd
+  }
+  return total
+}
+function renderOverviewCards(pd: PlansData | null, l: Live, o: Overview): void {
+  const line = (k: string, v: string): string => `<div class="ov-line"><span>${k}</span><b>${v}</b></div>`
+  el('ov-money').innerHTML = pd
+    ? `<div class="big">${formatMoney(mrr(pd), 'USD')}<small style="font-size:13px;font-weight:500;color:var(--t2)"> a month</small></div>` +
+      line('Paying accounts', fmtInt(pd.counts.plus + pd.counts.pro + pd.counts.institution)) +
+      line('New in 30 days', fmtInt(pd.new_30d)) +
+      line('Lapsing this week', fmtInt(pd.lapsing)) +
+      `<div class="note"><a href="#plans">Plans &amp; revenue →</a></div>`
+    : '<div class="calm">Run supabase/plans.sql to see money here.</div>'
+  el('ov-live').innerHTML =
+    `<div class="big">${fmtInt(l.people_15m)}<small style="font-size:13px;font-weight:500;color:var(--t2)"> people in the last 15 min</small></div>` +
+    line('Recording now', fmtInt(l.recording_now)) +
+    line('Events live', fmtInt(l.events.length)) +
+    line('Joined an event', fmtInt(l.joins_15m)) +
+    `<div class="note"><a href="#live">Live now →</a></div>`
+  el('ov-faults').innerHTML =
+    `<div class="big" style="color:${o.errors_24h > 0 ? 'var(--danger)' : 'inherit'}">${fmtInt(o.errors_24h)}<small style="font-size:13px;font-weight:500;color:var(--t2)"> in 24 hours</small></div>` +
+    line('In 7 days', fmtInt(o.errors_7d)) +
+    line('Captions that failed', fmtInt(o.stt_errors)) +
+    line('Saves that failed', fmtInt(o.db_errors)) +
+    `<div class="note"><a href="#reliability">Reliability →</a></div>`
+}
+
 function renderCohorts(cs: Cohort[]): void {
   const box = el('cohorts')
   if (!cs.length) {
@@ -429,24 +490,36 @@ async function renderStorage(): Promise<void> {
   paintStorage()
 }
 function paintStorage(): void {
-  const host = document.getElementById('rel-kpis')
-  if (!host) return
-  let card = document.getElementById('storage-kpi')
-  if (!card) {
-    card = document.createElement('div')
-    card.id = 'storage-kpi'
-    card.className = 'card kpi'
-    host.appendChild(card)
-  }
+  const body = document.getElementById('storage-body')
+  const owners = document.getElementById('storage-owners')
+  if (!body || !owners) return
   if (!storageUsage) {
-    card.innerHTML = `<span class="k-label">Recordings in Cloudflare</span><span class="k-value">…</span><span class="k-delta">${esc(storageError || 'counting')}</span>`
+    body.innerHTML = `<div class="calm">${esc(storageError || 'Counting…')}</div>`
+    owners.innerHTML = ''
     return
   }
   const u = storageUsage
   const pct = Math.min(999, Math.round((u.bytes / (R2_FREE_GB * 1e9)) * 100))
-  const tone = pct >= 90 ? '#d0524a' : pct >= 70 ? '#c98a1a' : 'inherit'
-  const top = u.owners[0] ? ` · largest account ${fmtBytes(u.owners[0].bytes)}` : ''
-  card.innerHTML = `<span class="k-label">Recordings in Cloudflare</span><span class="k-value" style="color:${tone}">${fmtBytes(u.bytes)}</span><span class="k-delta">${pct}% of the free ${R2_FREE_GB} GB · ${fmtInt(u.files)} files across ${fmtInt(u.accounts)} accounts${esc(top)}</span>`
+  const tone = pct >= 90 ? 'var(--danger)' : 'inherit'
+  body.innerHTML =
+    `<div class="big" style="color:${tone}">${fmtBytes(u.bytes)}</div>` +
+    `<div class="gauge"><i style="width:${Math.min(100, pct)}%"></i></div>` +
+    `<div class="note">${pct}% of the free ${R2_FREE_GB} GB. Beyond it Cloudflare charges about $0.015 per GB a month; nothing for people watching.</div>` +
+    `<div class="ov-line" style="margin-top:10px"><span>Recordings</span><b>${fmtInt(u.files)}</b></div>` +
+    `<div class="ov-line"><span>Files of every kind</span><b>${fmtInt(u.objects)}</b></div>` +
+    `<div class="ov-line"><span>Accounts with recordings</span><b>${fmtInt(u.accounts)}</b></div>` +
+    `<div class="ov-line"><span>Average per account</span><b>${fmtBytes(u.accounts ? u.bytes / u.accounts : 0)}</b></div>`
+  const max = Math.max(1, ...u.owners.map((o) => o.bytes))
+  owners.innerHTML = u.owners.length
+    ? u.owners
+        .map((o) => {
+          const who = people.find((p) => p.id === o.owner)
+          const label = who ? who.email : o.owner.slice(0, 8) + '…'
+          const plan = who ? `<span class="plan-chip${who.plan === 'free' ? '' : ' paid'}" style="margin-left:6px">${esc(who.plan)}</span>` : ''
+          return `<div class="owner-bar"><span class="em" title="${esc(o.owner)}">${esc(label)}${plan}</span><span class="v">${fmtBytes(o.bytes)}</span><span class="t"><i style="width:${((o.bytes / max) * 100).toFixed(1)}%"></i></span></div>`
+        })
+        .join('')
+    : '<div class="calm">No recordings yet.</div>'
 }
 
 function shortUa(ua: string): string {
@@ -493,16 +566,171 @@ async function renderHealth(): Promise<void> {
 }
 
 let people: Person[] = []
+let plansData: PlansData | null = null
+const planChip = (plan: PlanId, ends?: string | null): string => {
+  const lapsed = ends ? new Date(ends).getTime() < Date.now() : false
+  return `<span class="plan-chip${plan !== 'free' ? ' paid' : ''}${lapsed ? ' lapsed' : ''}">${esc(planOf(plan).name)}</span>`
+}
 function renderPeople(): void {
   const q = (el('people-search') as HTMLInputElement).value.trim().toLowerCase()
-  const list = q ? people.filter((p) => (p.email || '').toLowerCase().includes(q)) : people
+  const list = q ? people.filter((p) => `${p.email || ''} ${p.name || ''}`.toLowerCase().includes(q)) : people
+  const monthStart = new Date()
+  monthStart.setDate(1)
+  monthStart.setHours(0, 0, 0, 0)
+  const active7 = people.filter((p) => Date.now() - new Date(p.last_seen).getTime() < 7 * 86400000).length
+  const paying = people.filter((p) => p.plan !== 'free').length
+  const newMonth = people.filter((p) => new Date(p.joined) >= monthStart).length
+  el('people-kpis').innerHTML = [
+    { l: 'People', v: fmtInt(people.length), n: 'accounts, newest 200 shown' },
+    { l: 'Seen this week', v: fmtInt(active7), n: 'opened Sitca in 7 days' },
+    { l: 'On a paid plan', v: fmtInt(paying), n: `${people.length ? Math.round((paying / people.length) * 100) : 0}% of accounts` },
+    { l: 'Joined this month', v: fmtInt(newMonth), n: `since ${monthStart.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` }
+  ]
+    .map((k) => `<div class="card kpi"><span class="k-label">${k.l}</span><span class="k-value">${k.v}</span><span class="k-delta">${k.n}</span></div>`)
+    .join('')
   const rows = list
     .map((p) => {
-      const initial = (p.email || '?').slice(0, 1).toUpperCase()
-      return `<tr><td><div class="who"><span class="av">${esc(initial)}</span><span class="em" title="${esc(p.email)}">${esc(p.email || '—')}</span>${p.admin ? '<span class="chip">TEAM</span>' : ''}</div></td><td>${ago(p.joined)}</td><td>${ago(p.last_seen)}</td><td class="num">${fmtInt(p.sessions)}</td><td class="num">${fmtHours(p.hours)}</td><td class="num">${fmtInt(p.hosted)}</td><td class="num">${fmtInt(p.asks)}</td></tr>`
+      const initial = (p.name || p.email || '?').slice(0, 1).toUpperCase()
+      return `<tr class="row" data-id="${esc(p.id)}"><td><div class="who"><span class="av">${esc(initial)}</span><span class="em" title="${esc(p.email)}">${esc(p.email || '—')}</span>${p.name ? `<span class="name">${esc(p.name)}</span>` : ''}${p.admin ? '<span class="chip">TEAM</span>' : ''}</div></td><td>${planChip(p.plan, p.plan_ends)}</td><td>${ago(p.joined)}</td><td>${ago(p.last_seen)}</td><td class="num">${fmtInt(p.sessions)}</td><td class="num">${fmtHours(p.hours_month)}<small style="color:var(--t3)"> / ${fmtHours(p.hours)}</small></td><td class="num">${fmtInt(p.asks_month)}<small style="color:var(--t3)"> / ${fmtInt(p.asks)}</small></td><td class="num">${fmtInt(p.hosted)}</td></tr>`
     })
     .join('')
-  el('people-table').innerHTML = `<thead><tr><th>Person</th><th>Joined</th><th>Last seen</th><th class="num">Sessions</th><th class="num">Hours</th><th class="num">Hosted</th><th class="num">Questions</th></tr></thead><tbody>${rows || '<tr><td colspan="7" style="color:var(--t3);text-align:center;padding:20px">Nobody matches.</td></tr>'}</tbody>`
+  el('people-table').innerHTML = `<thead><tr><th>Person</th><th>Plan</th><th>Joined</th><th>Last seen</th><th class="num">Sessions</th><th class="num">Hours · month / all</th><th class="num">Questions · month / all</th><th class="num">Hosted</th></tr></thead><tbody>${rows || '<tr><td colspan="8" style="color:var(--t3);text-align:center;padding:20px">Nobody matches.</td></tr>'}</tbody>`
+}
+
+// ---------- one person, in the drawer ----------
+function openPerson(id: string): void {
+  const p = people.find((x) => x.id === id)
+  if (!p) return
+  const plan = planOf(p.plan)
+  const ends = p.plan_ends ? new Date(p.plan_ends) : null
+  const fact = (l: string, v: string, small = ''): string => `<div class="fact"><div class="l">${l}</div><div class="v">${v}${small ? `<small> ${small}</small>` : ''}</div></div>`
+  el('drawer-body').innerHTML = `
+    <h2>${esc(p.email || '—')}</h2>
+    <div class="sub">${p.name ? esc(p.name) + ' · ' : ''}joined ${ago(p.joined)} · last seen ${ago(p.last_seen)}${p.admin ? ' · team' : ''}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${planChip(p.plan, p.plan_ends)}<span style="font-size:12.5px;color:var(--t2)">${ends ? (ends.getTime() < Date.now() ? 'lapsed ' : 'until ') + ends.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : p.plan === 'free' ? 'no paid plan' : 'open-ended'}</span></div>
+    <h3>This month</h3>
+    <div class="facts">
+      ${fact('Hours recorded', fmtHours(p.hours_month), plan.limits.hours ? `of ${plan.limits.hours}` : 'no limit')}
+      ${fact('Questions', fmtInt(p.asks_month), plan.limits.asks ? `of ${plan.limits.asks}` : 'no limit')}
+    </div>
+    <h3>All time</h3>
+    <div class="facts">
+      ${fact('Sessions', fmtInt(p.sessions))}
+      ${fact('Hours', fmtHours(p.hours))}
+      ${fact('Hosted', fmtInt(p.hosted))}
+      ${fact('Questions', fmtInt(p.asks))}
+    </div>
+    <h3>Plan</h3>
+    <div class="form">
+      <label>Plan<select id="pl-plan">${PLANS.map((x) => `<option value="${x.id}"${x.id === p.plan ? ' selected' : ''}>${x.name}${x.usd > 0 ? ` · ${formatMoney(x.usd, 'USD')} a month` : ''}</option>`).join('')}</select></label>
+      <label>For how long<select id="pl-months"><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option><option value="0">Open-ended</option></select></label>
+      <label>Note (who paid, how much, how)<input id="pl-note" placeholder="MTN MoMo 15,000 on 3 Oct" value="${esc(plansData?.paid.find((r) => r.id === p.id)?.note || '')}"></label>
+      <div class="row"><button class="btn sm" id="pl-save">Set plan</button><span class="ok-note" id="pl-note-out"></span></div>
+    </div>
+    <h3>Team</h3>
+    <div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn sm${p.admin ? ' danger' : ' ghost'}" id="pl-team">${p.admin ? 'Remove from team' : 'Add to team'}</button>
+      <span class="ok-note" id="pl-team-out"></span>
+    </div>`
+  el('drawer').classList.add('on')
+  el('veil').classList.add('on')
+  el('drawer').setAttribute('aria-hidden', 'false')
+  el('pl-save').addEventListener('click', () => {
+    void (async () => {
+      const out = el('pl-note-out')
+      out.textContent = 'Saving…'
+      try {
+        await rpc('admin_set_plan', {
+          p_user: p.id,
+          p_plan: (el('pl-plan') as HTMLSelectElement).value,
+          p_months: Number((el('pl-months') as HTMLSelectElement).value),
+          p_note: (el('pl-note') as HTMLInputElement).value.trim() || null
+        })
+        out.textContent = 'Done. The person sees it the next time Settings opens.'
+        await reloadPeople()
+        openPerson(p.id)
+      } catch (err) {
+        out.textContent = 'Could not: ' + (err instanceof Error ? err.message : String(err))
+      }
+    })()
+  })
+  el('pl-team').addEventListener('click', () => {
+    void (async () => {
+      const out = el('pl-team-out')
+      out.textContent = '…'
+      try {
+        await rpc('admin_grant', { p_email: p.email, p_on: !p.admin })
+        await reloadPeople()
+        void renderTeam()
+        openPerson(p.id)
+      } catch (err) {
+        out.textContent = 'Could not: ' + (err instanceof Error ? err.message : String(err))
+      }
+    })()
+  })
+}
+function closeDrawer(): void {
+  el('drawer').classList.remove('on')
+  el('veil').classList.remove('on')
+  el('drawer').setAttribute('aria-hidden', 'true')
+}
+async function reloadPeople(): Promise<void> {
+  const [ppl, pd] = await Promise.all([rpc<Person[]>('admin_people', { lim: 200 }), rpc<PlansData>('admin_plans').catch(() => null)])
+  people = ppl
+  plansData = pd
+  renderPeople()
+  renderPlans()
+  paintStorage()
+}
+
+// ---------- plans & revenue ----------
+function renderPlans(): void {
+  const pd = plansData
+  if (!pd) {
+    el('plan-kpis').innerHTML = '<div class="card kpi" style="grid-column:1/-1"><span class="k-label">Plans</span><span class="k-value">—</span><span class="k-delta">Run supabase/plans.sql in the Supabase SQL editor, then refresh.</span></div>'
+    el('paid-table').innerHTML = ''
+    el('plan-split').innerHTML = ''
+  } else {
+    const paying = pd.counts.plus + pd.counts.pro + pd.counts.institution
+    el('plan-kpis').innerHTML = [
+      { l: 'A month, at list price', v: formatMoney(mrr(pd), 'USD'), n: 'from the plans in force' },
+      { l: 'Paying accounts', v: fmtInt(paying), n: `${fmtInt(pd.counts.free)} on Free` },
+      { l: 'New in 30 days', v: fmtInt(pd.new_30d), n: 'plans switched on' },
+      { l: 'Lapsing this week', v: fmtInt(pd.lapsing), n: 'worth a message' }
+    ]
+      .map((k) => `<div class="card kpi"><span class="k-label">${k.l}</span><span class="k-value">${k.v}</span><span class="k-delta">${k.n}</span></div>`)
+      .join('')
+    const rows = pd.paid
+      .map(
+        (r) =>
+          `<tr class="row" data-id="${esc(r.id)}"><td><span class="em" title="${esc(r.email || '')}">${esc(r.email || r.id.slice(0, 8))}</span></td><td>${planChip(r.plan, r.active ? r.ends : new Date(0).toISOString())}</td><td>${ago(r.since)}</td><td>${r.ends ? new Date(r.ends).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : 'open'}</td><td>${esc(r.source)}</td><td style="color:var(--t2)">${esc(r.note || '')}</td></tr>`
+      )
+      .join('')
+    el('paid-table').innerHTML = `<thead><tr><th>Person</th><th>Plan</th><th>Since</th><th>Ends</th><th>Paid via</th><th>Note</th></tr></thead><tbody>${rows || '<tr><td colspan="6" style="color:var(--t3);text-align:center;padding:20px">Nobody is on a paid plan yet. Set one from People.</td></tr>'}</tbody>`
+    hbars(
+      el('plan-split'),
+      PLANS.map((p) => ({ name: p.name, count: pd.counts[p.id] || 0 })),
+      'No accounts yet.'
+    )
+  }
+  el('pricelist').innerHTML = PLANS.map((p) => {
+    const usd = p.usd < 0 ? 'Quoted' : p.usd === 0 ? 'Free' : `${formatMoney(p.usd, 'USD')}<small>a month</small>`
+    const ugx = priceIn(p, 'UGX')
+    const st = p.usdStudent !== undefined ? ` · students ${formatMoney(priceIn(p, 'UGX', true) || 0, 'UGX')}` : ''
+    return `<div class="price"><div class="n">${esc(p.name)}</div><div class="p">${usd}</div><div class="l">${ugx ? formatMoney(ugx, 'UGX') + ' a month' + st : p.usd < 0 ? 'per seat, by conversation' : 'no charge'}<br>${p.limits.hours || '∞'} h · ${p.limits.asks || '∞'} questions · ${p.limits.storageGb || '∞'} GB · ${p.limits.attendees} people</div></div>`
+  }).join('')
+}
+
+// ---------- the team ----------
+async function renderTeam(): Promise<void> {
+  try {
+    const team = await rpc<TeamRow[]>('admin_list')
+    el('team-list').innerHTML = team.length
+      ? team.map((t) => `<div class="team-row"><span class="av" style="width:26px;height:26px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none">${esc((t.email || '?').slice(0, 1).toUpperCase())}</span><span class="em">${esc(t.email || t.id)}</span><span class="when">since ${ago(t.since)}</span></div>`).join('')
+      : '<div class="calm">Nobody yet.</div>'
+  } catch {
+    el('team-list').innerHTML = '<div class="calm">Run supabase/plans.sql to manage the team from here.</div>'
+  }
 }
 
 // ---------- loading ----------
@@ -518,13 +746,14 @@ async function loadAll(): Promise<void> {
   el('refresh').classList.add('busy')
   try {
     void renderStorage()
-    const [o, series, cohorts, errs, live, ppl] = await Promise.all([
+    const [o, series, cohorts, errs, live, ppl, pd] = await Promise.all([
       rpc<Overview>('admin_overview', { days }),
       rpc<DayRow[]>('admin_series', { days }),
       rpc<Cohort[]>('admin_retention', { weeks: 8 }),
       rpc<ErrRow[]>('admin_errors', { lim: 50 }),
       rpc<Live>('admin_live'),
-      rpc<Person[]>('admin_people', { lim: 200 })
+      rpc<Person[]>('admin_people', { lim: 200 }),
+      rpc<PlansData>('admin_plans').catch(() => null)
     ])
     renderKpis(o, series)
     drawChart(el('chart-people'), series, [
@@ -544,8 +773,13 @@ async function loadAll(): Promise<void> {
     renderLive(live)
     renderReliability(o, errs)
     people = ppl
+    plansData = pd
     renderPeople()
+    renderPlans()
+    renderOverviewCards(pd, live, o)
+    paintStorage()
     void renderHealth()
+    void renderTeam()
     el('updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   } catch (err) {
     el('overview-sub').textContent = 'Could not load: ' + (err instanceof Error ? err.message : String(err))
@@ -576,24 +810,50 @@ function wire(): void {
   const bell = document.getElementById('bell')
   if (bell) {
     bell.addEventListener('click', () => {
-      const target = document.getElementById('errors')
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      location.hash = '#reliability'
       markErrorsSeen()
     })
   }
   el('people-search').addEventListener('input', renderPeople)
-  // the rail follows the section in view
-  const links = Array.from(el('rail').querySelectorAll('a'))
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const en of entries) {
-        if (!en.isIntersecting) continue
-        links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id))
+  // one page at a time: the address says which
+  const showPage = (): void => {
+    const id = (location.hash || '#overview').slice(1)
+    const known = Array.from(document.querySelectorAll('main section')).some((x) => x.id === id)
+    const page = known ? id : 'overview'
+    document.querySelectorAll('main section').forEach((x) => x.classList.toggle('on', x.id === page))
+    el('rail').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + page))
+    window.scrollTo({ top: 0 })
+    if (page === 'reliability') markErrorsSeen()
+  }
+  window.addEventListener('hashchange', showPage)
+  showPage()
+  // a person, in the drawer
+  document.addEventListener('click', (e) => {
+    const row = (e.target as HTMLElement).closest('tr.row') as HTMLElement | null
+    if (row && row.dataset.id) openPerson(row.dataset.id)
+  })
+  el('drawer-x').addEventListener('click', closeDrawer)
+  el('veil').addEventListener('click', closeDrawer)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDrawer()
+  })
+  el('team-add').addEventListener('click', () => {
+    void (async () => {
+      const email = (el('team-email') as HTMLInputElement).value.trim()
+      const out = el('team-note')
+      if (!email) return
+      out.textContent = '…'
+      try {
+        await rpc('admin_grant', { p_email: email, p_on: true })
+        out.textContent = 'Done.'
+        ;(el('team-email') as HTMLInputElement).value = ''
+        void renderTeam()
+        await reloadPeople()
+      } catch (err) {
+        out.textContent = 'Could not: ' + (err instanceof Error ? err.message : String(err))
       }
-    },
-    { rootMargin: '-40% 0px -55% 0px' }
-  )
-  document.querySelectorAll('section').forEach((s) => io.observe(s))
+    })()
+  })
   liveTimer = window.setInterval(() => void refreshLive(), 30000)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void refreshLive()

@@ -60,6 +60,7 @@ export default async function handler(req, res) {
     if (op === 'media') return await mediaLinks(res, cfg, owner, body)
     if (op === 'del') return await removeKeys(res, cfg, owner, body)
     if (op === 'usage') return await usage(res, cfg, token)
+    if (op === 'mine') return await mine(res, cfg, owner)
     return res.status(400).json({ error: 'Unknown operation.' })
   } catch (err) {
     console.error('storage', op, err)
@@ -241,6 +242,26 @@ async function usage(res, cfg, token) {
     .map(([owner, bytes]) => ({ owner, bytes }))
   res.setHeader('Cache-Control', 'no-store')
   return res.status(200).json({ bytes: total, objects: objects.length, files: recordings, accounts: byOwner.size, owners })
+}
+
+/** How much of Cloudflare one person's recordings take, for their Settings. */
+const mineCache = new Map()
+async function mine(res, cfg, owner) {
+  if (!owner) return res.status(401).json({ error: 'Sign in first.' })
+  const hit = mineCache.get(owner)
+  res.setHeader('Cache-Control', 'no-store')
+  if (hit && hit.until > Date.now()) return res.status(200).json(hit.body)
+  const objects = await r2List(cfg, `${owner}/`)
+  let bytes = 0
+  let files = 0
+  for (const o of objects) {
+    bytes += o.size
+    if (/\.webm$/.test(o.key) && !/-slides\//.test(o.key)) files++
+  }
+  const body = { bytes, files, objects: objects.length }
+  if (mineCache.size > 500) mineCache.clear()
+  mineCache.set(owner, { body, until: Date.now() + 120000 })
+  return res.status(200).json(body)
 }
 
 async function removeKeys(res, cfg, owner, body) {

@@ -13,6 +13,7 @@
 // that answers with "decommissioned", "requires terms acceptance", or "not
 // found" is remembered as dead for a while and skipped.
 
+import { allow, tokenOf } from './_plan.js'
 const NON_CHAT_RE =
   /whisper|tts|orpheus|canopylabs|playai|guard|embed|moderation|safety|allam|saudi|arabic|transcri|-stt|rerank/i
 const REASONING_RE = /deepseek|qwq|qwen|r1|reason|think|gpt-oss/i
@@ -423,7 +424,7 @@ export default async function handler(req, res) {
     return
   }
   try {
-    const { keys = {}, system = '', messages = [], requireVision = false, fast = false } = req.body || {}
+    const { keys = {}, system = '', messages = [], requireVision = false, fast = false, kind = '' } = req.body || {}
     // what a caller may ask for is bounded, so one request cannot run the
     // function to its limit
     const maxTokens = Math.min(4000, Math.max(64, Number((req.body || {}).maxTokens) || 1600))
@@ -433,6 +434,14 @@ export default async function handler(req, res) {
       if (overLimit(ip)) {
         res.status(429).json({ error: 'Slow down a little — try again in a few minutes.' })
         return
+      }
+      // a question from a signed-in person counts against their plan
+      if (kind === 'ask') {
+        const may = await allow(tokenOf(req), 'asks')
+        if (!may.ok) {
+          res.status(402).json({ error: may.message, plan: may.plan, limit: 'asks' })
+          return
+        }
       }
     }
     // API keys are ASCII; strip anything else (smart dashes, stray words,

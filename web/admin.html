@@ -42,11 +42,16 @@ button{font:inherit;color:inherit}
 
 .shell{display:grid;grid-template-columns:210px 1fr;max-width:1320px;margin:0 auto}
 .rail{position:sticky;top:56px;align-self:start;height:calc(100vh - 56px);padding:22px 14px;border-right:1px solid var(--border)}
-.rail a{display:block;padding:8px 12px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--t2);text-decoration:none}
+.rail a{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--t2);text-decoration:none}
+.rail a svg{width:16px;height:16px;flex:none;opacity:.85}
+.rail .rail-group{font-size:10.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:14px 12px 4px}
+.rail .rail-group:first-child{padding-top:0}
 .rail a.on,.rail a:hover{background:var(--soft);color:var(--text)}
 .rail .rail-foot{position:absolute;bottom:22px;left:14px;right:14px;font-size:11.5px;color:var(--t3);line-height:1.5}
 .content{padding:26px 28px 80px;min-width:0}
-section{margin-bottom:40px;scroll-margin-top:72px}
+section{display:none;margin-bottom:40px;animation:pagein .18s ease}
+section.on{display:block}
+@keyframes pagein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
 .sec-head h2{font-size:17px;letter-spacing:-.015em;margin:0}
 .sec-head .sub{font-size:12.5px;color:var(--t3)}
@@ -178,6 +183,60 @@ section{margin-bottom:40px;scroll-margin-top:72px}
   .hbar{grid-template-columns:96px 1fr 44px}
   .err{grid-template-columns:1fr}
 }
+
+/* ---- plans ---- */
+.plan-chip{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--t2);background:var(--soft);text-transform:uppercase}
+.plan-chip.paid{background:var(--text);color:var(--bg);border-color:var(--text)}
+.plan-chip.lapsed{color:var(--danger);border-color:var(--danger)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.pricelist{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.price{border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.price .n{font-weight:700}
+.price .p{font-size:22px;font-weight:800;letter-spacing:-.03em;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.price .p small{font-size:12px;font-weight:500;color:var(--t2);letter-spacing:0;margin-left:3px}
+.price .l{font-size:12.5px;color:var(--t2);line-height:1.5}
+.tbl tr.row{cursor:pointer}
+.tbl tr.row:hover td{background:var(--soft)}
+.tbl .name{color:var(--t3);font-size:12px;margin-left:6px}
+/* ---- drawer ---- */
+.drawer-veil{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s ease}
+.drawer-veil.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--bg);border-left:1px solid var(--border);z-index:41;transform:translateX(100%);transition:transform .22s ease;overflow:auto;padding:22px 24px 40px}
+.drawer.on{transform:none}
+.drawer .x{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--bg);cursor:pointer;color:var(--t2);font-size:18px;line-height:1}
+.drawer h2{font-size:17px;margin:0 0 2px;letter-spacing:-.015em;padding-right:40px;word-break:break-all}
+.drawer .sub{color:var(--t3);font-size:12.5px;margin-bottom:18px}
+.drawer h3{margin:18px 0 8px;font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--t3)}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fact{border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.fact .l{font-size:11.5px;color:var(--t3)}
+.fact .v{font-size:18px;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.fact .v small{font-size:12px;color:var(--t2);font-weight:500}
+.form{display:flex;flex-direction:column;gap:10px}
+.form label{font-size:12.5px;color:var(--t2);display:flex;flex-direction:column;gap:4px}
+.form select,.form input{font:inherit;font-size:13.5px;color:var(--text);background:var(--soft);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+.form select:focus,.form input:focus{outline:none;border-color:var(--text)}
+.form .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:9px}
+.btn.danger{border-color:var(--danger);color:var(--danger);background:transparent}
+.ok-note{font-size:12.5px;color:var(--t2);min-height:18px}
+.team-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:13px}
+.team-row:first-child{border-top:0}
+.team-row .em{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-row .when{color:var(--t3);font-size:12px}
+.owner-bar{display:grid;grid-template-columns:1fr 90px;gap:4px 10px;align-items:center;font-size:12.5px;padding:6px 0}
+.owner-bar .em{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.owner-bar .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.owner-bar .t{height:6px;border-radius:3px;background:var(--softer);overflow:hidden;grid-column:1/-1}
+.owner-bar .t i{display:block;height:100%;background:var(--ink);border-radius:3px}
+.gauge{height:12px;border-radius:6px;background:var(--softer);overflow:hidden;margin:8px 0}
+.gauge i{display:block;height:100%;background:var(--ink);border-radius:6px;transition:width .5s ease}
+.big{font-size:30px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.ov-line{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px}
+.ov-line:first-child{border-top:0}
+.ov-line b{font-variant-numeric:tabular-nums}
+@media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.pricelist{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){.rail .rail-group{display:none}.rail a svg{display:none}.g4,.pricelist{grid-template-columns:1fr 1fr}.facts{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -212,18 +271,52 @@ section{margin-bottom:40px;scroll-margin-top:72px}
   </div>
   <div class="shell">
     <nav class="rail" id="rail">
-      <a href="#overview" class="on">Overview</a>
-      <a href="#growth">Growth</a>
-      <a href="#usage">Usage</a>
-      <a href="#live">Live now</a>
-      <a href="#reliability">Reliability</a>
-      <a href="#people">People</a>
+      <div class="rail-group">Today</div>
+      <a href="#overview" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Overview</a>
+      <a href="#live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7"/></svg>Live now</a>
+      <div class="rail-group">People</div>
+      <a href="#people"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4.5-6.2"/></svg>People</a>
+      <a href="#plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h3"/></svg>Plans &amp; revenue</a>
+      <a href="#growth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Growth</a>
+      <div class="rail-group">Product</div>
+      <a href="#usage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Usage</a>
+      <a href="#storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Storage</a>
+      <a href="#reliability"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Reliability</a>
+      <div class="rail-group">Sitca</div>
+      <a href="#team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M4 21a8 8 0 0 1 16 0M17 4l2 2 3-3"/></svg>Team</a>
       <div class="rail-foot" id="railfoot"></div>
     </nav>
     <main class="content">
       <section id="overview">
         <div class="sec-head"><h2>Overview</h2><span class="sub" id="overview-sub"></span></div>
         <div class="grid g6" id="kpis"></div>
+        <div class="grid g3" style="margin-top:12px">
+          <div class="card"><h3>Money</h3><div id="ov-money"></div></div>
+          <div class="card"><h3>Right now</h3><div id="ov-live"></div></div>
+          <div class="card"><h3>Faults</h3><div id="ov-faults"></div></div>
+        </div>
+      </section>
+
+      <section id="live">
+        <div class="sec-head"><h2>Live now</h2><span class="sub" id="live-sub"></span></div>
+        <div id="live-body"></div>
+      </section>
+
+      <section id="people">
+        <div class="sec-head"><h2>People</h2><input class="search" id="people-search" placeholder="Find by email or name…"></div>
+        <div class="grid g4" style="margin-bottom:12px" id="people-kpis"></div>
+        <div class="card" style="padding:4px 6px;overflow:auto"><table class="tbl" id="people-table"></table></div>
+        <div class="note" style="font-size:12.5px;color:var(--t3);margin-top:8px">Press a person to see their month and set their plan.</div>
+      </section>
+
+      <section id="plans">
+        <div class="sec-head"><h2>Plans &amp; revenue</h2><span class="sub">Who pays, what comes in, who is about to lapse</span></div>
+        <div class="grid g4" style="margin-bottom:12px" id="plan-kpis"></div>
+        <div class="grid g21">
+          <div class="card"><h3>Paid accounts</h3><div style="overflow:auto"><table class="tbl" id="paid-table"></table></div></div>
+          <div class="card"><h3>By plan</h3><div id="plan-split" class="hbars"></div><div class="note">Everyone with an account, by the plan in force today.</div></div>
+        </div>
+        <div class="card" style="margin-top:12px"><h3>Price list</h3><div class="pricelist" id="pricelist"></div><div class="note">Set in src/shared/plans.ts; a change there changes the app, the site and this page. Payments are taken by hand until a provider is wired in: a person chooses a plan in Settings, messages, pays, and you switch it on from People.</div></div>
       </section>
 
       <section id="growth">
@@ -263,9 +356,12 @@ section{margin-bottom:40px;scroll-margin-top:72px}
         </div>
       </section>
 
-      <section id="live">
-        <div class="sec-head"><h2>Live now</h2><span class="sub" id="live-sub"></span></div>
-        <div id="live-body"></div>
+      <section id="storage">
+        <div class="sec-head"><h2>Storage</h2><span class="sub">Recordings in Cloudflare, and who they belong to</span></div>
+        <div class="grid g21">
+          <div class="card"><h3>Recordings in Cloudflare</h3><div id="storage-body"></div></div>
+          <div class="card"><h3>Largest accounts</h3><div id="storage-owners"></div></div>
+        </div>
       </section>
 
       <section id="reliability">
@@ -277,12 +373,25 @@ section{margin-bottom:40px;scroll-margin-top:72px}
         </div>
       </section>
 
-      <section id="people">
-        <div class="sec-head"><h2>People</h2><input class="search" id="people-search" placeholder="Find by email…"></div>
-        <div class="card" style="padding:4px 6px;overflow:auto"><table class="tbl" id="people-table"></table></div>
+      <section id="team">
+        <div class="sec-head"><h2>Team</h2><span class="sub">Who may open this page</span></div>
+        <div class="grid g21">
+          <div class="card"><h3>Owners</h3><div id="team-list"></div></div>
+          <div class="card"><h3>Add someone</h3>
+            <div class="form"><label>Their Sitca email<input id="team-email" type="email" placeholder="name@example.com" autocomplete="off"></label>
+            <div class="row"><button class="btn sm" id="team-add">Give access</button><span class="ok-note" id="team-note"></span></div></div>
+            <div class="note">They must already have a Sitca account. Owners see everything on this page and can set anyone’s plan.</div>
+          </div>
+        </div>
       </section>
     </main>
   </div>
+
+  <div class="drawer-veil" id="veil"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <button class="x" id="drawer-x" aria-label="Close">×</button>
+    <div id="drawer-body"></div>
+  </aside>
 </div>
 <script type="module" src="/src/admin.ts"></script>
 </body>

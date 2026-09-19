@@ -23,6 +23,7 @@ import {
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
+import { limitMessage, overLimit as overPlanLimit, type Usage } from '../../src/shared/plans'
 import { assignSpeakers, listSpeakers, speakerName, speakersNote, transcriptLine, type Utterance } from '../../src/shared/speakers'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
 import { foldAttachments } from '../../src/shared/attachLogic'
@@ -754,29 +755,75 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * whether attached images were actually seen. Busy or rate-limited answers
    * are retried here a couple of times before the caller ever sees an error.
    */
+  /** The person's sign-in, for the routes that check their plan. */
+  async function authHeader(): Promise<Record<string, string>> {
+    try {
+      const { data } = await sb.auth.getSession()
+      const t = data.session?.access_token
+      return t ? { Authorization: `Bearer ${t}` } : {}
+    } catch {
+      return {}
+    }
+  }
+
+  // ---------- the plan's meter ----------
+  // What this account has used this month, from the database, and how much
+  // of Cloudflare its recordings take. Read when Settings opens and before a
+  // session or a question starts; kept a minute so neither waits.
+  let usageCache: { usage: Usage; until: number } | null = null
+  let storageCache: { bytes: number; until: number } | null = null
+  async function myUsage(force = false): Promise<Usage | null> {
+    if (!force && usageCache && usageCache.until > Date.now()) return usageCache.usage
+    const { data, error } = await sb.rpc('my_usage')
+    if (error || !data) return usageCache?.usage ?? null
+    const usage = data as Usage
+    if (!force && storageCache && storageCache.until > Date.now()) usage.storageBytes = storageCache.bytes
+    else {
+      try {
+        const r = await fetch('/api/storage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+          body: JSON.stringify({ op: 'mine' })
+        })
+        const j = (await r.json().catch(() => ({}))) as { bytes?: number }
+        if (r.ok && typeof j.bytes === 'number') {
+          usage.storageBytes = j.bytes
+          storageCache = { bytes: j.bytes, until: Date.now() + 300000 }
+        }
+      } catch {
+        /* the meter shows what it can */
+      }
+    }
+    usageCache = { usage, until: Date.now() + 60000 }
+    return usage
+  }
+
   async function aiChatFull(
     system: string,
     messages: ChatMsg[],
     maxTokens = 2000,
     requireVision = false,
-    fast = false
+    fast = false,
+    kind = ''
   ): Promise<{ text: string; vision: boolean }> {
     const k = storedSettings()
     let lastError = 'AI error'
+    const auth = await authHeader()
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) await sleep(attempt === 1 ? 1500 : 5000)
       let r: Response
       try {
         r = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...auth },
           body: JSON.stringify({
             keys: { anthropicApiKey: k.anthropicApiKey, groqApiKey: k.groqApiKey },
             system,
             messages,
             maxTokens,
             requireVision,
-            fast
+            fast,
+            kind
           })
         })
       } catch {
@@ -786,7 +833,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const j = (await r.json().catch(() => ({}))) as { text?: string; vision?: boolean; error?: string }
       if (r.ok) return { text: j.text || '', vision: Boolean(j.vision) }
       lastError = j.error || `AI error (HTTP ${r.status})`
-      if (r.status === 400 || r.status === 401 || r.status === 403) break // nothing a retry can fix
+      if (r.status === 402) usageCache = null // the plan said no: the meter is read afresh next time
+      if (r.status === 400 || r.status === 401 || r.status === 402 || r.status === 403) break // nothing a retry can fix
       // A gateway timeout: the model was still writing when the server's
       // minute ran out. The same again would end the same way, so the second
       // try asks for less and of a quicker model.
@@ -2354,6 +2402,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
     ],
 
+    getUsage: async (force?: boolean) => myUsage(Boolean(force)),
+
     getThumb: async (id: string) => {
       const { data } = await sb.from('sessions').select('thumb').eq('id', id).maybeSingle()
       if (data?.thumb) return data.thumb as string
@@ -2363,6 +2413,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
+      // the plan's month: a session past its hours or its storage does not begin
+      const u = await myUsage().catch(() => null)
+      if (u && overPlanLimit(u, 'hours')) throw new Error(limitMessage(u, 'hours'))
+      if (u && overPlanLimit(u, 'storage')) throw new Error(limitMessage(u, 'storage'))
       track('session_start', { kind, hosted: Boolean(hosted), audio: Boolean(audioOnly), space: space ?? null })
       const meta: SessionMeta = {
         id: uid(),
@@ -3298,7 +3352,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           try {
             r = await fetch('/api/transcribe', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
               body
             })
             break
@@ -3334,6 +3388,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     askAi: async (req: AskRequest) => {
+      const u = await myUsage().catch(() => null)
+      if (u && overPlanLimit(u, 'asks')) {
+        emitAi({ requestId: req.requestId, type: 'error', error: limitMessage(u, 'asks') })
+        return
+      }
+      if (usageCache) usageCache.usage.asks += 1
       track('ask', {
         live: req.live,
         host: Boolean(req.host),
@@ -3400,7 +3460,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
               }
             : { role: 'user', content: folded.question }
         // no picture to read: the quick models answer first
-        const text = (await aiChatFull(system, [...history, last], 2000, false, parts.length === 0)).text
+        const text = (await aiChatFull(system, [...history, last], 2000, false, parts.length === 0, 'ask')).text
         emitAi({ requestId: req.requestId, type: 'delta', text })
         emitAi({ requestId: req.requestId, type: 'done' })
       } catch (err) {

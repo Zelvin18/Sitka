@@ -25,6 +25,8 @@ export interface Settings {
   readScreen?: boolean
   /** what a new session watches unless chosen otherwise */
   defaultCapture?: 'screen' | 'camera' | 'audio'
+  /** the money prices are shown in (a code from shared/plans); '' = the default */
+  currency?: string
 }
 
 export interface TranscriptSegment {

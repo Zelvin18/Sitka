@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { Usage } from '../shared/plans'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -41,6 +42,8 @@ import type {
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   getProfile: (): Promise<Profile> => ipcRenderer.invoke('profile:get'),
+  /** This month against the plan: hours, questions, storage. null where there is no plan (the desktop's own workspace). */
+  getUsage: (force?: boolean): Promise<Usage | null> => ipcRenderer.invoke('usage:get', Boolean(force)),
   /** what the person is called; null when nothing was given */
   setProfileName: (name: string): Promise<Profile | null> => ipcRenderer.invoke('profile:set', name),
   /** the welcome has been shown: it is not shown again for this account */
