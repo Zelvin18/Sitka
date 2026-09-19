@@ -242,7 +242,7 @@ export default function SessionView({
         const copy = new ArrayBuffer(bytes.byteLength)
         new Uint8Array(copy).set(bytes)
         const name = (metaRef.current?.title || 'recording').replace(/[^\w\- ]+/g, '').trim() || 'recording'
-        return window.sitka.saveBinaryFile(`${name}.${kind === 'video/mp4' ? 'mp4' : kind === 'audio/mp4' ? 'm4a' : 'webm'}`, copy).then(() => setDownloading('done'))
+        return window.sitka.saveBinaryFile(`${name}.${kind === 'video/mp4' ? (metaRef.current?.audioOnly ? 'm4a' : 'mp4') : 'webm'}`, copy).then(() => setDownloading('done'))
       })
       .catch(() => setDownloading('none'))
       .then(() => window.setTimeout(() => setDownloading(''), 3000))
