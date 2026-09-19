@@ -445,21 +445,58 @@
   }
 
   // Meet's captions stay switched on for Sitca to read, but are kept off the
-  // screen: they take a good part of the picture and most people would
-  // switch them off. The words still arrive; only the drawing is hidden.
+  // screen: the block Meet draws them in (the language chip, the font
+  // controls, and the lines themselves) takes a good third of the picture
+  // and pushes everyone's tiles up. The whole block is folded to nothing;
+  // the words still arrive in it, only nothing of it is drawn or measured.
   const HIDE_ID = 'sitca-hide-captions'
+  const FOLDED = 'data-sitca-folded'
+  const FOLD = ['height', 'min-height', 'max-height', 'overflow', 'opacity', 'pointer-events', 'margin', 'padding']
+  function captionBlock() {
+    const region = captionsRegion()
+    if (!region) return null
+    // up from the words to the top of Meet's caption block: the last
+    // ancestor that holds no video tile
+    let el = region
+    while (el.parentElement && el.parentElement !== document.body && !el.parentElement.querySelector('video')) {
+      el = el.parentElement
+    }
+    return el
+  }
+  function foldCaptions() {
+    const block = captionBlock()
+    if (!block || block.getAttribute(FOLDED) === '1') return
+    block.setAttribute(FOLDED, '1')
+    block.style.setProperty('height', '0', 'important')
+    block.style.setProperty('min-height', '0', 'important')
+    block.style.setProperty('max-height', '0', 'important')
+    block.style.setProperty('overflow', 'hidden', 'important')
+    block.style.setProperty('opacity', '0', 'important')
+    block.style.setProperty('pointer-events', 'none', 'important')
+    block.style.setProperty('margin', '0', 'important')
+    block.style.setProperty('padding', '0', 'important')
+  }
+  function unfoldCaptions() {
+    for (const el of document.querySelectorAll(`[${FOLDED}]`)) {
+      el.removeAttribute(FOLDED)
+      for (const prop of FOLD) el.style.removeProperty(prop)
+    }
+  }
   function hideCaptions(hide) {
     let st = document.getElementById(HIDE_ID)
     if (!hide) {
       if (st) st.remove()
+      unfoldCaptions()
       return
     }
-    if (st) return
-    st = document.createElement('style')
-    st.id = HIDE_ID
-    st.textContent =
-      '[role="region"][aria-label*="aption" i],[aria-label="Captions"]{opacity:0!important;pointer-events:none!important;max-height:2px!important;min-height:0!important;overflow:hidden!important}'
-    document.documentElement.appendChild(st)
+    if (!st) {
+      st = document.createElement('style')
+      st.id = HIDE_ID
+      // the words themselves, in case the block is drawn again before the next fold
+      st.textContent = '[role="region"][aria-label*="aption" i],[aria-label="Captions"]{opacity:0!important;pointer-events:none!important}'
+      document.documentElement.appendChild(st)
+    }
+    foldCaptions()
   }
 
   const NOT_A_ROW = /jump to|arrow_downward|^\.{2,}$|продолжение/i
@@ -556,6 +593,7 @@
     hideCaptions(!showCc)
     let ticks = 0
     capTimer = setInterval(() => {
+      if (!showCc) foldCaptions()
       pollCaptions()
       // switched off by a stray press of "c"? on again, quietly
       if (++ticks % 20 === 0) turnCaptionsOn()
