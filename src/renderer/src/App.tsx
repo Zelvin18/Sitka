@@ -118,6 +118,17 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('sitka:home', home)
   }, [setView])
   const goBack = useCallback((): void => {
+    // From a session, Back is the way home, whatever was opened before it:
+    // one session after another, and Back must not walk back through them.
+    if (viewRef.current.name === 'session') {
+      historyRef.current = []
+      spaceHistoryRef.current = []
+      viewRef.current = { name: 'home' }
+      setViewRaw({ name: 'home' })
+      setCanBack(false)
+      rememberView()
+      return
+    }
     const prev = historyRef.current.pop()
     if (!prev) return
     setSpace(spaceHistoryRef.current.pop())
@@ -606,7 +617,7 @@ export default function App(): React.JSX.Element {
             <IconMenu size={22} strokeWidth={2} />
           </button>
         )}
-        {canBack && view.name !== 'homepage' && (
+        {(canBack || view.name === 'session') && view.name !== 'homepage' && (
           <button
             className={`btn btn-ghost btn-sm global-back${sidebarOpen ? '' : ' shifted'}`}
             title="Back to the previous page"

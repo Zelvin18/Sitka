@@ -356,11 +356,11 @@ export default function SessionView({
           if (m) setData((cur) => (cur ? { ...cur, meta: m } : cur))
         })
       }
-      // Meetings lead with decisions & actions; lectures/others with transcript.
+      // Every session opens the same way: the recording and the overview.
+      // Ask, the transcript and the rest are a tap away.
       if (!tabInitializedRef.current && d) {
         tabInitializedRef.current = true
-        if (d.meta.hosted && d.report) setTab('report')
-        else if (d.meta.kind === 'meeting' && d.meta.summary) setTab('overview')
+        setTab('overview')
       }
     })
     return () => {
@@ -623,6 +623,14 @@ export default function SessionView({
     setVideoWanted(true)
     setVideoLive(false)
     pendingSeekRef.current = null
+    // opened afresh: the picture shown, the overview first, the chat put
+    // away on a phone until asked for, wherever the last visit ended
+    tabInitializedRef.current = false
+    setTab('overview')
+    setVideoHidden(false)
+    setAskOpen(false)
+    setRightTab('ask')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
   // Streaming: once the player is mounted, feed it the parts in order. The
