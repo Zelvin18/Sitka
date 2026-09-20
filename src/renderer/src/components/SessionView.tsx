@@ -288,6 +288,7 @@ export default function SessionView({
   const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.session.right', 'ask')
   const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
   const [findText, setFindText] = useState('')
+  const [briefBusy, setBriefBusy] = useState(false)
   const [roomQs, setRoomQs] = useState<{ topic: string; items: { text: string; at: number; votes: number }[] }[]>([])
 
   useEffect(() => {
@@ -1500,6 +1501,28 @@ export default function SessionView({
             <IconDownload size={13} />
             {exported ? 'Exported ✓' : 'Export'}
           </button>
+          {!meta.readOnly && !meta.sample && meta.status === 'complete' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              title="A clean brief of this session, written by Sitca, as a document to send on (opens in Word and Google Docs)"
+              disabled={briefBusy}
+              onClick={() => {
+                setBriefBusy(true)
+                void window.sitka.sessionBrief(meta.id).then((r) => {
+                  setBriefBusy(false)
+                  if (!r.html) return
+                  const name = (r.title || meta.title).replace(/[^\w\- ]+/g, '').trim() || 'brief'
+                  const bytes = new TextEncoder().encode(r.html)
+                  const copy = new ArrayBuffer(bytes.byteLength)
+                  new Uint8Array(copy).set(bytes)
+                  void window.sitka.saveBinaryFile(`${name} — brief.doc`, copy)
+                })
+              }}
+            >
+              <IconDoc size={13} />
+              {briefBusy ? 'Writing…' : 'Brief'}
+            </button>
+          )}
         </div>
 
         {tab === 'transcript' && (

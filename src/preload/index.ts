@@ -45,6 +45,9 @@ const api = {
   /** A word on an answer, right or wrong, kept with its question for the people who run Sitca. */
   rateAnswer: (sessionId: string, question: string, answer: string, good: boolean): Promise<void> =>
     ipcRenderer.invoke('answer:rate', sessionId, question, answer, good),
+  /** The brief Sitca writes for sharing, as a page (HTML) and as markdown. */
+  sessionBrief: (id: string): Promise<{ html?: string; title?: string; markdown?: string; error?: string }> =>
+    ipcRenderer.invoke('session:brief', id),
   /** The session into the person's Google Drive: the recording and a Google Doc. Progress arrives as the 'sitka:drive' window event. */
   saveToDrive: (id: string): Promise<{ folderUrl?: string; fileUrl?: string; docUrl?: string; error?: string }> =>
     ipcRenderer.invoke('drive:save', id),

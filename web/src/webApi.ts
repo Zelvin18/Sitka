@@ -23,7 +23,8 @@ import {
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
-import { createDoc, driveToken, fmtClock, simpleHtml, sitcaFolder, uploadRecording } from './drive'
+import { createDoc, driveToken, sitcaFolder, uploadRecording } from './drive'
+import { briefHtml, briefPrompt, speechOnly } from './brief'
 import { limitMessage, overLimit as overPlanLimit, type Usage } from '../../src/shared/plans'
 import { assignSpeakers, listSpeakers, speakerName, speakersNote, transcriptLine, type Utterance } from '../../src/shared/speakers'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
@@ -2621,6 +2622,47 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // The session into the person's Google Drive: the recording, and a
     // Google Doc with the overview, the notes and the transcript, in a
     // "Sitca" folder. Progress goes out as an event the page draws.
+    // The brief: written by Sitca from the session, laid out as a page.
+    // Kept on the row once written, so a second export is instant; written
+    // again when the session's notes have changed since.
+    sessionBrief: async (id: string) => {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d) return { error: 'This session could not be read.' }
+      const stamp = `${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
+      const kept = d.meta.brief
+      let md = kept && kept.stamp === stamp ? kept.md : ''
+      if (!md) {
+        const names = new Map((d.meta.speakers ?? []).map((s) => [s.id, s.name || `Speaker ${s.id + 1}`]))
+        const speech = speechOnly(d.segments.map((s) => ({ text: s.text, speaker: typeof s.speaker === 'number' ? names.get(s.speaker) : undefined })))
+        if (!speech && !d.meta.summary && !d.notes?.markdown) return { error: 'There is nothing to write a brief from yet.' }
+        const user = [
+          `Title so far: ${d.meta.title}`,
+          `Kind: ${d.meta.kind || 'other'} · Length: ${Math.round((d.meta.durationMs || 0) / 60000)} min`,
+          d.meta.summary ? `\nSummary:\n${d.meta.summary}` : '',
+          d.meta.highlights?.length ? `\nMoments:\n${d.meta.highlights.map((h) => `- ${h.label}`).join('\n')}` : '',
+          d.notes?.markdown ? `\nNotes:\n${d.notes.markdown.slice(0, 9000)}` : '',
+          speech ? `\nWhat was said (excerpt):\n${speech}` : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
+        const out = await aiChatFull(briefPrompt(d.meta.kind || 'other'), [{ role: 'user', content: user }], 2600)
+        md = out.text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/```\s*$/, '').trim()
+        if (!md.startsWith('#')) md = `# ${d.meta.title}\n${md}`
+        d.meta.brief = { md, stamp, at: Date.now() }
+        await patchSession(id, { meta: d.meta }).catch(() => undefined)
+      }
+      const speakers = (d.meta.speakers ?? []).map((s) => s.name).filter((n): n is string => Boolean(n))
+      const page = briefHtml(md, {
+        title: d.meta.title,
+        when: new Date(d.meta.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }),
+        minutes: Math.round((d.meta.durationMs || 0) / 60000),
+        kind: d.meta.kind || '',
+        speakers
+      })
+      track('brief', { drive: false })
+      return { html: page.html, title: page.title, markdown: md }
+    },
+
     saveToDrive: async (id: string) => {
       const say = (stage: string, sent = 0, total = 0): void => {
         window.dispatchEvent(new CustomEvent('sitka:drive', { detail: { sessionId: id, stage, sent, total } }))
@@ -2662,19 +2704,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           }
         }
         say('writing')
-        const when = new Date(d.meta.createdAt).toLocaleString()
-        const html = [
-          `<h1>${title.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</h1>`,
-          `<p><i>${when} · ${Math.round((d.meta.durationMs || 0) / 60000)} min · made with Sitca</i></p>`,
-          d.meta.summary ? `<h2>Overview</h2>${simpleHtml(d.meta.summary)}` : '',
-          d.meta.highlights?.length ? `<h2>Moments</h2><ul>${d.meta.highlights.map((h) => `<li>${String(h.time ?? '')} — ${String(h.label ?? '').replace(/</g, '&lt;')}</li>`).join('')}</ul>` : '',
-          d.notes?.markdown ? `<h2>Notes</h2>${simpleHtml(d.notes.markdown)}` : '',
-          d.segments.length ? `<h2>Transcript</h2>${d.segments.map((s) => `<p><b>${fmtClock(s.start)}</b>${typeof s.speaker === 'number' && d.meta.speakers ? ` <i>${(d.meta.speakers.find((sp) => sp.id === s.speaker)?.name || `Speaker ${s.speaker + 1}`).replace(/</g, '&lt;')}:</i>` : ''} ${s.text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`).join('\n')}` : ''
-        ].join('\n')
-        const doc = await createDoc(t, folder.id, `${title} — notes`, html)
+        const brief = await api.sessionBrief(id)
+        let docUrl = ''
+        if (brief.html) {
+          const doc = await createDoc(t, folder.id, `${title} — brief`, brief.html)
+          docUrl = doc.url
+        }
         say('done')
         track('drive_save', { video: Boolean(fileUrl) })
-        return { folderUrl: folder.url, fileUrl, docUrl: doc.url }
+        return { folderUrl: folder.url, fileUrl, docUrl }
       } catch (err) {
         say('failed')
         return { error: err instanceof Error ? err.message : String(err) }
