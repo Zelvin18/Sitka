@@ -343,6 +343,37 @@ export default function SessionView({
   const [chatW, setChatW] = usePersistedNumber('sitka.chatW', 440)
   const [videoH, setVideoH] = usePersistedNumber('sitka.videoH', 320)
   const [videoHidden, setVideoHidden] = usePersistedBool('sitka.videoHidden', false)
+  // ---- theatre: the recording fills the screen, Sitca floats beside it ----
+  // The same chat panel, restyled as a glass card, so the conversation is
+  // never lost when the view changes. Escape, or the browser leaving full
+  // screen, brings the page back.
+  const [theatre, setTheatre] = useState(false)
+  const [theatreChat, setTheatreChat] = useState(false)
+  useEffect(() => {
+    if (!theatre) return undefined
+    const root = document.documentElement
+    if (root.requestFullscreen && !document.fullscreenElement) {
+      root.requestFullscreen().catch(() => undefined)
+    }
+    const onChange = (): void => {
+      if (!document.fullscreenElement) setTheatre(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setTheatre(false)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('keydown', onKey)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
+    }
+  }, [theatre])
+  // another session, or the page left: back to the ordinary view
+  useEffect(() => {
+    setTheatre(false)
+    setTheatreChat(false)
+  }, [sessionId])
 
   const tabInitializedRef = useRef(false)
   const autoAnalyzedRef = useRef<string | null>(null)
@@ -1043,22 +1074,60 @@ export default function SessionView({
           </div>
         )}
         <div
-          className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}${videoHidden ? ' collapsed' : ''}`}
+          className={`video-wrap${meta.audioOnly ? ' audio-only' : ''}${videoHidden ? ' collapsed' : ''}${theatre ? ' theatre' : ''}`}
           ref={videoWrapRef}
-          style={{
-            height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900),
-            display: meta.status === 'recording' || preparing ? 'none' : undefined
-          }}
+          style={
+            theatre
+              ? undefined
+              : {
+                  height: videoHidden ? 40 : meta.audioOnly ? Math.min(clamp(videoH, 140, 900), 220) : clamp(videoH, 140, 900),
+                  display: meta.status === 'recording' || preparing ? 'none' : undefined
+                }
+          }
         >
-          <button
-            className="video-toggle"
-            onClick={() => setVideoHidden(!videoHidden)}
-            title={videoHidden ? 'Show the picture' : 'Hide the picture — the sound keeps playing'}
-          >
-            <IconChevron size={13} strokeWidth={2.4} />
-            {videoHidden ? 'Show video' : 'Hide'}
-          </button>
-          {!meta.readOnly && !meta.sample && (
+          {!theatre && (
+            <button
+              className="video-toggle"
+              onClick={() => setVideoHidden(!videoHidden)}
+              title={videoHidden ? 'Show the picture' : 'Hide the picture — the sound keeps playing'}
+            >
+              <IconChevron size={13} strokeWidth={2.4} />
+              {videoHidden ? 'Show video' : 'Hide'}
+            </button>
+          )}
+          {!meta.audioOnly && !videoHidden && videoSrc && (
+            <button
+              className="video-expand"
+              onClick={() => {
+                setTheatre(!theatre)
+                setTheatreChat(false)
+              }}
+              title={theatre ? 'Back to the page (Esc)' : 'Fill the screen — Sitca comes with you'}
+              aria-label={theatre ? 'Back to the page' : 'Fill the screen'}
+            >
+              {theatre ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+              )}
+            </button>
+          )}
+          {theatre && !theatreChat && (
+            <button
+              type="button"
+              className="theatre-fab"
+              onClick={() => setTheatreChat(true)}
+              title="Open the conversation with Sitca"
+              aria-label="Ask Sitca"
+            >
+              <Mark size={20} live />
+              <span className="theatre-fab-text">
+                <b>Ask Sitca</b>
+                <small>about what you are watching</small>
+              </span>
+            </button>
+          )}
+          {!meta.readOnly && !meta.sample && !theatre && (
             <button
               className="video-toggle video-download"
               onClick={downloadRecording}
@@ -1069,7 +1138,7 @@ export default function SessionView({
               {downloading === 'busy' ? 'Fetching…' : downloading === 'done' ? 'Saved ✓' : downloading === 'none' ? 'Nothing to save yet' : 'Download'}
             </button>
           )}
-          {!meta.readOnly && !meta.sample && (
+          {!meta.readOnly && !meta.sample && !theatre && (
             <button
               className={`video-toggle video-drive${drive?.stage === 'done' ? ' done' : ''}`}
               onClick={() => (drive?.stage === 'done' && drive.folderUrl ? window.open(drive.folderUrl, '_blank', 'noopener') : saveToDrive())}
@@ -1810,8 +1879,21 @@ export default function SessionView({
         }}
         onReset={() => setChatW(440)}
       />
-      <div className="session-right" style={{ width: clamp(chatW, 300, 900) }}>
-        {roomEventId && (
+      <div
+        className={`session-right${theatre ? (theatreChat ? ' theatre-open' : ' theatre-hidden') : ''}`}
+        style={{ width: clamp(chatW, 300, 900) }}
+      >
+        {theatre && theatreChat && (
+          <button
+            type="button"
+            className="theatre-close"
+            onClick={() => setTheatreChat(false)}
+            title="Fold Sitca away — the conversation stays"
+          >
+            Close
+          </button>
+        )}
+        {roomEventId && !theatre && (
           <div className="right-tabs">
             <button className={rightTab === 'ask' ? 'on' : ''} onClick={() => setRightTab('ask')}>
               <IconSparkle size={13} />
@@ -1822,7 +1904,7 @@ export default function SessionView({
             </button>
           </div>
         )}
-        {roomEventId && rightTab === 'room' && (
+        {roomEventId && rightTab === 'room' && !theatre && (
           <div className="room-panel">
             <div className="room-note">{roomLive ? 'The room, live. What attendees ask you, and what they say to each other.' : 'The room, as it happened. Attendees talked here during the event.'}</div>
             <div className="room-list room-list-tall">
@@ -1863,7 +1945,7 @@ export default function SessionView({
             </div>
           </div>
         )}
-        {!(roomEventId && rightTab === 'room') && (
+        {(!(roomEventId && rightTab === 'room') || theatre) && (
         <ChatPane
           sessionId={meta.id}
           live={false}

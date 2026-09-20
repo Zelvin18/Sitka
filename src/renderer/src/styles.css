@@ -8276,6 +8276,7 @@ video.is-hidden {
   display: none;
 }
 .session-right.theatre-open {
+  display: flex;
   position: fixed;
   top: 16px;
   right: 16px;
@@ -13743,4 +13744,13 @@ video {
   font-size: 12px;
   line-height: 1.35;
   overflow-x: auto;
+}
+
+/* a recording in the theatre: the player's own bar sits at the bottom, so
+   the buttons and the floating Sitca keep clear of it */
+.video-wrap.theatre .theatre-fab {
+  bottom: 84px;
+}
+.video-wrap.theatre .video-expand {
+  z-index: 8;
 }
