@@ -349,23 +349,58 @@ export default function SessionView({
   // screen, brings the page back.
   const [theatre, setTheatre] = useState(false)
   const [theatreChat, setTheatreChat] = useState(false)
+  // The player's own full-screen button is the way in. The browser would
+  // put the bare video full screen, where nothing of ours can float; so the
+  // moment that happens, the page as a whole takes its place — the video
+  // fills it, and Sitca can sit beside it. Pressing the button again, or
+  // Escape, or the browser leaving full screen, brings the page back.
+  const theatreRef = useRef(false)
+  theatreRef.current = theatre
+  useEffect(() => {
+    const onChange = (): void => {
+      const fs = document.fullscreenElement
+      const v = videoRef.current
+      if (fs && v && fs === v) {
+        if (theatreRef.current) {
+          // the button pressed again inside the theatre: leave
+          document.exitFullscreen().catch(() => undefined)
+          setTheatre(false)
+          return
+        }
+        void document
+          .exitFullscreen()
+          .catch(() => undefined)
+          .then(() => document.documentElement.requestFullscreen?.())
+          .then(() => {
+            setTheatre(true)
+            setTheatreChat(false)
+          })
+          .catch(() => undefined)
+        return
+      }
+      if (!fs && theatreRef.current) setTheatre(false)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
   useEffect(() => {
     if (!theatre) return undefined
-    const root = document.documentElement
-    if (root.requestFullscreen && !document.fullscreenElement) {
-      root.requestFullscreen().catch(() => undefined)
-    }
-    const onChange = (): void => {
-      if (!document.fullscreenElement) setTheatre(false)
-    }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setTheatre(false)
     }
-    document.addEventListener('fullscreenchange', onChange)
     document.addEventListener('keydown', onKey)
+    // a phone turns to fill the screen with the picture, where it allows that
+    const o = screen.orientation as ScreenOrientation & { lock?: (k: string) => Promise<void>; unlock?: () => void }
+    if (window.innerWidth < 860 && typeof o?.lock === 'function') o.lock('landscape').catch(() => undefined)
     return () => {
-      document.removeEventListener('fullscreenchange', onChange)
       document.removeEventListener('keydown', onKey)
+      if (typeof o?.unlock === 'function') {
+        try {
+          o.unlock()
+        } catch {
+          /* not held */
+        }
+      }
       if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
     }
   }, [theatre])
@@ -1095,23 +1130,6 @@ export default function SessionView({
               {videoHidden ? 'Show video' : 'Hide'}
             </button>
           )}
-          {!meta.audioOnly && !videoHidden && videoSrc && (
-            <button
-              className="video-expand"
-              onClick={() => {
-                setTheatre(!theatre)
-                setTheatreChat(false)
-              }}
-              title={theatre ? 'Back to the page (Esc)' : 'Fill the screen — Sitca comes with you'}
-              aria-label={theatre ? 'Back to the page' : 'Fill the screen'}
-            >
-              {theatre ? (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg>
-              ) : (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
-              )}
-            </button>
-          )}
           {theatre && !theatreChat && (
             <button
               type="button"
@@ -1127,7 +1145,7 @@ export default function SessionView({
               </span>
             </button>
           )}
-          {!meta.readOnly && !meta.sample && !theatre && (
+          {!meta.sample && !theatre && (!meta.readOnly || meta.saved) && (
             <button
               className="video-toggle video-download"
               onClick={downloadRecording}
@@ -1138,7 +1156,7 @@ export default function SessionView({
               {downloading === 'busy' ? 'Fetching…' : downloading === 'done' ? 'Saved ✓' : downloading === 'none' ? 'Nothing to save yet' : 'Download'}
             </button>
           )}
-          {!meta.readOnly && !meta.sample && !theatre && (
+          {!meta.sample && !theatre && (!meta.readOnly || meta.saved) && (
             <button
               className={`video-toggle video-drive${drive?.stage === 'done' ? ' done' : ''}`}
               onClick={() => (drive?.stage === 'done' && drive.folderUrl ? window.open(drive.folderUrl, '_blank', 'noopener') : saveToDrive())}

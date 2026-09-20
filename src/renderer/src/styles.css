@@ -13754,3 +13754,10 @@ video {
 .video-wrap.theatre .video-expand {
   z-index: 8;
 }
+
+/* the theatre on a phone: the picture takes the whole screen, whatever the
+   page's own height for the player was */
+.session-layout .video-wrap.theatre {
+  height: 100dvh !important;
+  min-height: 100dvh;
+}
