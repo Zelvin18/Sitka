@@ -354,45 +354,28 @@ export default function SessionView({
   // moment that happens, the page as a whole takes its place — the video
   // fills it, and Sitca can sit beside it. Pressing the button again, or
   // Escape, or the browser leaving full screen, brings the page back.
-  const theatreRef = useRef(false)
-  theatreRef.current = theatre
-  useEffect(() => {
-    const onChange = (): void => {
-      const fs = document.fullscreenElement
-      const v = videoRef.current
-      if (fs && v && fs === v) {
-        if (theatreRef.current) {
-          // the button pressed again inside the theatre: leave
-          document.exitFullscreen().catch(() => undefined)
-          setTheatre(false)
-          return
-        }
-        void document
-          .exitFullscreen()
-          .catch(() => undefined)
-          .then(() => document.documentElement.requestFullscreen?.())
-          .then(() => {
-            setTheatre(true)
-            setTheatreChat(false)
-          })
-          .catch(() => undefined)
-        return
-      }
-      if (!fs && theatreRef.current) setTheatre(false)
-    }
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
+  // The player's own full-screen control is switched off (it would put the
+  // bare video full screen, where nothing of ours can float) and one of ours
+  // stands in its place, at the bottom right where that one was. It asks for
+  // the whole page full screen, so the picture fills it and Sitca can sit
+  // beside it.
   useEffect(() => {
     if (!theatre) return undefined
+    const root = document.documentElement
+    if (root.requestFullscreen && !document.fullscreenElement) root.requestFullscreen().catch(() => undefined)
+    const onChange = (): void => {
+      if (!document.fullscreenElement) setTheatre(false)
+    }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setTheatre(false)
     }
+    document.addEventListener('fullscreenchange', onChange)
     document.addEventListener('keydown', onKey)
     // a phone turns to fill the screen with the picture, where it allows that
     const o = screen.orientation as ScreenOrientation & { lock?: (k: string) => Promise<void>; unlock?: () => void }
     if (window.innerWidth < 860 && typeof o?.lock === 'function') o.lock('landscape').catch(() => undefined)
     return () => {
+      document.removeEventListener('fullscreenchange', onChange)
       document.removeEventListener('keydown', onKey)
       if (typeof o?.unlock === 'function') {
         try {
@@ -1130,6 +1113,24 @@ export default function SessionView({
               {videoHidden ? 'Show video' : 'Hide'}
             </button>
           )}
+          {!meta.audioOnly && !videoHidden && videoSrc && (
+            <button
+              type="button"
+              className="video-fullscreen"
+              onClick={() => {
+                setTheatre(!theatre)
+                setTheatreChat(false)
+              }}
+              title={theatre ? 'Exit full screen (Esc)' : 'Full screen'}
+              aria-label={theatre ? 'Exit full screen' : 'Full screen'}
+            >
+              {theatre ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" /></svg>
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" /></svg>
+              )}
+            </button>
+          )}
           {theatre && !theatreChat && (
             <button
               type="button"
@@ -1166,6 +1167,7 @@ export default function SessionView({
                 <path d="M8 3h8l6 10-4 7H6l-4-7z" />
                 <path d="M8 3l6 10M2 13h12" />
               </svg>
+              {drive?.stage === 'failed' && drive.error && <span className="video-drive-why">{drive.error}</span>}
               {!drive || drive.stage === '' ? 'Save to Drive'
                 : drive.stage === 'asking' ? 'Asking Google…'
                 : drive.stage === 'reading' ? 'Reading…'
@@ -1188,6 +1190,7 @@ export default function SessionView({
                 controls={!meta.audioOnly}
                 crossOrigin={meta.audioOnly ? 'anonymous' : undefined}
                 playsInline
+                controlsList="nofullscreen"
                 preload={meta.audioOnly ? 'auto' : 'metadata'}
                 onLoadedMetadata={(e) => {
                   const el = e.currentTarget

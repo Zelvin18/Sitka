@@ -2640,7 +2640,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // Kept on the row once written, so a second export is instant; written
     // again when the session's notes have changed since.
     sessionBrief: async (id: string) => {
-      const d = cache.get(id) ?? (await loadSession(id))
+      // a recap kept from someone else reads like any session, from its shared row
+      const d = cache.get(id) ?? (await loadSession(id)) ?? (await loadSavedRecap(id))
       if (!d) return { error: 'This session could not be read.' }
       const stamp = `v3|${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
       const kept = d.meta.brief
@@ -2667,7 +2668,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         md = tidyBrief(out.text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/```\s*$/, '').trim())
         if (!md.startsWith('#')) md = `# ${d.meta.title}\n${md}`
         d.meta.brief = { md, stamp, at: Date.now() }
-        await patchSession(id, { meta: d.meta }).catch(() => undefined)
+        if (!d.meta.readOnly && !d.meta.saved) await patchSession(id, { meta: d.meta }).catch(() => undefined)
       }
       const speakers = (d.meta.speakers ?? []).map((s) => s.name).filter((n): n is string => Boolean(n))
       const page = briefHtml(md, {
@@ -2687,14 +2688,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         window.dispatchEvent(new CustomEvent('sitka:drive', { detail: { sessionId: id, stage, sent, total } }))
       }
       try {
-        const d = cache.get(id) ?? (await loadSession(id))
+        const d = cache.get(id) ?? (await loadSession(id)) ?? (await loadSavedRecap(id))
         if (!d) return { error: 'This session could not be read.' }
         say('asking')
         const t = await driveToken()
         const folder = await sitcaFolder(t)
         const title = (d.meta.title || 'Session').replace(/[\/:*?"<>|]+/g, ' ').trim()
         let fileUrl = ''
-        if (!d.meta.readOnly) {
+        if (!d.meta.readOnly || d.meta.saved) {
           say('reading')
           const parts = await api.listVideoPartsSized(id).catch(() => [])
           const mime = d.meta.mime || (d.meta.audioOnly ? 'audio/webm' : 'video/webm')
