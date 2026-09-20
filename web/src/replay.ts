@@ -505,6 +505,14 @@ function setupPlayer(
   if (r.durationMs) knownDurationMs = r.durationMs
   if (r.video === true) {
     playerReady = true
+    // a press on the picture plays or pauses, as in every video app; the
+    // player's own bar at the bottom is left to the browser
+    v.addEventListener('click', (e) => {
+      const b = v.getBoundingClientRect()
+      if (e.clientY > b.bottom - 60) return
+      if (v.paused) void v.play().catch(() => undefined)
+      else v.pause()
+    })
     hasVideo = true
     player.style.display = ''
     note.hidden = true

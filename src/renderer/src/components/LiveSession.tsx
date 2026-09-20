@@ -110,6 +110,7 @@ import { fixWebmDuration } from '@shared/webmDuration'
 // eslint-disable-next-line import/first
 import { clearLiveBeat, isThisTab, readLive, useLive, writeLiveBeat } from '../lib/live'
 import LimitCard from './LimitCard'
+import { tapToPlay } from '../lib/tapToPlay'
 import type { Meter, Usage } from '@shared/plans'
 // eslint-disable-next-line import/first
 import {
@@ -2832,6 +2833,7 @@ export default function LiveSession({
                   ref={dvrRef}
                   className="dvr-video"
                   src={dvr.url}
+                  onClick={tapToPlay}
                   playsInline
                   onLoadedMetadata={(e) => {
                     const v = e.currentTarget

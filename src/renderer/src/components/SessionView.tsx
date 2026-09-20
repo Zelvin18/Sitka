@@ -16,6 +16,7 @@ import { shrinkImageFile } from '../lib/attach'
 import { IconPause, IconPlay, IconSpeaker } from '../lib/icons'
 import { mediaType, playProgressively, sourceFromParts, streamMedia } from '@shared/progressive'
 import { defragmentMp4, isFragmentedMp4 } from '@shared/mp4'
+import { tapToPlay } from '../lib/tapToPlay'
 
 /** MediaSource, or Safari's managed one on iPhone */
 const hasStreamingEngine = (): boolean => typeof MediaSource !== 'undefined' || 'ManagedMediaSource' in window
@@ -1243,6 +1244,7 @@ export default function SessionView({
                 poster={poster ?? undefined}
                 controls={!meta.audioOnly}
                 crossOrigin={meta.audioOnly ? 'anonymous' : undefined}
+                onClick={tapToPlay}
                 playsInline
                 controlsList="nofullscreen"
                 preload={meta.audioOnly ? 'auto' : 'metadata'}
@@ -1874,6 +1876,7 @@ export default function SessionView({
                 <video
                   src={reelSrc}
                   controls
+                  onClick={tapToPlay}
                   playsInline
                   style={{
                     width: '100%',
