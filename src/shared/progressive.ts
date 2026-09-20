@@ -78,6 +78,35 @@ export function sniffWebmMime(head: Uint8Array): string | null {
   return tries.find((t) => canStream(t)) ?? null
 }
 
+/** A deadline that counts only while the page is visible: a hidden tab's media is held back by the browser. */
+function openDeadline(ms: number, fn: () => void): void {
+  if (typeof document === 'undefined') {
+    setTimeout(fn, ms)
+    return
+  }
+  let left = ms
+  let started = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const arm = (): void => {
+    if (document.visibilityState !== 'visible') return
+    started = Date.now()
+    timer = setTimeout(() => {
+      document.removeEventListener('visibilitychange', onVis)
+      fn()
+    }, left)
+  }
+  const onVis = (): void => {
+    if (document.visibilityState === 'visible') arm()
+    else if (timer) {
+      left = Math.max(500, left - (Date.now() - started))
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+  document.addEventListener('visibilitychange', onVis)
+  arm()
+}
+
 /** The streaming engine: MediaSource, or Safari's ManagedMediaSource on iPhone (iOS 17.1+). */
 type MSCtor = { new (): MediaSource; isTypeSupported?: (t: string) => boolean }
 function engine(): MSCtor | null {
@@ -228,7 +257,9 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
-    setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
+    // the engine opens only once the page is looked at: a hidden tab's media
+    // waits, so the clock here runs only while the page is visible
+    openDeadline(6000, () => reject(new Error('sourceopen timeout')))
     // Safari's managed engine is attached as an object, the way Apple documents
     // it; the classic engine by its object address
     if (managed && 'srcObject' in video) {
@@ -577,7 +608,7 @@ export async function playProgressively(
   await new Promise<void>((resolve, reject) => {
     ms.addEventListener('sourceopen', () => resolve(), { once: true })
     video.addEventListener('error', () => reject(new Error('media error')), { once: true })
-    setTimeout(() => reject(new Error('sourceopen timeout')), 6000)
+    openDeadline(6000, () => reject(new Error('sourceopen timeout')))
     video.src = url
   }).catch(() => undefined)
   if (ms.readyState !== 'open') {

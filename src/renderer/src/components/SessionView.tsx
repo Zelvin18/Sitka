@@ -94,6 +94,55 @@ export default function SessionView({
       report?.('session-player-slow', `${Math.round(ms / 1000)} s to the first frame by ${diagRef.current}${passed}${stream} · ${navigator.userAgent.slice(0, 90)}`)
     }
   }
+  // Browsers hold a hidden tab's media back: nothing is fetched, nothing
+  // decoded, until the tab is looked at. A wait measured on a hidden page
+  // would run out with nothing to show and blame the recording. So every
+  // wait here counts only time the page is visible.
+  const visibleTimeout = (ms: number, fn: () => void): (() => void) => {
+    let left = ms
+    let started = 0
+    let timer: number | null = null
+    let done = false
+    const stop = (): void => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+    const arm = (): void => {
+      if (done || document.visibilityState !== 'visible') return
+      started = Date.now()
+      timer = window.setTimeout(() => {
+        done = true
+        document.removeEventListener('visibilitychange', onVis)
+        fn()
+      }, left)
+    }
+    const onVis = (): void => {
+      if (document.visibilityState === 'visible') arm()
+      else if (timer !== null) {
+        left = Math.max(500, left - (Date.now() - started))
+        stop()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    arm()
+    return () => {
+      done = true
+      stop()
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }
+  const whenVisible = (): Promise<void> =>
+    document.visibilityState === 'visible'
+      ? Promise.resolve()
+      : new Promise((resolve) => {
+          const on = (): void => {
+            if (document.visibilityState === 'visible') {
+              document.removeEventListener('visibilitychange', on)
+              resolve()
+            }
+          }
+          document.addEventListener('visibilitychange', on)
+        })
   const failWith = (why: string): void => {
     diagRef.current = why
     const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
@@ -248,8 +297,11 @@ export default function SessionView({
     }
     setDrive({ stage: 'asking', sent: 0, total: 0 })
     void window.sitka.saveToDrive(sessionId).then((r) => {
-      if (r.error) setDrive({ stage: 'failed', sent: 0, total: 0, error: r.error })
-      else setDrive({ stage: 'done', sent: 1, total: 1, folderUrl: r.folderUrl })
+      if (r.error) {
+        const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+        report?.('drive', `save to Drive failed for ${sessionId}: ${r.error}`)
+        setDrive({ stage: 'failed', sent: 0, total: 0, error: r.error })
+      } else setDrive({ stage: 'done', sent: 1, total: 1, folderUrl: r.folderUrl })
     })
   }, [drive, sessionId])
   // the recording itself, as a file: fetched whole, then saved with the session's name
@@ -640,6 +692,9 @@ export default function SessionView({
     ladderRef.current = { ways: IOS ? ['stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
     if (!videoWanted || stillRecording || preparing) return undefined
     void (async () => {
+      // a tab opened in the background waits until it is looked at
+      await whenVisible()
+      if (gen !== loadGenRef.current) return
       // Remux on first open if needed (desktop): a real duration and seek index.
       await window.sitka.prepareSession(sessionId).catch(() => undefined)
       if (gen !== loadGenRef.current) return
@@ -680,7 +735,7 @@ export default function SessionView({
   useEffect(() => {
     if (!videoSrc || videoSrc === 'progressive') return undefined
     const gen = loadGenRef.current
-    const t = window.setTimeout(() => {
+    const stop = visibleTimeout(10000, () => {
       const v = videoRef.current
       if (gen !== loadGenRef.current || !v || v.readyState >= 1) return
       const src = videoSrc
@@ -705,8 +760,8 @@ export default function SessionView({
         if (gen !== loadGenRef.current) return
         void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState}, ready ${v.readyState}, buffered ${v.buffered.length}${v.error ? `, error ${v.error.code}` : ''}${v.isConnected ? '' : ', element detached'}${document.visibilityState !== 'visible' ? ', page hidden' : ''}, src ${v.currentSrc ? v.currentSrc.slice(0, 30) : 'none'})${probe}`)
       })()
-    }, 10000)
-    return () => window.clearTimeout(t)
+    })
+    return stop
   }, [videoSrc, advance])
 
   // A different session: the recording loads straight away, and the mark
@@ -767,17 +822,17 @@ export default function SessionView({
       streamPartsRef.current = []
       void advance(gen, why)
     }
-    const watchdog = window.setTimeout(() => {
+    const stopWatch = visibleTimeout(10000, () => {
       if (!videoRef.current || videoRef.current.readyState >= 1) return
       handOver(`${diagRef.current} gave nothing in 10 s`)
-    }, 10000)
+    })
     void run.then((ok) => {
       // this file cannot be streamed: the next way
       if (!ok) handOver(`${diagRef.current} could not be streamed${streamNoteRef.current ? ` — ${streamNoteRef.current}` : ''}`)
     })
     return () => {
       cancelled = true
-      clearTimeout(watchdog)
+      stopWatch()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoSrc, sessionId])
@@ -1161,13 +1216,12 @@ export default function SessionView({
             <button
               className={`video-toggle video-drive${drive?.stage === 'done' ? ' done' : ''}`}
               onClick={() => (drive?.stage === 'done' && drive.folderUrl ? window.open(drive.folderUrl, '_blank', 'noopener') : saveToDrive())}
-              title={drive?.error ? drive.error : 'Save the recording and a Google Doc of the notes to your Google Drive, in a Sitca folder'}
+              title="Save the recording and a Google Doc of the notes to your Google Drive, in a Sitca folder"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M8 3h8l6 10-4 7H6l-4-7z" />
                 <path d="M8 3l6 10M2 13h12" />
               </svg>
-              {drive?.stage === 'failed' && drive.error && <span className="video-drive-why">{drive.error}</span>}
               {!drive || drive.stage === '' ? 'Save to Drive'
                 : drive.stage === 'asking' ? 'Asking Google…'
                 : drive.stage === 'reading' ? 'Reading…'
@@ -1435,14 +1489,27 @@ export default function SessionView({
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
                 <div className="video-failed">
-                  <div>{meta.recordingPending ? 'This recording has not reached the cloud yet.' : 'Could not play this recording.'}</div>
-                  {meta.recordingPending && (
-                    <div className="video-failed-why">
-                      It is still on the device that recorded it. Open Sitca there and press Upload now.
-                      {meta.uploadError ? ` The cloud said: ${meta.uploadError}` : ''}
-                    </div>
+                  <div>{meta.recordingPending ? 'This recording has not reached the cloud yet.' : 'The recording is taking longer than usual to open.'}</div>
+                  {meta.recordingPending ? (
+                    <div className="video-failed-why">It is still on the device that recorded it. Open Sitca there and press Upload now.</div>
+                  ) : (
+                    <div className="video-failed-why">Try again in a moment, or download the file to watch it on your device.</div>
                   )}
-                  {diagRef.current && <div className="video-failed-why">Tried {diagRef.current}.</div>}
+                  {!meta.recordingPending && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        setVideoError(false)
+                        ladderRef.current = { ways: [], tried: [] }
+                        loadGenRef.current++
+                        setVideoWanted(false)
+                        window.setTimeout(() => setVideoWanted(true), 50)
+                      }}
+                    >
+                      Try again
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-sm"
@@ -1598,41 +1665,39 @@ export default function SessionView({
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            title="Export this tab as a Markdown file"
+            title={tab === 'transcript' ? 'Export the transcript as a text file' : 'Export a clean brief of this session, written by Sitca, as a document to send on (opens in Word and Google Docs)'}
+            disabled={briefBusy}
             onClick={() => {
-              void window.sitka.exportSession(meta.id, tab === 'report' ? 'overview' : tab).then((res) => {
-                if (res.ok) {
-                  setExported(true)
-                  setTimeout(() => setExported(false), 2000)
+              if (tab === 'transcript' || meta.sample || meta.status !== 'complete') {
+                void window.sitka.exportSession(meta.id, tab === 'report' ? 'overview' : tab).then((res) => {
+                  if (res.ok) {
+                    setExported(true)
+                    setTimeout(() => setExported(false), 2000)
+                  }
+                })
+                return
+              }
+              setBriefBusy(true)
+              void window.sitka.sessionBrief(meta.id).then((r) => {
+                setBriefBusy(false)
+                if (!r.html) {
+                  const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
+                  report?.('brief', `brief failed for ${meta.id}: ${r.error || 'no page'}`)
+                  return
                 }
+                const name = (r.title || meta.title).replace(/[^\w\- ]+/g, '').trim() || 'brief'
+                const bytes = new TextEncoder().encode(r.html)
+                const copy = new ArrayBuffer(bytes.byteLength)
+                new Uint8Array(copy).set(bytes)
+                void window.sitka.saveBinaryFile(`${name} — brief.doc`, copy)
+                setExported(true)
+                setTimeout(() => setExported(false), 2000)
               })
             }}
           >
             <IconDownload size={13} />
-            {exported ? 'Exported ✓' : 'Export'}
+            {briefBusy ? 'Writing…' : exported ? 'Exported ✓' : 'Export'}
           </button>
-          {!meta.readOnly && !meta.sample && meta.status === 'complete' && (
-            <button
-              className="btn btn-ghost btn-sm"
-              title="A clean brief of this session, written by Sitca, as a document to send on (opens in Word and Google Docs)"
-              disabled={briefBusy}
-              onClick={() => {
-                setBriefBusy(true)
-                void window.sitka.sessionBrief(meta.id).then((r) => {
-                  setBriefBusy(false)
-                  if (!r.html) return
-                  const name = (r.title || meta.title).replace(/[^\w\- ]+/g, '').trim() || 'brief'
-                  const bytes = new TextEncoder().encode(r.html)
-                  const copy = new ArrayBuffer(bytes.byteLength)
-                  new Uint8Array(copy).set(bytes)
-                  void window.sitka.saveBinaryFile(`${name} — brief.doc`, copy)
-                })
-              }}
-            >
-              <IconDoc size={13} />
-              {briefBusy ? 'Writing…' : 'Brief'}
-            </button>
-          )}
         </div>
 
         {tab === 'transcript' && (

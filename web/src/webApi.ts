@@ -3434,6 +3434,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const whole =
         (await fetchObject(videoPath(id), 'r2')) ?? (await fetchObject(videoPath(id), 'sb'))
       if (!whole) {
+        // the one request the player itself uses: where the recording is, by link
+        const m = await store.media(user.id, id).catch(() => null)
+        if (m?.whole) {
+          const r = await fetch(m.whole, { cache: 'no-store' }).catch(() => null)
+          if (r && r.ok) return new Uint8Array(await r.arrayBuffer())
+        }
         console.error('Sitca: no recording found for session', id)
         return null
       }
