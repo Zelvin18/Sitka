@@ -55,6 +55,8 @@ export function installBrowserMockIfNeeded(): void {
     askSpace: async () => undefined,
     spaceInsights: async () => [],
     getUsage: async () => null,
+    rateAnswer: async () => undefined,
+    saveToDrive: async () => ({ error: 'unavailable in browser preview' }),
     signOut: async () => undefined,
     deleteAccount: async () => ({ error: 'unavailable in browser preview' }),
     reanalyzeSession: async () => null,

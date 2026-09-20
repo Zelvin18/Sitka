@@ -23,6 +23,7 @@ import {
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
+import { createDoc, driveToken, fmtClock, simpleHtml, sitcaFolder, uploadRecording } from './drive'
 import { limitMessage, overLimit as overPlanLimit, type Usage } from '../../src/shared/plans'
 import { assignSpeakers, listSpeakers, speakerName, speakersNote, transcriptLine, type Utterance } from '../../src/shared/speakers'
 import { joinMaterials, materialsBlock } from '../../src/shared/materialsLogic'
@@ -2566,6 +2567,70 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     ],
 
     getUsage: async (force?: boolean) => myUsage(Boolean(force)),
+
+    rateAnswer: async (sessionId: string, question: string, answer: string, good: boolean) => {
+      track(good ? 'answer_good' : 'answer_bad', {})
+      await sb
+        .from('answer_feedback')
+        .insert({ user_id: user.id, session_id: sessionId, question: question.slice(0, 2000), answer: answer.slice(0, 8000), good })
+        .then(() => undefined, () => undefined)
+    },
+
+    // The session into the person's Google Drive: the recording, and a
+    // Google Doc with the overview, the notes and the transcript, in a
+    // "Sitca" folder. Progress goes out as an event the page draws.
+    saveToDrive: async (id: string) => {
+      const say = (stage: string, sent = 0, total = 0): void => {
+        window.dispatchEvent(new CustomEvent('sitka:drive', { detail: { sessionId: id, stage, sent, total } }))
+      }
+      try {
+        const d = cache.get(id) ?? (await loadSession(id))
+        if (!d) return { error: 'This session could not be read.' }
+        say('asking')
+        const t = await driveToken()
+        const folder = await sitcaFolder(t)
+        const title = (d.meta.title || 'Session').replace(/[\/:*?"<>|]+/g, ' ').trim()
+        let fileUrl = ''
+        if (!d.meta.readOnly) {
+          say('reading')
+          const parts = await api.listVideoPartsSized(id).catch(() => [])
+          const mime = d.meta.mime || (d.meta.audioOnly ? 'audio/webm' : 'video/webm')
+          const ext = /mp4/.test(mime) ? (d.meta.audioOnly ? 'm4a' : 'mp4') : 'webm'
+          if (parts.length > 0) {
+            const up = await uploadRecording(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
+            fileUrl = up.url
+          } else {
+            const bytes = await api.readVideo(id).catch(() => null)
+            if (bytes && bytes.byteLength > 0) {
+              const blobUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mime }))
+              try {
+                const up = await uploadRecording(t, folder.id, `${title}.${ext}`, mime, [{ url: blobUrl, size: bytes.byteLength }], (sent, total) => say('sending', sent, total))
+                fileUrl = up.url
+              } finally {
+                URL.revokeObjectURL(blobUrl)
+              }
+            }
+          }
+        }
+        say('writing')
+        const when = new Date(d.meta.createdAt).toLocaleString()
+        const html = [
+          `<h1>${title.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</h1>`,
+          `<p><i>${when} · ${Math.round((d.meta.durationMs || 0) / 60000)} min · made with Sitca</i></p>`,
+          d.meta.summary ? `<h2>Overview</h2>${simpleHtml(d.meta.summary)}` : '',
+          d.meta.highlights?.length ? `<h2>Moments</h2><ul>${d.meta.highlights.map((h) => `<li>${String(h.time ?? '')} — ${String(h.label ?? '').replace(/</g, '&lt;')}</li>`).join('')}</ul>` : '',
+          d.notes?.markdown ? `<h2>Notes</h2>${simpleHtml(d.notes.markdown)}` : '',
+          d.segments.length ? `<h2>Transcript</h2>${d.segments.map((s) => `<p><b>${fmtClock(s.start)}</b>${typeof s.speaker === 'number' && d.meta.speakers ? ` <i>${(d.meta.speakers.find((sp) => sp.id === s.speaker)?.name || `Speaker ${s.speaker + 1}`).replace(/</g, '&lt;')}:</i>` : ''} ${s.text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`).join('\n')}` : ''
+        ].join('\n')
+        const doc = await createDoc(t, folder.id, `${title} — notes`, html)
+        say('done')
+        track('drive_save', { video: Boolean(fileUrl) })
+        return { folderUrl: folder.url, fileUrl, docUrl: doc.url }
+      } catch (err) {
+        say('failed')
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    },
 
     getThumb: async (id: string) => {
       const { data } = await sb.from('sessions').select('thumb').eq('id', id).maybeSingle()

@@ -17,6 +17,8 @@ interface Props {
   speakers?: Speaker[]
   /** a tap on a speaker's label: name them */
   onSpeaker?: (id: number) => void
+  /** words to find: only lines that carry them are shown, the words marked */
+  query?: string
 }
 
 export default function TranscriptPane({
@@ -27,8 +29,10 @@ export default function TranscriptPane({
   emptyText,
   transcribing,
   speakers,
-  onSpeaker
+  onSpeaker,
+  query
 }: Props): React.JSX.Element {
+  const q = (query ?? '').trim().toLowerCase()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -50,7 +54,11 @@ export default function TranscriptPane({
       {segments.length === 0 && !transcribing && (
         <div className="transcript-waiting">{emptyText}</div>
       )}
+      {q && segments.every((s) => !s.text.toLowerCase().includes(q)) && (
+        <div className="transcript-waiting">Nothing in the session says “{query?.trim()}”.</div>
+      )}
       {segments.map((seg, i) => {
+        if (q && !seg.text.toLowerCase().includes(q)) return null
         const onScreen = seg.text.startsWith(ON_SCREEN_PREFIX)
         const turn = !onScreen && seg.speaker !== undefined && seg.speaker !== lastSpeaker
         if (!onScreen && seg.speaker !== undefined) lastSpeaker = seg.speaker
@@ -83,7 +91,7 @@ export default function TranscriptPane({
                   {speakerName(speakers, seg.speaker)}
                 </button>
               )}
-              {onScreen ? seg.text.slice(ON_SCREEN_PREFIX.length) : seg.text}
+              {marked(onScreen ? seg.text.slice(ON_SCREEN_PREFIX.length) : seg.text, q)}
             </span>
           </div>
         )
@@ -100,4 +108,22 @@ export default function TranscriptPane({
       )}
     </div>
   )
+}
+
+/** The text with the found words marked. */
+function marked(text: string, q: string): React.ReactNode {
+  if (!q) return text
+  const out: React.ReactNode[] = []
+  const lower = text.toLowerCase()
+  let at = 0
+  let i = lower.indexOf(q)
+  let k = 0
+  while (i >= 0) {
+    if (i > at) out.push(text.slice(at, i))
+    out.push(<mark key={k++}>{text.slice(i, i + q.length)}</mark>)
+    at = i + q.length
+    i = lower.indexOf(q, at)
+  }
+  if (at < text.length) out.push(text.slice(at))
+  return out
 }

@@ -1005,6 +1005,8 @@ function registerIpc(): void {
 
   // the desktop's own workspace has no plan: nothing is metered here
   ipcMain.handle('usage:get', () => null)
+  ipcMain.handle('answer:rate', () => undefined)
+  ipcMain.handle('drive:save', () => ({ error: 'Saving to Google Drive is done from the website, where the recording is kept.' }))
   ipcMain.handle('profile:get', () => {
     const given = (store.getSettings().profileName || '').trim()
     let name = given || 'You'

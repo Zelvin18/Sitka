@@ -721,6 +721,24 @@ function renderPlans(): void {
   }).join('')
 }
 
+// ---------- answers rated ----------
+async function renderFeedback(): Promise<void> {
+  const box = document.getElementById('feedback')
+  if (!box) return
+  try {
+    const f = await rpc<{ good: number; bad: number; rows: { at: string; good: boolean; session: string | null; question: string; answer: string; user: string | null }[] }>('admin_feedback', { lim: 60 })
+    const head = `<div class="ov-line"><span>Good, in 30 days</span><b>${fmtInt(f.good)}</b></div><div class="ov-line"><span>Wrong, in 30 days</span><b>${fmtInt(f.bad)}</b></div>`
+    const rows = f.rows
+      .filter((r) => !r.good)
+      .slice(0, 20)
+      .map((r) => `<div class="err"><span class="when" title="${esc(r.at)}">${ago(r.at)}</span><div><div class="msg" style="font-family:inherit"><b>Q:</b> ${esc(r.question)}</div><div class="meta" style="margin-top:4px;color:var(--t2)"><b>A:</b> ${esc(r.answer)}</div><div class="meta">${esc(r.user || '')}${r.session ? ` · <a href="/app#open=${esc(r.session)}" target="_blank" rel="noopener">session</a>` : ''}</div></div></div>`)
+      .join('')
+    box.innerHTML = head + (rows ? `<div class="errs" style="margin-top:10px">${rows}</div>` : '<div class="calm" style="margin-top:10px">Nothing marked wrong yet.</div>')
+  } catch {
+    box.innerHTML = '<div class="calm">Run supabase/hardening.sql to see rated answers here.</div>'
+  }
+}
+
 // ---------- the team ----------
 async function renderTeam(): Promise<void> {
   try {
@@ -780,6 +798,7 @@ async function loadAll(): Promise<void> {
     paintStorage()
     void renderHealth()
     void renderTeam()
+    void renderFeedback()
     el('updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   } catch (err) {
     el('overview-sub').textContent = 'Could not load: ' + (err instanceof Error ? err.message : String(err))

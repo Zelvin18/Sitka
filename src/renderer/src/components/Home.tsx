@@ -21,6 +21,8 @@ interface Props {
   onSettings: () => void
 }
 
+const isWeb = (window as unknown as { sitkaWeb?: boolean }).sitkaWeb === true
+
 export default function Home({
   sessions,
   loaded = true,
@@ -182,7 +184,24 @@ export default function Home({
             <div className="empty-title">Your library starts with your first session</div>
             <div style={{ marginBottom: 20, maxWidth: 420, margin: '0 auto 20px' }}>
               Every session you capture lands here with a title, a summary, and the moments
-              worth revisiting. Start one before your next lecture, meeting, or presentation.
+              worth revisiting. Three ways to begin:
+            </div>
+            <div className="ways">
+              <button className="way" onClick={onNewSession}>
+                <span className="way-n">1</span>
+                <b>Record a class or a meeting</b>
+                <span>Your screen, your camera or just the microphone. Sitca captions it, takes notes and answers you as it goes.</span>
+              </button>
+              <button className="way" onClick={onNewSession}>
+                <span className="way-n">2</span>
+                <b>Host it for the room</b>
+                <span>Share a link or a QR code: people follow the captions in their language, hear the room and ask questions.</span>
+              </button>
+              <a className="way" href={isWeb ? '/extension' : 'https://sitcaai.vercel.app/extension'} target="_blank" rel="noreferrer">
+                <span className="way-n">3</span>
+                <b>Sit in on Google Meet, Zoom or YouTube</b>
+                <span>Sitca for Chrome puts a small card on the call. One press, and it records, captions and hands you a recap link.</span>
+              </a>
             </div>
             <button className="btn btn-primary btn-lg" onClick={onNewSession}>
               <IconPlus size={16} strokeWidth={2.2} />

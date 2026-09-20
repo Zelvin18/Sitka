@@ -227,6 +227,31 @@ export default function SessionView({
   const [reelError, setReelError] = useState<string | null>(null)
   const [reelSaved, setReelSaved] = useState(false)
   const [exported, setExported] = useState(false)
+  // the session into Google Drive: the recording and a Google Doc, with progress
+  const [drive, setDrive] = useState<{ stage: string; sent: number; total: number; folderUrl?: string; error?: string } | null>(null)
+  useEffect(() => {
+    const on = (e: Event): void => {
+      const d = (e as CustomEvent<{ sessionId: string; stage: string; sent: number; total: number }>).detail
+      if (d.sessionId !== sessionId) return
+      setDrive((cur) => ({ ...(cur ?? { stage: '', sent: 0, total: 0 }), stage: d.stage, sent: d.sent, total: d.total }))
+    }
+    window.addEventListener('sitka:drive', on)
+    return () => window.removeEventListener('sitka:drive', on)
+  }, [sessionId])
+  const saveToDrive = useCallback((): void => {
+    if (drive && ['asking', 'reading', 'sending', 'writing'].includes(drive.stage)) return
+    const inExtension = Boolean((window as unknown as { sitkaExt?: unknown }).sitkaExt)
+    if (inExtension) {
+      // Google's window cannot open inside the extension: the website does it
+      window.open(`https://sitcaai.vercel.app/app#open=${sessionId}&t=${Date.now()}`, '_blank', 'noopener')
+      return
+    }
+    setDrive({ stage: 'asking', sent: 0, total: 0 })
+    void window.sitka.saveToDrive(sessionId).then((r) => {
+      if (r.error) setDrive({ stage: 'failed', sent: 0, total: 0, error: r.error })
+      else setDrive({ stage: 'done', sent: 1, total: 1, folderUrl: r.folderUrl })
+    })
+  }, [drive, sessionId])
   // the recording itself, as a file: fetched whole, then saved with the session's name
   const [downloading, setDownloading] = useState<'' | 'busy' | 'done' | 'none'>('')
   const downloadRecording = useCallback((): void => {
@@ -262,6 +287,7 @@ export default function SessionView({
   // again beside Ask Sitca, long after the event ended.
   const [rightTab, setRightTab] = useRemembered<'ask' | 'room'>('sitka.session.right', 'ask')
   const [roomMsgs, setRoomMsgs] = useState<RoomMessage[]>([])
+  const [findText, setFindText] = useState('')
   const [roomQs, setRoomQs] = useState<{ topic: string; items: { text: string; at: number; votes: number }[] }[]>([])
 
   useEffect(() => {
@@ -1026,6 +1052,25 @@ export default function SessionView({
               {downloading === 'busy' ? 'Fetching…' : downloading === 'done' ? 'Saved ✓' : downloading === 'none' ? 'Nothing to save yet' : 'Download'}
             </button>
           )}
+          {!meta.readOnly && !meta.sample && (
+            <button
+              className={`video-toggle video-drive${drive?.stage === 'done' ? ' done' : ''}`}
+              onClick={() => (drive?.stage === 'done' && drive.folderUrl ? window.open(drive.folderUrl, '_blank', 'noopener') : saveToDrive())}
+              title={drive?.error ? drive.error : 'Save the recording and a Google Doc of the notes to your Google Drive, in a Sitca folder'}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3h8l6 10-4 7H6l-4-7z" />
+                <path d="M8 3l6 10M2 13h12" />
+              </svg>
+              {!drive || drive.stage === '' ? 'Save to Drive'
+                : drive.stage === 'asking' ? 'Asking Google…'
+                : drive.stage === 'reading' ? 'Reading…'
+                : drive.stage === 'sending' ? `Sending ${drive.total ? Math.round((drive.sent / drive.total) * 100) : 0}%`
+                : drive.stage === 'writing' ? 'Writing the notes…'
+                : drive.stage === 'done' ? 'In Drive · open'
+                : 'Could not save · retry'}
+            </button>
+          )}
           {videoSrc ? (
             <>
               <video
@@ -1488,11 +1533,28 @@ export default function SessionView({
               naming={naming}
               onNamingDone={namingDone}
             />
+            {segments.length > 8 && (
+              <div className="transcript-find">
+                <input
+                  className="input"
+                  value={findText}
+                  placeholder="Find a word in the session…"
+                  onChange={(e) => setFindText(e.target.value)}
+                  spellCheck={false}
+                />
+                {findText && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setFindText('')}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
             <TranscriptPane
               segments={segments}
+              query={findText}
               currentTime={currentTime}
               onSeek={seek}
-              followLive={meta.status === 'recording'}
+              followLive={meta.status === 'recording' && !findText}
               emptyText={meta.status === 'recording' ? 'Listening — the words appear here as they are said.' : 'No transcript was captured for this session.'}
               speakers={meta.speakers}
               onSpeaker={meta.readOnly || meta.saved ? undefined : setNaming}
@@ -1786,11 +1848,13 @@ export default function SessionView({
             meta.id.startsWith(sid) ? undefined : sessions.find((s) => s.id.startsWith(sid))?.title
           }
           onOpenSettings={onOpenSettings}
-          suggestions={[
-            'Summarize this session',
-            'What were the most important points?',
-            'When was the main topic explained?'
-          ]}
+          suggestions={
+            meta.kind === 'meeting'
+              ? ['What was decided, and who does what?', 'Summarize this meeting in five lines', 'What is still open or unresolved?', 'Draft a follow-up email from this meeting']
+              : meta.kind === 'lecture'
+                ? ['Explain the main idea like I am new to it', 'Give me exam questions from this lecture', 'What are the key terms, with definitions?', 'Where did the lecturer say the important parts are?']
+                : ['Summarize this session', 'What were the most important points?', 'When was the main topic explained?', 'Turn this into study notes']
+          }
         />
         )}
       </div>

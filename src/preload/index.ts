@@ -42,6 +42,12 @@ import type {
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   getProfile: (): Promise<Profile> => ipcRenderer.invoke('profile:get'),
+  /** A word on an answer, right or wrong, kept with its question for the people who run Sitca. */
+  rateAnswer: (sessionId: string, question: string, answer: string, good: boolean): Promise<void> =>
+    ipcRenderer.invoke('answer:rate', sessionId, question, answer, good),
+  /** The session into the person's Google Drive: the recording and a Google Doc. Progress arrives as the 'sitka:drive' window event. */
+  saveToDrive: (id: string): Promise<{ folderUrl?: string; fileUrl?: string; docUrl?: string; error?: string }> =>
+    ipcRenderer.invoke('drive:save', id),
   /** This month against the plan: hours, questions, storage. null where there is no plan (the desktop's own workspace). */
   getUsage: (force?: boolean): Promise<Usage | null> => ipcRenderer.invoke('usage:get', Boolean(force)),
   /** what the person is called; null when nothing was given */

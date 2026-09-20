@@ -100,6 +100,17 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
   /** files added with + for the next question */
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [attachBusy, setAttachBusy] = useState<string | null>(null)
+  // a word on an answer: right, or wrong. Kept with the question, so what
+  // went wrong can be looked at later.
+  const [rated, setRated] = useState<Record<number, 'good' | 'bad'>>({})
+  const rate = (i: number, good: boolean): void => {
+    if (rated[i] || m_note(i)) return
+    setRated((r) => ({ ...r, [i]: good ? 'good' : 'bad' }))
+    const answer = messagesRef.current[i]
+    const question = [...messagesRef.current.slice(0, i)].reverse().find((x) => x.role === 'user')
+    void window.sitka.rateAnswer(sessionId, question?.content ?? '', answer?.content ?? '', good).catch(() => undefined)
+  }
+  const m_note = (i: number): boolean => messagesRef.current[i]?.kind === 'note'
   const speakerRef = useRef<Speaker | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -455,6 +466,32 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
                   )}
                   {speakingIdx === i && speakPrep && <span>Preparing</span>}
                 </button>
+                {m.kind !== 'note' && (
+                  <>
+                    <button
+                      className={`msg-action msg-rate${rated[i] === 'good' ? ' on' : ''}`}
+                      title="A good answer"
+                      onClick={() => rate(i, true)}
+                      disabled={Boolean(rated[i])}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7 11v9M7 11l4-8a2.5 2.5 0 0 1 2.5 2.5V9h5a2 2 0 0 1 2 2.3l-1.2 7a2 2 0 0 1-2 1.7H7" />
+                      </svg>
+                      {rated[i] === 'good' && <span>Thanks</span>}
+                    </button>
+                    <button
+                      className={`msg-action msg-rate${rated[i] === 'bad' ? ' on' : ''}`}
+                      title="Something is wrong in this answer"
+                      onClick={() => rate(i, false)}
+                      disabled={Boolean(rated[i])}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M17 13V4M17 13l-4 8a2.5 2.5 0 0 1-2.5-2.5V15h-5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.7 4H17" />
+                      </svg>
+                      {rated[i] === 'bad' && <span>Noted — we will look</span>}
+                    </button>
+                  </>
+                )}
                 <span className="msg-time">{timeLabel(m.at)}</span>
               </div>
             </div>
