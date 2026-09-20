@@ -52,6 +52,7 @@ export default async function handler(req, res) {
   const op = String(body.op || '')
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const owner = token ? await userOf(token) : null
+  askerToken = token
 
   try {
     if (op === 'put') return await putLinks(res, cfg, owner, body)
@@ -128,6 +129,27 @@ function sessionOfKey(key) {
   return UUID.test(second) ? second : null
 }
 
+/** the token of the person asking, for the course check (set per request) */
+let askerToken = ''
+
+/**
+ * A member of the course a session is filed in may watch it. The database
+ * decides, as the person: their token, their membership.
+ */
+async function memberCanWatch(sessionId) {
+  if (!askerToken || !UUID.test(sessionId)) return false
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_can_watch`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${askerToken}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_id: sessionId })
+    })
+    return r.ok && (await r.json()) === true
+  } catch {
+    return false
+  }
+}
+
 async function allow(owner, keys, write) {
   const list = (Array.isArray(keys) ? keys : []).map(String)
   if (list.length === 0 || list.length > 1200) return false
@@ -136,7 +158,7 @@ async function allow(owner, keys, write) {
   if (write) return false
   const sessions = new Set(list.map(sessionOfKey))
   if (sessions.has(null) || sessions.size > 4) return false
-  for (const s of sessions) if (!(await isShared(s))) return false
+  for (const s of sessions) if (!(await isShared(s)) && !(await memberCanWatch(s))) return false
   return true
 }
 
@@ -184,7 +206,7 @@ async function mediaLinks(res, cfg, owner, body) {
     return res.status(400).json({ error: 'Bad session.' })
   }
   const mine = owner && owner === ownerId
-  if (!mine && !(await isShared(sessionId))) return res.status(403).json({ error: 'Not allowed.' })
+  if (!mine && !(await isShared(sessionId)) && !(await memberCanWatch(sessionId))) return res.status(403).json({ error: 'Not allowed.' })
 
   // One listing catches both shapes, because the whole file and the folder of
   // parts share a prefix: <owner>/<session>.webm and <owner>/<session>/part-*

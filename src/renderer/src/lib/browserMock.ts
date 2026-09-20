@@ -60,6 +60,7 @@ export function installBrowserMockIfNeeded(): void {
     previewCourse: async () => null,
     joinCourse: async () => ({ error: 'unavailable in browser preview' }),
     hideCourse: async () => undefined,
+    downloadSpaceMaterial: async () => ({ error: 'unavailable in browser preview' }),
     setOrgRules: async () => ({ error: 'unavailable in browser preview' }),
     setSessionSource: async () => undefined,
     sessionBrief: async () => ({ error: 'unavailable in browser preview' }),

@@ -30,6 +30,9 @@ const cards = new Map()
 const wanted = new Map()
 /** the engine page: whether it is up and signed in */
 const engine = { starting: null, ready: false, signedIn: false, waiting: [] }
+/** cards waiting for the courses the engine reports; asked once per worker life */
+const coursesWaiters = []
+let coursesAsked = false
 
 // Chrome stops this worker after half a minute of quiet and starts it again
 // on the next event, with its memory gone. What the cards show, and a choice
@@ -453,15 +456,31 @@ function handle(msg, sender, reply) {
     return true
   }
   if (msg.type === 'sitca:card:courses') {
-    // the courses this person teaches, as the extension's pages last reported them
+    // The courses this person teaches, as the extension's pages last
+    // reported them. Nothing known yet (a fresh install, a new course): the
+    // engine is woken, and it reports on arrival; the card waits a moment.
     chrome.storage.local.get('courses').then(
-      (s) => reply({ courses: Array.isArray(s.courses) ? s.courses : [] }),
+      async (s) => {
+        const known = Array.isArray(s.courses) ? s.courses : []
+        if (known.length > 0 || coursesAsked) return reply({ courses: known })
+        coursesAsked = true
+        const fresh = await new Promise((resolve) => {
+          coursesWaiters.push(resolve)
+          setTimeout(() => resolve(null), 12000)
+          ensureEngine().catch(() => undefined)
+        })
+        // woken only to answer this: it goes again in a minute unless a session starts
+        if (recordingTab() === null) scheduleEngineClose()
+        reply({ courses: Array.isArray(fresh) ? fresh : known })
+      },
       () => reply({ courses: [] })
     )
     return true
   }
   if (msg.type === 'sitca:courses') {
-    chrome.storage.local.set({ courses: Array.isArray(msg.courses) ? msg.courses.slice(0, 50) : [] }).catch(() => undefined)
+    const list = Array.isArray(msg.courses) ? msg.courses.slice(0, 50) : []
+    chrome.storage.local.set({ courses: list }).catch(() => undefined)
+    coursesWaiters.splice(0).forEach((r) => r(list))
     reply({ ok: true })
     return undefined
   }

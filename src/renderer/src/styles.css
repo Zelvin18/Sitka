@@ -13891,3 +13891,30 @@ video {
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* the invitation, laid out: the rule across the top, the two codes side by side */
+.invite-wide {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+}
+.invite-wide .invite-card {
+  margin: 14px 0 0;
+}
+.invite-wide .invite-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.invite-wide .invite-cards .invite-card {
+  margin-top: 0;
+}
+.invite-wide .invite-code {
+  font-size: 26px;
+  letter-spacing: 0.32em;
+  padding: 18px 12px;
+}
+@media (max-width: 700px) {
+  .invite-wide .invite-cards {
+    grid-template-columns: 1fr;
+  }
+}

@@ -51,6 +51,8 @@ type View =
       /** file the session into an organisation space */
       orgSpaceId?: string
       orgSpaceName?: string
+      /** host it live for the course, rather than record it */
+      host?: boolean
     }
   | { name: 'brain' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
@@ -770,9 +772,9 @@ export default function App(): React.JSX.Element {
                 org={org}
                 mySessions={sessions.filter((s) => s.space === org.kind || s.spaceId)}
                 hasChatKey={Boolean(settings?.anthropicApiKey || settings?.groqApiKey)}
-                onStartSession={(presetKind, audioOnly, orgSpaceId, orgSpaceName) => {
+                onStartSession={(presetKind, audioOnly, orgSpaceId, orgSpaceName, host) => {
                   setSpace(org.kind)
-                  setView({ name: 'live', space: org.kind, presetKind, audioOnly, orgSpaceId, orgSpaceName })
+                  setView({ name: 'live', space: org.kind, presetKind, audioOnly, orgSpaceId, orgSpaceName, host })
                 }}
                 onOpenSession={openSession}
                 onDeleteSession={(id) => deleteSession(id)}
@@ -861,6 +863,7 @@ export default function App(): React.JSX.Element {
               autoStart={view.name === 'live' ? view.quick : undefined}
               meetTab={view.name === 'live' ? view.meet : undefined}
               orgSpaceId={view.name === 'live' ? view.orgSpaceId : undefined}
+              presetHost={view.name === 'live' ? view.host : undefined}
               orgSpaceName={view.name === 'live' ? view.orgSpaceName : undefined}
               defaultCapture={settings?.defaultCapture}
               notesOn={settings?.notes !== false}

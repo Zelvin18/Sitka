@@ -162,6 +162,8 @@ interface Props {
   orgSpaceId?: string
   /** shown in the header when filing into a space */
   orgSpaceName?: string
+  /** arrive already set to host (a lecture for a course) */
+  presetHost?: boolean
   /** preferences from Settings */
   defaultCapture?: 'screen' | 'camera' | 'audio'
   notesOn?: boolean
@@ -230,6 +232,7 @@ export default function LiveSession({
   meetTab,
   orgSpaceId,
   orgSpaceName,
+  presetHost,
   defaultCapture,
   notesOn,
   readScreen
@@ -240,7 +243,7 @@ export default function LiveSession({
   const [phase, setPhase] = useState<Phase>(
     presetKind || presetAudio || meetTab || draft?.picking ? 'picking' : 'intent'
   )
-  const [hosting, setHosting] = useState(draft?.hosting ?? Boolean(meetTab?.host))
+  const [hosting, setHosting] = useState(presetHost ?? draft?.hosting ?? Boolean(meetTab?.host))
   const [kind, setKind] = useState<SessionKind>(presetKind ?? draft?.kind ?? 'other')
   // ---- capture mode: the screen with its sound, the camera, or the microphone alone ----
   const [captureMode, setCaptureMode] = useState<'screen' | 'audio' | 'camera'>(() => {

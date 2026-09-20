@@ -1049,6 +1049,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         | { id: string; owner: string; meta: SessionMeta; transcript: TranscriptSegment[]; notes: SessionNotes | null; study: StudyPack | null }
         | undefined
       if (!s || s.owner === user.id) return null
+      // its recording is the owner's: remembered, so the player finds it
+      savedOwners.set(id, s.owner)
       const d: SessionData = {
         meta: { ...s.meta, readOnly: true },
         segments: s.transcript || [],
@@ -2654,6 +2656,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       track('course_join', {})
       return (data as { spaceId: string; orgId: string; course: string; org: string; role: string }) ?? { error: 'Could not join.' }
     },
+    downloadSpaceMaterial: async (spaceId: string, materialId: string) => {
+      const { data, error } = await sb.from('org_materials').select('name,text').eq('space_id', spaceId).eq('id', materialId).maybeSingle()
+      const row = data as { name?: string; text?: string } | null
+      if (error || !row?.text) return { error: 'This document could not be read.' }
+      const base = (row.name || 'material').replace(/\.(pdf|docx?|pptx?|txt|md)$/i, '').replace(/[^\w\- ]+/g, '').trim() || 'material'
+      downloadText(`${base}.txt`, row.text)
+      return { ok: true }
+    },
     hideCourse: async (spaceId: string, hidden: boolean) => {
       await sb.rpc('sitka_hide_course', { p_space: spaceId, p_hidden: hidden }).then(() => undefined, () => undefined)
     },
@@ -3345,8 +3355,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // engine in the way. Made once, after the session, from the parts.
     videoUrl: async (id: string) => {
       const d = cache.get(id) ?? (await loadSession(id))
-      if (!d) {
-        // a kept recap: its whole file, if the recorder has one, by the shared link
+      if (!d || d.meta.readOnly) {
+        // a kept recap, or a course's lecture: the recorder's whole file, by the shared link
         const m = await savedMedia(id).catch(() => null)
         return m?.whole ?? null
       }
@@ -3390,8 +3400,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return urls.length === names.length ? urls : []
     },
     listVideoPartsSized: async (id: string) => {
-      if (!cache.get(id) && !(await loadSession(id))) {
-        // a kept recap: the recorder's parts, shared
+      const own = cache.get(id) ?? (await loadSession(id))
+      if (!own || own.meta.readOnly) {
+        // a kept recap, or a course's lecture: the recorder's parts, shared
         const m = await savedMedia(id).catch(() => null)
         return m && m.parts.every((p) => p.url && p.size > 0) ? m.parts : []
       }

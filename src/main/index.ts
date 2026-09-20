@@ -1010,6 +1010,7 @@ function registerIpc(): void {
   ipcMain.handle('course:preview', () => null)
   ipcMain.handle('course:join', () => ({ error: 'Courses live on the website.' }))
   ipcMain.handle('course:hide', () => undefined)
+  ipcMain.handle('space:materialDownload', () => ({ error: 'Materials are shared on the website.' }))
   ipcMain.handle('org:rules', () => ({ error: 'Organisations are managed on the website.' }))
   ipcMain.handle('session:source', () => undefined)
   ipcMain.handle('session:brief', () => ({ error: 'The brief is written on the website.' }))

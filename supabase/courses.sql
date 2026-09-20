@@ -217,3 +217,14 @@ begin
   where id = p_org;
 end $$;
 grant execute on function public.sitka_org_rules(text, text[], text) to authenticated;
+
+-- may this person watch a session's recording? its owner, or a member of the course it is filed in
+create or replace function public.sitka_can_watch(p_id text)
+returns boolean language sql security definer stable as $$
+  select exists (
+    select 1 from public.sessions s
+    where s.id = p_id
+      and (s.owner = auth.uid() or (s.space_id is not null and public.sitka_can_see_space(s.space_id)))
+  );
+$$;
+grant execute on function public.sitka_can_watch(text) to authenticated;

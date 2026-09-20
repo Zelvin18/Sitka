@@ -1130,7 +1130,7 @@ export default function SessionView({
           <div className="live-block" style={{ margin: '12px 24px 0' }}>
             <Mark size={14} live />
             <div className="live-block-text">
-              <b>Preparing the recording.</b>
+              <b>Almost ready.</b>
               <span>The last pieces are being joined into one file. It plays here the moment that is done.</span>
             </div>
           </div>
@@ -1487,7 +1487,7 @@ export default function SessionView({
                 width: '100%'
               }}
             >
-              {meta.readOnly && !meta.saved ? (
+              {meta.readOnly && !meta.saved && !meta.spaceId ? (
                 'The recording stays with the person who captured it. The transcript, notes and answers are all here.'
               ) : videoError ? (
                 <div className="video-failed">

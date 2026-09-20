@@ -20,8 +20,10 @@ import {
   IconCap,
   IconCopy,
   IconDoc,
+  IconDownload,
   IconFolder,
   IconMic,
+  IconBroadcast,
   IconPlay,
   IconPlus,
   IconScreen,
@@ -35,7 +37,7 @@ interface Props {
   /** the user's own sessions of this ecosystem, offered for filing into a space */
   mySessions: SessionMeta[]
   hasChatKey: boolean
-  onStartSession: (kind: SessionKind, audioOnly: boolean, spaceId: string, spaceName: string) => void
+  onStartSession: (kind: SessionKind, audioOnly: boolean, spaceId: string, spaceName: string, host?: boolean) => void
   onOpenSession: (id: string, seconds?: number) => void
   onOpenSettings: () => void
   onLeft: () => void
@@ -496,7 +498,7 @@ export default function OrgView({
 
         {inviting && org.code && (
           <div className="dialog-overlay" onMouseDown={() => setInviting(false)}>
-            <div className="dialog invite-dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="dialog invite-dialog invite-wide" onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title">Invite people to {org.name}</div>
               <div className="dialog-message">
                 Send a code. People sign in to Sitca, open {education ? 'Education' : 'Business'} at the top right,
@@ -540,6 +542,7 @@ export default function OrgView({
                 </div>
               )}
 
+              <div className="invite-cards">
               <div className="invite-card">
                 <div className="invite-card-head">
                   <span className="invite-card-who">{education ? 'Students' : 'Members'}</span>
@@ -585,6 +588,7 @@ export default function OrgView({
                   </div>
                 </div>
               )}
+              </div>
 
               <div className="dialog-actions">
                 <button className="btn" onClick={() => setInviting(false)}>
@@ -658,21 +662,36 @@ export default function OrgView({
               {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} here
             </div>
           </div>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => onStartSession(captureKind, false, active.id, active.name)}
-            title={`Capture a ${captureKind} into this ${noun}`}
-          >
-            <IconScreen size={13} strokeWidth={2} />
-            {active.kind === 'course' ? 'Capture a lecture' : 'Capture a meeting'}
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => onStartSession(captureKind, true, active.id, active.name)}
-            title="Record audio"
-          >
-            <IconMic size={13} strokeWidth={2} />
-          </button>
+          {lead && active.kind === 'course' && (
+            // hosting: students join while it happens; the course says it is live
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => onStartSession(captureKind, false, active.id, active.name, true)}
+              title="Host the lecture live: students in this course join as it happens, with captions in their language, and can ask"
+            >
+              <IconBroadcast size={13} strokeWidth={2} />
+              Host a lecture
+            </button>
+          )}
+          {lead && (
+            <button
+              className={`btn btn-sm${active.kind === 'course' ? ' btn-ghost' : ' btn-primary'}`}
+              onClick={() => onStartSession(captureKind, false, active.id, active.name)}
+              title={active.kind === 'course' ? 'Record the lecture for the course: students see it once it ends' : `Capture a ${captureKind} into this ${noun}`}
+            >
+              <IconScreen size={13} strokeWidth={2} />
+              {active.kind === 'course' ? 'Record' : 'Capture a meeting'}
+            </button>
+          )}
+          {lead && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onStartSession(captureKind, true, active.id, active.name)}
+              title="Record audio"
+            >
+              <IconMic size={13} strokeWidth={2} />
+            </button>
+          )}
           {lead && (
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)} title={`Delete this ${noun}`}>
               <IconTrash size={13} strokeWidth={2} />
@@ -853,6 +872,7 @@ export default function OrgView({
                   materials={materials.map((m) => ({ id: m.id, name: m.name, chars: m.chars, addedAt: m.addedAt }))}
                   onAdd={async (name, text) => setMaterials(await window.sitka.addSpaceMaterial(active.id, name, text))}
                   onRemove={async (id) => setMaterials(await window.sitka.removeSpaceMaterial(active.id, id))}
+                  onDownload={(id) => void window.sitka.downloadSpaceMaterial(active.id, id)}
                 />
                 {lead && (
                   <div className="org-danger">
@@ -883,6 +903,9 @@ export default function OrgView({
                         {m.addedBy ? ` · added by ${m.addedBy}` : ''}
                       </span>
                     </span>
+                    <button className="btn btn-ghost btn-sm" title="Save to this device" onClick={() => void window.sitka.downloadSpaceMaterial(active.id, m.id)}>
+                      <IconDownload size={13} />
+                    </button>
                   </div>
                 ))}
               </div>

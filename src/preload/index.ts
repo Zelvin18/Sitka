@@ -93,6 +93,9 @@ const api = {
   joinCourse: (code: string): Promise<{ spaceId?: string; orgId?: string; course?: string; org?: string; role?: string; error?: string }> =>
     ipcRenderer.invoke('course:join', code),
   hideCourse: (spaceId: string, hidden: boolean): Promise<void> => ipcRenderer.invoke('course:hide', spaceId, hidden),
+  /** A shared material, saved to the device as a text file. */
+  downloadSpaceMaterial: (spaceId: string, materialId: string): Promise<{ ok?: boolean; error?: string }> =>
+    ipcRenderer.invoke('space:materialDownload', spaceId, materialId),
   setOrgRules: (orgId: string, domains: string[], coursesBy: 'leads' | 'owner'): Promise<{ error?: string }> =>
     ipcRenderer.invoke('org:rules', orgId, domains, coursesBy),
   createOrg: (name: string, kind: Space): Promise<{ org?: Organization; error?: string }> =>

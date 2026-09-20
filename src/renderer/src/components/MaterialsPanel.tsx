@@ -3,7 +3,7 @@ import type { SessionMaterial } from '@shared/types'
 import { sizeLabel } from '@shared/materialsLogic'
 import ConfirmDialog from './ConfirmDialog'
 import FilePick from './FilePick'
-import { IconDoc, IconPlus, IconTrash, Mark } from '../lib/icons'
+import { IconDoc, IconDownload, IconPlus, IconTrash, Mark } from '../lib/icons'
 import { nameForPaste, readFileToText } from '../lib/readFile'
 
 interface Props {
@@ -11,6 +11,8 @@ interface Props {
   /** add a material (name + extracted text); resolves when stored */
   onAdd: (name: string, text: string) => Promise<void>
   onRemove: (id: string) => Promise<void>
+  /** save a material to the device, where it can be offered */
+  onDownload?: (id: string) => void
   /** short form: no explainer, used inside the live page */
   compact?: boolean
 }
@@ -23,6 +25,7 @@ export default function MaterialsPanel({
   materials,
   onAdd,
   onRemove,
+  onDownload,
   compact
 }: Props): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
@@ -152,6 +155,11 @@ export default function MaterialsPanel({
                 <span className="mat-row-name">{m.name}</span>
                 <span className="mat-row-size">{sizeLabel(m.chars)}</span>
               </span>
+              {onDownload && (
+                <button className="btn btn-ghost btn-sm" title="Save to this device" onClick={() => onDownload(m.id)}>
+                  <IconDownload size={13} />
+                </button>
+              )}
               <button
                 className="btn btn-ghost btn-sm"
                 title="Remove"
