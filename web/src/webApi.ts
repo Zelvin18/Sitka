@@ -2642,7 +2642,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     sessionBrief: async (id: string) => {
       const d = cache.get(id) ?? (await loadSession(id))
       if (!d) return { error: 'This session could not be read.' }
-      const stamp = `v2|${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
+      const stamp = `v3|${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
       const kept = d.meta.brief
       let md = kept && kept.stamp === stamp ? kept.md : ''
       if (!md) {
