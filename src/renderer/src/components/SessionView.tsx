@@ -602,7 +602,10 @@ export default function SessionView({
       if (gen !== loadGenRef.current) return
       sizedRef.current = sized
       const total = sized.reduce((n, p) => n + p.size, 0)
-      const small = sized.length > 0 && total < 12 * 1024 * 1024
+      // "small" is small on a slow connection too: a voice note, not a lecture.
+      // Anything larger plays from its link, which shows a first frame after a
+      // few hundred kilobytes rather than after the whole file has arrived.
+      const small = sized.length > 0 && total < 3 * 1024 * 1024
       // a small recording needs no more deciding: it goes at once. Otherwise the
       // session's own record may still be on its way: a moment's patience, then decide
       if (!small) for (let i = 0; i < 30 && !metaRef.current; i++) await new Promise((r) => setTimeout(r, 100))
