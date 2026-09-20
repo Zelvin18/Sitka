@@ -92,12 +92,32 @@ export default function App(): React.JSX.Element {
     if (a.name === 'org' && b.name === 'org') return a.id === b.id && a.spaceId === b.spaceId
     return JSON.stringify(a) === JSON.stringify(b)
   }
+  /** the pages a person comes back to: never a session, which is a leaf, and never a page that is over */
+  const isRoot = (v: View): boolean => v.name === 'home' || v.name === 'homepage'
+  const isLeaf = (v: View): boolean => v.name === 'session' || v.name === 'live'
   const setView = useCallback((next: View | ((v: View) => View)): void => {
     const resolved = typeof next === 'function' ? next(viewRef.current) : next
-    if (!samePage(resolved, viewRef.current)) {
-      historyRef.current = [...historyRef.current.slice(-40), viewRef.current]
-      spaceHistoryRef.current = [...spaceHistoryRef.current.slice(-40), spaceRef.current]
-      setCanBack(true)
+    if (isRoot(resolved)) {
+      // arriving home is arriving at the start: nothing lies behind it
+      historyRef.current = []
+      spaceHistoryRef.current = []
+      setCanBack(false)
+    } else if (!samePage(resolved, viewRef.current)) {
+      const cur = viewRef.current
+      const top = historyRef.current[historyRef.current.length - 1]
+      // going up inside a page (a course → its organisation) or back to the
+      // page just behind by a link on the page is a step back, not forward
+      const up = cur.name === 'org' && resolved.name === 'org' && cur.id === resolved.id && Boolean(cur.spaceId) && !resolved.spaceId
+      if (top && samePage(top, resolved)) {
+        historyRef.current = historyRef.current.slice(0, -1)
+        spaceHistoryRef.current = spaceHistoryRef.current.slice(0, -1)
+      } else if (!up && !isLeaf(cur)) {
+        // a session or a live page is not a step to come back to: Back from
+        // wherever they led goes to the page before them
+        historyRef.current = [...historyRef.current.slice(-40), cur]
+        spaceHistoryRef.current = [...spaceHistoryRef.current.slice(-40), spaceRef.current]
+      }
+      setCanBack(historyRef.current.length > 0)
     }
     viewRef.current = resolved
     setViewRaw(resolved)
@@ -118,23 +138,25 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('sitka:home', home)
   }, [setView])
   const goBack = useCallback((): void => {
-    // From a session, Back is the way home, whatever was opened before it:
-    // one session after another, and Back must not walk back through them.
-    if (viewRef.current.name === 'session') {
+    // Back walks the way the person came, one page at a time, never through
+    // sessions (a course → a lecture → Back is the course; the library → a
+    // lecture → Back is the library). With nothing behind, it is home.
+    let prev = historyRef.current.pop()
+    let prevSpace = spaceHistoryRef.current.pop()
+    while (prev && isLeaf(prev)) {
+      prev = historyRef.current.pop()
+      prevSpace = spaceHistoryRef.current.pop()
+    }
+    if (!prev) {
+      prev = { name: 'home' }
+      prevSpace = undefined
       historyRef.current = []
       spaceHistoryRef.current = []
-      viewRef.current = { name: 'home' }
-      setViewRaw({ name: 'home' })
-      setCanBack(false)
-      rememberView()
-      return
     }
-    const prev = historyRef.current.pop()
-    if (!prev) return
-    setSpace(spaceHistoryRef.current.pop())
+    setSpace(prevSpace)
     viewRef.current = prev
     setViewRaw(prev)
-    setCanBack(historyRef.current.length > 0)
+    setCanBack(historyRef.current.length > 0 && !isRoot(prev))
     rememberView()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -649,7 +671,7 @@ export default function App(): React.JSX.Element {
             <IconMenu size={22} strokeWidth={2} />
           </button>
         )}
-        {(canBack || view.name === 'session') && view.name !== 'homepage' && (
+        {(canBack || view.name === 'session') && !isRoot(view) && (
           <button
             className={`btn btn-ghost btn-sm global-back${sidebarOpen ? '' : ' shifted'}`}
             title="Back to the previous page"
