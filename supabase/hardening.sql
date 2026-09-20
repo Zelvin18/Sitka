@@ -11,7 +11,7 @@
 -- ---------- sizes ----------
 -- "not valid": rows already there are not checked, only new ones
 do $$ begin
-  alter table public.asks add constraint asks_text_len check (char_length(text) <= 2000) not valid;
+  alter table public.asks add constraint asks_text_len check (char_length(question) <= 2000) not valid;
 exception when duplicate_object then null; end $$;
 do $$ begin
   alter table public.speaker_questions add constraint speaker_questions_text_len check (char_length(text) <= 1500) not valid;
