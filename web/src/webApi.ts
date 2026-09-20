@@ -3369,7 +3369,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     readVideo: async (id, file = 'video') => {
       if (file === 'reel') return null
       // Parts live in the cloud, or still on this device, or both: stitch them in order.
-      const listing = await store.list(`${user.id}/${id}`)
+      let listing = await store.list(`${user.id}/${id}`)
+      if (listing.objects.length === 0) {
+        // a listing that comes back empty may be a store that blinked: once more before believing it
+        await sleep(800)
+        listing = await store.list(`${user.id}/${id}`)
+      }
       const cloud = new Map<number, string>()
       for (const f of listing.objects) {
         const m = /^part-(\d+)\.webm$/.exec(f.name)

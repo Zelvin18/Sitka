@@ -404,6 +404,19 @@ export default function SessionView({
       const L = ladderRef.current
       if (note) L.tried.push(note)
       const way = L.ways.shift()
+      // whatever the last element was doing stops now: no request of the old
+      // way lingers under the new one
+      const old = videoRef.current
+      if (old) {
+        try {
+          old.pause()
+          ;(old as HTMLVideoElement & { srcObject: unknown }).srcObject = null
+          old.removeAttribute('src')
+          old.load()
+        } catch {
+          /* already gone */
+        }
+      }
       wayRef.current++
       durationFixedRef.current = false
       setVideoLive(false)
@@ -638,7 +651,7 @@ export default function SessionView({
           }
         }
         if (gen !== loadGenRef.current) return
-        void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState}, buffered ${v.buffered.length})${probe}`)
+        void advance(gen, `${diagRef.current} gave nothing in 10 s (network state ${v.networkState}, ready ${v.readyState}, buffered ${v.buffered.length}${v.error ? `, error ${v.error.code}` : ''}${v.isConnected ? '' : ', element detached'}${document.visibilityState !== 'visible' ? ', page hidden' : ''}, src ${v.currentSrc ? v.currentSrc.slice(0, 30) : 'none'})${probe}`)
       })()
     }, 10000)
     return () => window.clearTimeout(t)
@@ -1075,6 +1088,10 @@ export default function SessionView({
           {videoSrc ? (
             <>
               <video
+                // a new element for every way tried: a player that has wedged
+                // on one source (its load never starting, its engine never
+                // opening) is thrown away rather than asked again
+                key={`${sessionId}:${wayRef.current}`}
                 ref={videoRef}
                 src={videoSrc === 'progressive' ? undefined : videoSrc}
                 poster={poster ?? undefined}
