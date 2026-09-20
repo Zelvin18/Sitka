@@ -13738,3 +13738,9 @@ video {
 .msg-rate:disabled {
   cursor: default;
 }
+
+.msg-art {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-x: auto;
+}

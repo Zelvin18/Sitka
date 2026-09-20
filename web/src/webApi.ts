@@ -812,6 +812,47 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return usage
   }
 
+  /**
+   * The recording into Drive by way of the server, one call after another
+   * until Drive has the whole file. '' when the server could not, so the
+   * browser does it instead.
+   */
+  async function moveViaServer(
+    google: string,
+    folderId: string,
+    name: string,
+    mime: string,
+    sources: { url: string; size: number }[],
+    onProgress: (sent: number, total: number) => void
+  ): Promise<string> {
+    const auth = await authHeader()
+    let uploadUrl = ''
+    let from = 0
+    for (let call = 0; call < 200; call++) {
+      let r: Response
+      try {
+        r = await fetch('/api/drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...auth },
+          body: JSON.stringify({ google, folderId, name, mime, sources, uploadUrl, from })
+        })
+      } catch {
+        return ''
+      }
+      const j = (await r.json().catch(() => ({}))) as { uploadUrl?: string; sent?: number; total?: number; done?: boolean; url?: string; error?: string }
+      if (!r.ok) {
+        // nothing moved yet: the browser can take over; part way: say so
+        if (from === 0 && !uploadUrl) return ''
+        throw new Error(j.error || `The transfer stopped (${r.status}).`)
+      }
+      uploadUrl = j.uploadUrl || uploadUrl
+      from = j.sent ?? from
+      onProgress(from, j.total ?? sources.reduce((n, x) => n + x.size, 0))
+      if (j.done) return j.url || ' '
+    }
+    throw new Error('The transfer took too many turns.')
+  }
+
   async function aiChatFull(
     system: string,
     messages: ChatMsg[],
@@ -1517,6 +1558,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Formatting: plain sentences, **bold** for key terms, "-" bullets for genuine lists, and numbered lists for steps. Use markdown headings (## or ###) only in long structured answers like notes or study guides. Use a markdown table only when the user explicitly asks for a table or comparison.',
       '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
+      '- Never draw with characters: no boxes, lines or arrows made of +, -, | or v, no ASCII art, no diagrams typed out. For a process or a structure use a ```flow block (one connection per line, "A -> B"); for numbers a ```chart block; for a comparison a markdown table. Never wrap an ordinary answer, notes or a list in ``` fences: fences are only for chart, flow and document blocks, and for code when the user asked for code. Headings are ## or ###, never a numbered line in bold.',
       '- Do not end answers with offers like "let me know if you want more" — just answer.',
       '- Talking to the user, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said", not "the transcript shows" or "according to the transcript". The word transcript is for you, not for them.',
       '- Use judgement about when a moment citation helps. In conversation, cite when the user would want to jump to that moment: a specific claim, a figure, a decision, "when was X said". Do NOT cite inside anything the user will keep or share — a ```document block, a summary, notes, the main topics, a study guide, an outline — unless they ask for the moments. A summary reads as prose, not as a list of timestamps.',
@@ -2597,8 +2639,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           const mime = d.meta.mime || (d.meta.audioOnly ? 'audio/webm' : 'video/webm')
           const ext = /mp4/.test(mime) ? (d.meta.audioOnly ? 'm4a' : 'mp4') : 'webm'
           if (parts.length > 0) {
-            const up = await uploadRecording(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
-            fileUrl = up.url
+            // the server moves it, store to Drive, on a wide pipe: seconds
+            // rather than the minutes a phone's connection would take;
+            // should the server be unable, the browser sends it itself
+            const moved = await moveViaServer(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
+            if (moved) fileUrl = moved
+            else {
+              const up = await uploadRecording(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
+              fileUrl = up.url
+            }
           } else {
             const bytes = await api.readVideo(id).catch(() => null)
             if (bytes && bytes.byteLength > 0) {

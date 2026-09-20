@@ -171,6 +171,19 @@ const isTableLine = (line: string): boolean => {
   const t = line.trim()
   return t.startsWith('|') && t.endsWith('|') && t.length > 2
 }
+/** Lines that are mostly box-drawing: +----+, | cell |, arrows. */
+const looksBoxArt = (line: string): boolean => {
+  if (line.length < 6) return false
+  if (/^\+[-=+]{3,}/.test(line) || /^\|.*\|$/.test(line) || /^[|+\-=\s]*[v^]\s*$/.test(line)) return true
+  const drawn = (line.match(/[+|\-=]/g) ?? []).length
+  return drawn >= 6 && drawn / line.length > 0.4
+}
+/** Fence contents that are really notes: headings, bullets, bold, numbered steps. */
+const looksLikeMarkdown = (body: string[]): boolean => {
+  const marks = body.filter((l) => /^\s*(#{1,4}\s|[-*•]\s|\d+[.)]\s|\*\*)/.test(l)).length
+  const code = body.filter((l) => /[{};]\s*$|^\s*(import|const|let|function|def|class|return)\b|=>|<\/?\w+>/.test(l)).length
+  return marks >= 2 && marks > code
+}
 const isTableSeparator = (line: string): boolean =>
   /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(line.trim())
 
@@ -245,6 +258,13 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
         ei++
       }
       const text = body.join('\n')
+      // Prose or notes that the model wrapped in a fence by mistake: read as
+      // the markdown they are, not shown as a block of code
+      if ((lang === '' || lang === 'markdown' || lang === 'md' || lang === 'text' || lang === 'txt') && looksLikeMarkdown(body)) {
+        lines.splice(li, ei - li + 1, ...body)
+        li--
+        continue
+      }
       const chart = lang === 'chart' ? parseChart(text) : null
       const flow = lang === 'flow' || lang === 'diagram' ? parseFlow(text) : null
       if (lang === 'document' || lang === 'doc') {
@@ -296,6 +316,25 @@ export default function AiText({ text, onSeek, resolveLabel }: Props): React.JSX
         </div>
       )
       li = ri - 1
+      continue
+    }
+
+    // A picture drawn with characters (boxes, arrows): kept in a fixed-width
+    // block so its lines stay aligned, instead of flowing into a paragraph
+    if (looksBoxArt(trimmed)) {
+      flushAll()
+      const art: string[] = [line]
+      let ai = li + 1
+      while (ai < lines.length && lines[ai].trim() !== '' && (looksBoxArt(lines[ai].trim()) || /^[|+]/.test(lines[ai].trim()))) {
+        art.push(lines[ai].trimEnd())
+        ai++
+      }
+      blocks.push(
+        <pre key={`a${key++}`} className="msg-pre msg-art">
+          <code>{art.join('\n')}</code>
+        </pre>
+      )
+      li = ai - 1
       continue
     }
 
