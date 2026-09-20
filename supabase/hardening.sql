@@ -139,3 +139,52 @@ begin
   return out;
 end $$;
 grant execute on function public.admin_feedback(int) to authenticated;
+
+-- ---------- an event whose host has gone silent is over ----------
+-- The host's page writes host_seen every few seconds while it is live. A
+-- page that closed without ending its event (a crash, the extension's
+-- engine closed early) would leave the event "live" for ever: on the
+-- dashboard, and on attendees' phones. Twenty minutes of silence ends it.
+create or replace function public.sweep_stale_events() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update public.events set status = 'ended', updated_at = now()
+  where status = 'live' and coalesce(host_seen, updated_at) < now() - interval '20 minutes';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+grant execute on function public.sweep_stale_events() to authenticated;
+
+-- Live now, counting only hosts heard from in the last five minutes.
+create or replace function public.admin_live()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare out jsonb;
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  select jsonb_build_object(
+    'events', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', e.id, 'title', e.title, 'since', e.updated_at,
+        'host', (select email from auth.users where id = e.owner),
+        'attendees', (select count(*) from public.attendees a where a.event_id = e.id),
+        'captions', (select count(*) from public.segments s where s.event_id = e.id),
+        'asks', (select count(*) from public.asks k where k.event_id = e.id),
+        'heard', e.host_seen
+      ) order by e.updated_at desc), '[]'::jsonb)
+      from public.events e
+      where e.status = 'live' and coalesce(e.host_seen, e.updated_at) >= now() - interval '5 minutes'
+    ),
+    'stale', (
+      select count(*) from public.events e
+      where e.status = 'live' and coalesce(e.host_seen, e.updated_at) < now() - interval '5 minutes'
+    ),
+    'people_15m', (
+      select count(distinct coalesce(user_id::text, ua)) from public.usage_events where at >= now() - interval '15 minutes'
+    ),
+    'joins_15m', (select count(*) from public.attendees where joined_at >= now() - interval '15 minutes'),
+    'recording_now', (select count(*) from public.sessions where meta->>'status' = 'recording' and updated_at >= now() - interval '2 hours')
+  ) into out;
+  return out;
+end $$;
+grant execute on function public.admin_live() to authenticated;

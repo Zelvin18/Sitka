@@ -5166,6 +5166,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const extViewer = location.protocol === 'chrome-extension:' && location.hash !== '#engine'
   if (!extViewer) {
     setTimeout(() => void recoverInterrupted(), 2500)
+    // an event whose host went silent long ago is ended, so no phone waits on it
+    setTimeout(() => void sb.rpc('sweep_stale_events').then(() => undefined, () => undefined), 4000)
     setTimeout(() => void recoverInterrupted(), 120000)
   }
 

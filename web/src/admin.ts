@@ -120,6 +120,8 @@ interface Live {
   people_15m: number
   joins_15m: number
   recording_now: number
+  /** events still marked live whose host has not been heard from in five minutes */
+  stale?: number
 }
 
 // ---------- formatting ----------
@@ -386,7 +388,7 @@ function renderUsage(o: Overview): void {
 }
 
 function renderLive(l: Live): void {
-  el('live-sub').textContent = `${fmtInt(l.people_15m)} people active in the last 15 minutes · ${fmtInt(l.joins_15m)} joined an event · ${fmtInt(l.recording_now)} recording`
+  el('live-sub').textContent = `${fmtInt(l.people_15m)} people active in the last 15 minutes · ${fmtInt(l.joins_15m)} joined an event · ${fmtInt(l.recording_now)} recording${l.stale ? ` · ${fmtInt(l.stale)} left "live" by a host who has gone quiet (ended after 20 min)` : ''}`
   if (!l.events.length) {
     el('live-body').innerHTML = '<div class="calm">Nothing is being broadcast right now. Live events appear here the moment a host goes live.</div>'
     return
@@ -764,6 +766,7 @@ async function loadAll(): Promise<void> {
   el('refresh').classList.add('busy')
   try {
     void renderStorage()
+    await sb.rpc('sweep_stale_events').then(() => undefined, () => undefined)
     const [o, series, cohorts, errs, live, ppl, pd] = await Promise.all([
       rpc<Overview>('admin_overview', { days }),
       rpc<DayRow[]>('admin_series', { days }),
@@ -810,6 +813,7 @@ async function loadAll(): Promise<void> {
 
 async function refreshLive(): Promise<void> {
   try {
+    await sb.rpc('sweep_stale_events').then(() => undefined, () => undefined)
     renderLive(await rpc<Live>('admin_live'))
   } catch {
     /* next tick */
