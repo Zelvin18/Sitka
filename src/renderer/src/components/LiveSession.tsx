@@ -109,6 +109,8 @@ import { shrinkImageFile } from '../lib/attach'
 import { fixWebmDuration } from '@shared/webmDuration'
 // eslint-disable-next-line import/first
 import { clearLiveBeat, isThisTab, readLive, useLive, writeLiveBeat } from '../lib/live'
+import LimitCard from './LimitCard'
+import type { Meter, Usage } from '@shared/plans'
 // eslint-disable-next-line import/first
 import {
   IconCap as KindCap,
@@ -321,6 +323,8 @@ export default function LiveSession({
     if (captureMode !== 'screen') setMicOn(true)
   }, [captureMode])
   const [error, setError] = useState<string | null>(null)
+  /** a plan limit reached at the start: drawn as a card with a way forward */
+  const [limitHit, setLimitHit] = useState<{ meter: Meter; usage: Usage } | null>(null)
   const [session, setSession] = useState<SessionMeta | null>(null)
   const sessionRef = useRef<SessionMeta | null>(null)
   sessionRef.current = session
@@ -1324,6 +1328,7 @@ export default function LiveSession({
     }
     setPhase('starting')
     setError(null)
+    setLimitHit(null)
     let created: SessionMeta | null = null
     try {
       const agenda = agendaText
@@ -1634,7 +1639,9 @@ export default function LiveSession({
       }
       if (!mountedRef.current) return
       const message = err instanceof Error ? err.message : String(err)
-      if (message !== 'left') setError(message)
+      const hit = err as { limit?: Meter; usage?: Usage }
+      if (hit.limit && hit.usage) setLimitHit({ meter: hit.limit, usage: hit.usage })
+      else if (message !== 'left') setError(message)
       setPhase('picking')
     }
   }, [selectedSource, systemAudioOn, micOn, hasSttKey, kind, hosting, agendaText, upcoming, goLive, enqueueAppend, startSttRecorder, onSessionCreated, captureMode, space, pendingMats, orgSpaceId])
@@ -2370,6 +2377,14 @@ export default function LiveSession({
             <div className="notice notice-error">
               <span>{error}</span>
             </div>
+          )}
+          {limitHit && (
+            <LimitCard
+              meter={limitHit.meter}
+              usage={limitHit.usage}
+              onPlans={onOpenSettings}
+              onLibrary={() => window.dispatchEvent(new CustomEvent('sitka:home'))}
+            />
           )}
           {reloadNote && (
             <div className="notice">

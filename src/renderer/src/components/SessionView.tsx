@@ -1755,6 +1755,12 @@ export default function SessionView({
           sessionId={meta.id}
           live={false}
           initialChat={chat}
+          // the page keeps the conversation too: on a phone the pane comes
+          // and goes with the Ask tab, and must come back with every word
+          onPersist={(messages) => {
+            setData((cur) => (cur && cur.meta.id === meta.id ? { ...cur, chat: messages } : cur))
+            void window.sitka.saveChat(meta.id, messages)
+          }}
           hasChatKey={hasChatKey}
           hasTranscript={segments.length > 0}
           onSeek={(seconds, sid) => {

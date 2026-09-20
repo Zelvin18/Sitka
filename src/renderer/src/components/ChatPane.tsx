@@ -21,6 +21,8 @@ const trackUse = (name: string, props: Record<string, unknown> = {}): void =>
 import { speakText, type Speaker } from '../lib/speech'
 import { IconChevron, IconCopy, IconSend, IconSparkle, IconSpeaker, IconStop, Mark } from '../lib/icons'
 import { cleanForSpeech, copyRich } from '../lib/clipboard'
+import LimitCard from './LimitCard'
+import type { Usage } from '@shared/plans'
 
 interface Props {
   sessionId: string
@@ -483,7 +485,10 @@ const ChatPane = forwardRef<ChatPaneHandle, Props>(function ChatPane(
             </span>
           </div>
         )}
-        {error && error !== 'missing-key' && (
+        {error && error.startsWith('plan:asks:') && (
+          <LimitCard meter="asks" usage={JSON.parse(error.slice('plan:asks:'.length)) as Usage} onPlans={onOpenSettings} compact />
+        )}
+        {error && error !== 'missing-key' && !error.startsWith('plan:') && (
           <div className="notice notice-error">
             <span style={{ flex: 1 }}>{friendlyError(error)}</span>
             {lastQuestionRef.current && (

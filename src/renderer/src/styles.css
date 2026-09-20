@@ -7110,6 +7110,27 @@ body.dragging-row .splitter-h {
   .session-layout.ask-open .session-right .chat-header {
     display: none;
   }
+  /* the conversation gets the screen: the picture, the filmstrip and the
+     header's second lines step aside while Ask is open */
+  .session-layout.ask-open .session-left .video-wrap,
+  .session-layout.ask-open .session-left .filmstrip,
+  .session-layout.ask-open .session-left .session-meta-row,
+  .session-layout.ask-open .session-left .share-card {
+    display: none;
+  }
+  .session-layout.ask-open .session-header {
+    padding-bottom: 6px;
+  }
+  .session-layout.ask-open .session-header h1 {
+    font-size: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session-layout.ask-open .session-right {
+    flex: 1 1 auto;
+    min-height: 60dvh;
+  }
 }
 
 /* Notes from Sitca live inside the conversation: never clipped, never
@@ -13532,4 +13553,90 @@ video {
   font-size: 12.5px;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* a limit reached: a card with a door, not a wall */
+.limit-card {
+  margin: 14px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-soft);
+}
+.limit-card.compact {
+  margin: 8px 0;
+  padding: 14px 14px;
+}
+.limit-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.limit-mark {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+}
+.limit-text {
+  min-width: 0;
+}
+.limit-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.limit-line {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.limit-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.limit-meter b {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.limit-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-softer);
+  overflow: hidden;
+}
+.limit-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--text);
+}
+.limit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.limit-reset {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-3);
+}
+@media (max-width: 860px) {
+  .limit-reset {
+    margin-left: 0;
+    width: 100%;
+  }
 }

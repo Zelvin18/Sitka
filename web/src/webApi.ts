@@ -1502,7 +1502,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '',
       'Rules:',
       '- Answer every question. Look in the session first: when the session covers it, answer from what was said and shown, and never present your own knowledge as the speaker\'s words.',
-      '- When the session does not cover the question, or the question is about something else entirely, never refuse. Say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge. Be as helpful as a good tutor would be. Keep it to a few clear sentences unless the user asks for more.',
+      '- When the session does not cover the question, or the question is about something else entirely, never refuse: answer properly from your own knowledge, as a good tutor would. Say that it goes beyond the session ONCE, briefly, the first time the conversation leaves it (a clause like "Not from the session, but:"); after that, as long as the conversation stays outside the session, just answer — never repeat the note in every reply, it wears people down. When the talk returns to the session, answer from the session again.',
+      '- Bring in short, relevant background when it helps understanding — a definition, a fact, why something is so — kept clearly apart from what the speaker said. Depth on request: "explain further", "an example", "show me" get a fuller answer or a quick diagram.',
+      '- Sound like a knowledgeable friend sitting beside the user, not a form. Vary sentence length; be warm and direct; now and then, when it genuinely helps, ask one short question back or suggest what to look at next. Never pad with pleasantries.',
       '- Lines beginning with "[On screen]" are what Sitca read from the presenter\'s screen — slides, the whiteboard, documents, charts. Treat them as part of the session. When the user asks what is shown, written, on the board, on the slide or on the screen, answer from those lines and from any attached image of the screen, quoting the text and equations exactly as they appear. If neither shows it, say the screen has not been read yet.',
       '- Drawing what was on screen: when the user asks to see, redraw, reproduce or copy a table, chart, graph or diagram that was shown, rebuild it from the [On screen] lines and any attached image. A table becomes a markdown table with every value. A chart becomes a ```chart block — lines "type: bar" (or line), "title: …", "labels: Q1, Q2, Q3", then one line per series like "Sales: 10, 20, 30". A diagram or process becomes a ```flow block with one connection per line, like "Input -> Model -> Output". Use only values you can actually read; if a value is not legible, say so instead of inventing it.',
       '- A question that starts in the session and reaches beyond it (background, a definition, why something is so, how it compares) gets both: what the speaker said, then the wider explanation, kept apart so the user knows which is which.',
@@ -2576,8 +2578,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
       // the plan's month: a session past its hours or its storage does not begin
       const u = await myUsage().catch(() => null)
-      if (u && overPlanLimit(u, 'hours')) throw new Error(limitMessage(u, 'hours'))
-      if (u && overPlanLimit(u, 'storage')) throw new Error(limitMessage(u, 'storage'))
+      // the page draws a card from these, with what to do; the words are for anywhere that only shows text
+      if (u && overPlanLimit(u, 'hours')) throw Object.assign(new Error(limitMessage(u, 'hours')), { limit: 'hours', usage: u })
+      if (u && overPlanLimit(u, 'storage')) throw Object.assign(new Error(limitMessage(u, 'storage')), { limit: 'storage', usage: u })
       track('session_start', { kind, hosted: Boolean(hosted), audio: Boolean(audioOnly), space: space ?? null })
       const meta: SessionMeta = {
         id: uid(),
@@ -3593,7 +3596,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     askAi: async (req: AskRequest) => {
       const u = await myUsage().catch(() => null)
       if (u && overPlanLimit(u, 'asks')) {
-        emitAi({ requestId: req.requestId, type: 'error', error: limitMessage(u, 'asks') })
+        emitAi({ requestId: req.requestId, type: 'error', error: `plan:asks:${JSON.stringify(u)}` })
         return
       }
       if (usageCache) usageCache.usage.asks += 1
