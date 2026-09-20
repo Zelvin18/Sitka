@@ -854,6 +854,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     throw new Error('The transfer took too many turns.')
   }
 
+  /**
+   * The brief as a model writes it, tidied: the odd hyphens and spaces
+   * some models put in numbers and words are made ordinary, and a section
+   * left empty is dropped.
+   */
+  function tidyBrief(md: string): string {
+    return md
+      .replace(/\u2011/g, '-') // a non-breaking hyphen, which breaks "fulfil-ment" and "low-cost" oddly in Word
+      .replace(/(\d)\u202f(\d{3})/g, '$1,$2') // a narrow space in "$5 000"
+      .replace(/(\d)\s+%/g, '$1%') // "77 %"
+      .replace(/\$\s+(\d)/g, '$$$1') // "$ 500"
+      .replace(/\n##\s+[^\n]+\n(?=\s*(?:##\s|$))/g, '\n') // a heading with nothing under it
+  }
+
   async function aiChatFull(
     system: string,
     messages: ChatMsg[],
@@ -2628,16 +2642,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     sessionBrief: async (id: string) => {
       const d = cache.get(id) ?? (await loadSession(id))
       if (!d) return { error: 'This session could not be read.' }
-      const stamp = `${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
+      const stamp = `v2|${d.meta.analyzed ? 1 : 0}|${d.notes?.updatedAt ?? 0}|${d.segments.length}`
       const kept = d.meta.brief
       let md = kept && kept.stamp === stamp ? kept.md : ''
       if (!md) {
         const names = new Map((d.meta.speakers ?? []).map((s) => [s.id, s.name || `Speaker ${s.id + 1}`]))
         const speech = speechOnly(d.segments.map((s) => ({ text: s.text, speaker: typeof s.speaker === 'number' ? names.get(s.speaker) : undefined })))
         if (!speech && !d.meta.summary && !d.notes?.markdown) return { error: 'There is nothing to write a brief from yet.' }
+        const src = d.meta.source
+        const host = src?.url ? (() => { try { return new URL(src.url).hostname.replace(/^(www|m)\./, '') } catch { return '' } })() : ''
         const user = [
           `Title so far: ${d.meta.title}`,
           `Kind: ${d.meta.kind || 'other'} · Length: ${Math.round((d.meta.durationMs || 0) / 60000)} min`,
+          src?.title ? `Source: "${src.title}"${host ? ` on ${host === 'youtube.com' ? 'YouTube' : host}` : ''}` : '',
+          d.meta.speakers?.some((s) => s.name) ? `Speakers named: ${d.meta.speakers.filter((s) => s.name).map((s) => s.name).join(', ')}` : '',
           d.meta.summary ? `\nSummary:\n${d.meta.summary}` : '',
           d.meta.highlights?.length ? `\nMoments:\n${d.meta.highlights.map((h) => `- ${h.label}`).join('\n')}` : '',
           d.notes?.markdown ? `\nNotes:\n${d.notes.markdown.slice(0, 9000)}` : '',
@@ -2646,7 +2664,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           .filter(Boolean)
           .join('\n')
         const out = await aiChatFull(briefPrompt(d.meta.kind || 'other'), [{ role: 'user', content: user }], 2600)
-        md = out.text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/```\s*$/, '').trim()
+        md = tidyBrief(out.text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/```\s*$/, '').trim())
         if (!md.startsWith('#')) md = `# ${d.meta.title}\n${md}`
         d.meta.brief = { md, stamp, at: Date.now() }
         await patchSession(id, { meta: d.meta }).catch(() => undefined)
@@ -2657,7 +2675,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         when: new Date(d.meta.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }),
         minutes: Math.round((d.meta.durationMs || 0) / 60000),
         kind: d.meta.kind || '',
-        speakers
+        speakers,
+        source: d.meta.source?.title ? { title: d.meta.source.title, url: d.meta.source.url } : undefined
       })
       track('brief', { drive: false })
       return { html: page.html, title: page.title, markdown: md }
@@ -3442,6 +3461,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (!recBuf.has(id)) cache.delete(id)
       allCache = null
       return (await loadSession(id))?.meta ?? null
+    },
+
+    setSessionSource: async (id: string, source: { title: string; url: string }) => {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d) return
+      const title = source.title.replace(/\s*[-–|]\s*(YouTube|Google Meet|Zoom|Microsoft Teams)\s*$/i, '').trim().slice(0, 200)
+      d.meta.source = { title, url: source.url.slice(0, 500) }
+      await patchSession(id, { meta: d.meta }).catch(() => undefined)
     },
 
     renameSession: async (id, title) => {

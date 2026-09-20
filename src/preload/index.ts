@@ -156,6 +156,8 @@ const api = {
     ipcRenderer.invoke('reel:save', id),
   prepareSession: (id: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:prepare', id),
+  /** Where a session came from, when recorded from a page: its title and address. */
+  setSessionSource: (id: string, source: { title: string; url: string }): Promise<void> => ipcRenderer.invoke('session:source', id, source),
   renameSession: (id: string, title: string): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:rename', id, title),
   /** the picture shown in place of video for an audio session (a JPEG data URL), or null to clear it */

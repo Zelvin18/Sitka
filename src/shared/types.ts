@@ -76,6 +76,8 @@ export interface SessionMeta {
   remuxed?: boolean
   /** the brief Sitca wrote for sharing, kept so the next export is instant */
   brief?: { md: string; stamp: string; at: number }
+  /** where it came from, when recorded from a page: the video's or call's title and address */
+  source?: { title: string; url: string }
   /** set when a highlight reel video has been rendered */
   reelGeneratedAt?: number
   /** what was captured — tunes analysis and which tab leads */

@@ -155,7 +155,7 @@ interface Props {
   /** quick record: begin the audio session immediately, no setup screen */
   autoStart?: boolean
   /** inside the Chrome extension: the meeting tab to capture, with no picker; the session starts on arrival */
-  meetTab?: { tabId: number; title: string; at: number; host?: boolean }
+  meetTab?: { tabId: number; title: string; url?: string; at: number; host?: boolean }
   /** file the session in an organisation space (course, team, project) */
   orgSpaceId?: string
   /** shown in the header when filing into a space */
@@ -1359,6 +1359,8 @@ export default function LiveSession({
       if (!mountedRef.current || cancelledRef.current) throw new Error('left')
       setSession(meta)
       sessionIdRef.current = meta.id
+      // where it came from: the video or the call, for the brief and the recap
+      if (meetTab?.title) void window.sitka.setSessionSource(meta.id, { title: meetTab.title, url: meetTab.url || '' }).catch(() => undefined)
 
       // Materials added on the setup page now belong to the session.
       if (pendingMats.length > 0) {

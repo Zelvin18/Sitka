@@ -47,7 +47,7 @@ type View =
       /** quick record: start the audio session immediately */
       quick?: boolean
       /** the Chrome extension: a meeting tab to capture, started on arrival */
-      meet?: { tabId: number; title: string; at: number; host?: boolean }
+      meet?: { tabId: number; title: string; url?: string; at: number; host?: boolean }
       /** file the session into an organisation space */
       orgSpaceId?: string
       orgSpaceName?: string
@@ -220,7 +220,7 @@ export default function App(): React.JSX.Element {
   // starts on it. The request may have arrived before this mounted, in which
   // case it is waiting where the page shell left it.
   useEffect(() => {
-    type Req = { tabId: number; title: string; at: number; mode?: 'record' | 'host' }
+    type Req = { tabId: number; title: string; url?: string; at: number; mode?: 'record' | 'host' }
     const w = window as unknown as { sitkaMeetRequest?: Req }
     const open = (req: Req): void => {
       delete w.sitkaMeetRequest
@@ -230,7 +230,7 @@ export default function App(): React.JSX.Element {
       setView({
         name: 'live',
         presetKind: req.mode === 'host' ? 'presentation' : 'lecture',
-        meet: { tabId: req.tabId, title: req.title, at: req.at, host: req.mode === 'host' }
+        meet: { tabId: req.tabId, title: req.title, url: req.url, at: req.at, host: req.mode === 'host' }
       })
     }
     const onMeet = (e: Event): void => open((e as CustomEvent<Req>).detail)

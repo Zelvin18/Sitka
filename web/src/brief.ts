@@ -9,6 +9,8 @@ export interface BriefMeta {
   minutes: number
   kind: string
   speakers: string[]
+  /** the video or call it was recorded from, when known */
+  source?: { title: string; url: string }
 }
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -22,16 +24,18 @@ export function briefPrompt(kind: string): string {
     'You are given the session\'s summary, its notes and an excerpt of what was said. Write from these only; never invent a figure, a name or a claim. Where the material is thin, the brief is short.',
     'Return ONLY markdown in exactly this shape, and nothing else:',
     '# <a specific title, at most 9 words>',
-    '> <one sentence saying what this session was and who spoke, if known>',
+    '> <one sentence saying what this was — a lecture, a talk, a video, a meeting — naming the speaker or the source when given; if neither is known, describe the subject instead, and never write "the presenter" or "delivered by the speaker">',
     '## Overview',
     '<one paragraph, three to five sentences: what it was about and what it concluded>',
     '## Key takeaways',
     '<five to eight bullets; each a full, specific sentence carrying a fact, a figure, a name or a decision — never a topic label>',
+    '## Bottom line',
+    '<two or three sentences: what the speaker concluded or recommended, and the single most useful thing a reader could act on — the speaker\'s conclusion, not yours>',
     '## <three to six themed sections, each with a short heading of two to five words>',
     '<under each: a short paragraph and/or bullets with the substance; where numbers, dates, comparisons or lists of items appear, a markdown table with a header row (for example | Figure | Value | Context |)>',
     meeting ? '## Decisions and actions\n<a table: | What | Who | By when | — one row per decision or task; "—" where unknown>' : '',
     '## Open questions',
-    '<bullets: what was asked and not settled, or what a reader should follow up; omit the section if there are none>',
+    '<bullets: only questions that were actually raised in the session and left unanswered, or points the speaker said were uncertain — never questions of your own; omit the whole section if there were none>',
     lecture ? '## Terms to know\n<a table: | Term | Meaning | — the concepts a student must be able to define>' : '',
     'Rules: no timestamps, no [[citations]], no mention of a transcript, a recording, a video player, on-screen text, adverts, a sidebar, subscribing or the word "speaker N" unless a name is truly unknown (then say "the speaker"). Plain English, short sentences, British spelling. No closing remarks, no "in conclusion", no offers.'
   ]
@@ -164,6 +168,9 @@ export function briefHtml(md: string, meta: BriefMeta): { title: string; html: s
     ['Type', meta.kind ? meta.kind[0].toUpperCase() + meta.kind.slice(1) : 'Session'],
     ...(meta.speakers.length ? [['Speakers', meta.speakers.join(', ')] as [string, string]] : [])
   ]
+  const sourceLine = meta.source
+    ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#5f6368;margin:-8pt 0 16pt">Source: ${meta.source.url ? `<a href="${esc(meta.source.url)}" style="color:#1a56db;text-decoration:none">${esc(meta.source.title)}</a>` : esc(meta.source.title)}</p>`
+    : ''
   const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title></head>
 <body style="margin:0;padding:36pt 48pt;background:#fff">
@@ -174,6 +181,7 @@ ${b.subtitle ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:12pt;
 <tr>${facts.map(([k, v]) => `<td style="font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#8a8a8a;padding:0 22pt 2pt 0;border:0">${esc(k.toUpperCase())}</td>`).join('')}</tr>
 <tr>${facts.map(([, v]) => `<td style="font-family:Arial,Helvetica,sans-serif;font-size:11pt;font-weight:700;color:#202124;padding:0 22pt 0 0;border:0">${esc(v)}</td>`).join('')}</tr>
 </table>
+${sourceLine}
 ${b.html}
 <p style="font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#9a9a9a;margin:28pt 0 0;padding-top:8pt;border-top:1px solid #e3e3e3">Prepared with Sitca — the AI that attends with you · sitcaai.vercel.app</p>
 </body></html>`
