@@ -56,6 +56,8 @@ const spaceNoun = (kind: OrgSpaceKind): string =>
  * An organisation's workspace: a university or a company, with its spaces.
  * A space holds people, materials, sessions and Sitca — nothing else.
  */
+const SITE = 'https://sitcaai.vercel.app'
+
 export default function OrgView({
   org,
   mySessions,
@@ -86,6 +88,8 @@ export default function OrgView({
   const [newKind, setNewKind] = useState<OrgSpaceKind>(education ? 'course' : 'team')
   const [createError, setCreateError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [domainsDraft, setDomainsDraft] = useState((org.domains ?? []).join(', '))
+  const [rulesNote, setRulesNote] = useState('')
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [confirmDeleteOrg, setConfirmDeleteOrg] = useState(false)
   const [deleteOrgError, setDeleteOrgError] = useState<string | null>(null)
@@ -497,7 +501,44 @@ export default function OrgView({
               <div className="dialog-message">
                 Send a code. People sign in to Sitca, open {education ? 'Education' : 'Business'} at the top right,
                 choose “Join with a code”, and they are in.
+                {education ? ' Lecturers invite students to a course with its own link, from the course page.' : ''}
               </div>
+              {org.role === 'owner' && (
+                <div className="invite-card">
+                  <div className="invite-card-head">
+                    <span className="invite-card-who">Who may join</span>
+                    <span className="invite-card-desc">
+                      An email people must join with, such as students.cavendish.ac.ug — leave empty for any address. Several, separated by commas.
+                    </span>
+                  </div>
+                  <div className="invite-actions" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ flex: 1, minWidth: 180 }}
+                      placeholder="students.cavendish.ac.ug, cavendish.ac.ug"
+                      value={domainsDraft}
+                      onChange={(e) => setDomainsDraft(e.currentTarget.value)}
+                      spellCheck={false}
+                    />
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        const list = domainsDraft
+                          .split(/[,\s]+/)
+                          .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+                          .filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d))
+                        void window.sitka.setOrgRules(org.id, list, org.coursesBy ?? 'leads').then((r) => {
+                          setRulesNote(r.error ? r.error : list.length ? `Only ${list.join(', ')} addresses may join.` : 'Any address may join.')
+                          onChanged()
+                        })
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {rulesNote && <div className="invite-card-desc" style={{ marginTop: 6 }}>{rulesNote}</div>}
+                </div>
+              )}
 
               <div className="invite-card">
                 <div className="invite-card-head">
@@ -638,6 +679,46 @@ export default function OrgView({
             </button>
           )}
         </div>
+        {active.liveUrl && (
+          // a lecture is on right now: one press and a student is in the room
+          <a className="course-live" href={active.liveUrl} target="_blank" rel="noreferrer">
+            <span className="live-badge">● LIVE</span>
+            <span className="course-live-text">
+              <b>A lecture is on right now</b>
+              <span>Join the room: live captions in your language, hear the lecturer, ask.</span>
+            </span>
+            <span className="btn btn-primary btn-sm">Join</span>
+          </a>
+        )}
+        {active.kind === 'course' && active.code && (
+          <div className="course-invite">
+            {lead ? (
+              <>
+                <span className="course-invite-text">
+                  <b>Invite students</b>
+                  <span>Anyone with this link joins the course{org.domains && org.domains.length ? ` with a ${org.domains.join(' or ')} email` : ''}.</span>
+                </span>
+                <code className="course-invite-link">{`${SITE}/join/${active.code}`}</code>
+                <button className="btn btn-sm" onClick={() => copy(`${SITE}/join/${active.code}`, 'course')}>
+                  {copied === 'course' ? 'Copied ✓' : 'Copy link'}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title={active.hidden ? 'Show this course on your side again' : 'Fold this course away on your side — students keep everything'}
+                  onClick={() => {
+                    void window.sitka.hideCourse(active.id, !active.hidden).then(() => refresh())
+                  }}
+                >
+                  {active.hidden ? 'Unhide' : 'Hide from my list'}
+                </button>
+              </>
+            ) : (
+              <span className="course-invite-text">
+                <span>Ask Sitca about this course: it answers from every lecture and document here.</span>
+              </span>
+            )}
+          </div>
+        )}
         <div className="brain-modes" style={{ marginTop: 12 }}>
           <div className="seg">
             {(

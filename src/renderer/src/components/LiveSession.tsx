@@ -112,6 +112,7 @@ import { clearLiveBeat, isThisTab, readLive, useLive, writeLiveBeat } from '../l
 import LimitCard from './LimitCard'
 import { tapToPlay } from '../lib/tapToPlay'
 import type { Meter, Usage } from '@shared/plans'
+import type { Course } from '@shared/types'
 // eslint-disable-next-line import/first
 import {
   IconCap as KindCap,
@@ -324,6 +325,33 @@ export default function LiveSession({
     if (captureMode !== 'screen') setMicOn(true)
   }, [captureMode])
   const [error, setError] = useState<string | null>(null)
+  // Where the session is filed: the library, or one of the person's courses.
+  // A lecturer teaching three courses picks the one this lecture is for;
+  // the last choice is offered first next time. Never forced: an event or
+  // something of their own goes to the library.
+  const [courses, setCourses] = useState<Course[]>([])
+  const [dest, setDest] = useState<string>(() => orgSpaceId ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('sitka.dest') ?? '' : ''))
+  const filedRef = useRef(dest)
+  filedRef.current = dest
+  useEffect(() => {
+    void window.sitka
+      .listMyCourses()
+      .then((list) => {
+        const teach = list.filter((c) => c.role === 'lecturer' && !c.hidden)
+        setCourses(teach)
+        // a remembered course the person no longer teaches is forgotten
+        setDest((d) => (d && !orgSpaceId && !teach.some((c) => c.id === d) ? '' : d))
+      })
+      .catch(() => undefined)
+  }, [orgSpaceId])
+  const chooseDest = (id: string): void => {
+    setDest(id)
+    try {
+      localStorage.setItem('sitka.dest', id)
+    } catch {
+      /* not remembered */
+    }
+  }
   /** a plan limit reached at the start: drawn as a card with a way forward */
   const [limitHit, setLimitHit] = useState<{ meter: Meter; usage: Usage } | null>(null)
   const [session, setSession] = useState<SessionMeta | null>(null)
@@ -1354,7 +1382,7 @@ export default function LiveSession({
         hosting ? upcoming?.event.id : undefined,
         space,
         captureMode === 'audio',
-        orgSpaceId
+        filedRef.current || orgSpaceId
       )
       created = meta
       if (!mountedRef.current || cancelledRef.current) throw new Error('left')
@@ -2336,6 +2364,20 @@ export default function LiveSession({
                         <IconSparkle size={13} strokeWidth={1.9} />
                       )}
                       {k.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!eventLocked && !orgSpaceId && courses.length > 0 && (
+                <div className="setup2-dest">
+                  <span className="setup2-dest-label">Save to</span>
+                  <button type="button" className={`setup2-kind${dest === '' ? ' on' : ''}`} onClick={() => chooseDest('')}>
+                    My library
+                  </button>
+                  {courses.map((c) => (
+                    <button key={c.id} type="button" className={`setup2-kind${dest === c.id ? ' on' : ''}`} onClick={() => chooseDest(c.id)} title={c.org}>
+                      <KindCap size={13} strokeWidth={1.9} />
+                      {c.name}
                     </button>
                   ))}
                 </div>

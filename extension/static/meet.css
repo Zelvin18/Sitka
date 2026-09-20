@@ -845,3 +845,27 @@
   background: var(--sc-text) !important;
   color: #141416 !important;
 }
+
+/* where the session is filed */
+.sc-dest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--sc-t2);
+}
+.sc-dest-sel {
+  flex: 1;
+  min-width: 0;
+  max-width: 200px;
+  padding: 6px 8px;
+  border: 1px solid var(--sc-line);
+  border-radius: 9px;
+  background: var(--sc-bg2);
+  color: var(--sc-text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}

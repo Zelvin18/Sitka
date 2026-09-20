@@ -19,6 +19,7 @@ import type {
   OrgSpaceKind,
   Organization,
   Profile,
+  Course,
   RoomMessage,
   ScheduledEvent,
   Space,
@@ -82,6 +83,18 @@ const api = {
 
   // ---------- organisations (online workspace) ----------
   listOrgs: (): Promise<Organization[]> => ipcRenderer.invoke('org:list'),
+  /** The courses this person is in, as lecturer or student, hidden ones included. */
+  listMyCourses: (): Promise<Course[]> => ipcRenderer.invoke('course:mine'),
+  createCourse: (orgId: string, name: string, description: string): Promise<{ course?: Course; error?: string }> =>
+    ipcRenderer.invoke('course:create', orgId, name, description),
+  /** What a course link says before anyone signs in. */
+  previewCourse: (code: string): Promise<{ course: string; org: string; kind: string; domains: string[]; lecturers: string[] } | null> =>
+    ipcRenderer.invoke('course:preview', code),
+  joinCourse: (code: string): Promise<{ spaceId?: string; orgId?: string; course?: string; org?: string; role?: string; error?: string }> =>
+    ipcRenderer.invoke('course:join', code),
+  hideCourse: (spaceId: string, hidden: boolean): Promise<void> => ipcRenderer.invoke('course:hide', spaceId, hidden),
+  setOrgRules: (orgId: string, domains: string[], coursesBy: 'leads' | 'owner'): Promise<{ error?: string }> =>
+    ipcRenderer.invoke('org:rules', orgId, domains, coursesBy),
   createOrg: (name: string, kind: Space): Promise<{ org?: Organization; error?: string }> =>
     ipcRenderer.invoke('org:create', name, kind),
   joinOrg: (code: string): Promise<{ org?: Organization; error?: string }> =>

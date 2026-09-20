@@ -81,6 +81,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/join/:code",
+      "destination": "/app.html"
+    },
+    {
       "source": "/legal",
       "destination": "/legal.html"
     },

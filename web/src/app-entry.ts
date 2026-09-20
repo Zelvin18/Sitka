@@ -14,6 +14,7 @@ import {
   captureTab,
   engineBridge,
   engineReady,
+  tellCourses,
   ensureMic,
   focusMeeting,
   googleIdTokenViaChrome,
@@ -259,7 +260,49 @@ function forgetPlace(): void {
   }
 }
 
+/**
+ * A course link (/join/CODE): the code is kept for after sign-in, the
+ * address tidied, and the sign-in card says which course this is for and
+ * which email the organisation asks for.
+ */
+async function noteCourseLink(): Promise<void> {
+  const m = /^\/join\/([A-Za-z0-9]{4,16})\/?$/.exec(location.pathname)
+  if (!m) return
+  const code = m[1].toUpperCase()
+  try {
+    sessionStorage.setItem('sitka.join', code)
+  } catch {
+    /* no storage: the join happens by hand */
+  }
+  history.replaceState(null, '', '/app')
+  try {
+    const { data } = await sb.rpc('sitka_course_preview', { p_code: code })
+    const p = data as { course?: string; org?: string; domains?: string[]; lecturers?: string[] } | null
+    if (!p || !p.course) return
+    const title = document.getElementById('gtitle')
+    const sub = document.getElementById('gsubtitle')
+    const domains = (p.domains || []).filter(Boolean)
+    if (title) title.textContent = `Join ${p.course}`
+    if (sub) {
+      sub.textContent =
+        `${p.org ? `at ${p.org}` : 'on Sitca'}${p.lecturers && p.lecturers.length ? ` · with ${p.lecturers.slice(0, 2).join(' and ')}` : ''}. ` +
+        (domains.length ? `Sign in or create an account with your ${domains.join(' or ')} email.` : 'Sign in, or create an account, and you are in.')
+    }
+    // the words stay when the card switches between sign in and create
+    const keep = { title: title?.textContent || '', sub: sub?.textContent || '' }
+    document.getElementById('gatecard')?.addEventListener('click', () => {
+      window.setTimeout(() => {
+        if (title && keep.title) title.textContent = keep.title
+        if (sub && keep.sub) sub.textContent = keep.sub
+      }, 0)
+    })
+  } catch {
+    /* the card shows as usual */
+  }
+}
+
 async function boot(): Promise<void> {
+  await noteCourseLink()
   const isRecovery = location.hash.includes('type=recovery')
   let { data } = await sb.auth.getSession()
   // back from a full-page trip to Google (only when a pop-up was refused)
@@ -300,6 +343,15 @@ async function boot(): Promise<void> {
     await launch()
     // the engine is up: the worker may now hand it the meeting
     if (IN_ENGINE) engineReady(true)
+    // the courses this person teaches, for the card's "Save to" — kept by
+    // the worker, so the card can offer them without waking the engine
+    void (window as unknown as { sitka?: { listMyCourses?: () => Promise<{ id: string; name: string; org: string; role: string; hidden: boolean }[]> } }).sitka
+      ?.listMyCourses?.()
+      .then((list) => {
+        const courses = (list || []).filter((c) => c.role === 'lecturer' && !c.hidden).map((c) => ({ id: c.id, name: c.name, org: c.org }))
+        tellCourses(courses)
+      })
+      .catch(() => undefined)
     return
   }
   // the engine with nobody signed in cannot record; the worker opens Sitca

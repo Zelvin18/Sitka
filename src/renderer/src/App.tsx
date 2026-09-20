@@ -220,7 +220,7 @@ export default function App(): React.JSX.Element {
   // starts on it. The request may have arrived before this mounted, in which
   // case it is waiting where the page shell left it.
   useEffect(() => {
-    type Req = { tabId: number; title: string; url?: string; at: number; mode?: 'record' | 'host' }
+    type Req = { tabId: number; title: string; url?: string; at: number; mode?: 'record' | 'host'; spaceId?: string }
     const w = window as unknown as { sitkaMeetRequest?: Req }
     const open = (req: Req): void => {
       delete w.sitkaMeetRequest
@@ -230,7 +230,8 @@ export default function App(): React.JSX.Element {
       setView({
         name: 'live',
         presetKind: req.mode === 'host' ? 'presentation' : 'lecture',
-        meet: { tabId: req.tabId, title: req.title, url: req.url, at: req.at, host: req.mode === 'host' }
+        meet: { tabId: req.tabId, title: req.title, url: req.url, at: req.at, host: req.mode === 'host' },
+        orgSpaceId: req.spaceId || undefined
       })
     }
     const onMeet = (e: Event): void => open((e as CustomEvent<Req>).detail)
@@ -260,6 +261,37 @@ export default function App(): React.JSX.Element {
 
   // "Keep in my library" on a shared recap sends the person here with the
   // recap's id in the address: it is kept, the library refreshed, the recap opened.
+  // A course link brought this person here: once signed in, they join it
+  // and land on it. The code waits in session storage through the sign-in.
+  const joinChecked = useRef(false)
+  useEffect(() => {
+    if (!sessionsLoaded || joinChecked.current) return
+    let code = ''
+    try {
+      code = sessionStorage.getItem('sitka.join') || ''
+    } catch {
+      code = ''
+    }
+    if (!code) return
+    joinChecked.current = true
+    try {
+      sessionStorage.removeItem('sitka.join')
+    } catch {
+      /* gone */
+    }
+    void window.sitka.joinCourse(code).then(async (r) => {
+      if (r.error) {
+        window.alert(r.error)
+        return
+      }
+      await refreshOrgs()
+      if (r.orgId) {
+        setSpace('education')
+        setView({ name: 'org', id: r.orgId, spaceId: r.spaceId })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsLoaded])
   const keepChecked = useRef(false)
   useEffect(() => {
     if (!sessionsLoaded || keepChecked.current) return

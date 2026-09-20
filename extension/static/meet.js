@@ -42,6 +42,17 @@
   root.setAttribute('data-state', 'idle')
   let card = { state: 'idle' }
   let chat = [] // { role: 'you' | 'sitca', text }
+  // where the session is filed: '' for the library, or a course the person
+  // teaches; the last choice is offered first next time
+  let courses = []
+  let dest = ''
+  try {
+    chrome.storage.local.get(['sitca-dest']).then((s) => {
+      dest = typeof s['sitca-dest'] === 'string' ? s['sitca-dest'] : ''
+    })
+  } catch {
+    /* no memory */
+  }
   let asking = false
   let showQr = false
   let tick = null
@@ -378,7 +389,16 @@
       html = `<div class="sc-box">
         <div class="sc-head">${MARK}<b>Sitca</b><button type="button" class="sc-x" data-act="close" aria-label="Close">×</button></div>`
       if (st === 'choose') {
-        html += `<div class="sc-title">Capture this ${THING}</div>
+        if (courses.length > 0 && !courses.some((c) => c.id === dest)) dest = ''
+        html += `<div class="sc-title">Capture this ${THING}</div>`
+        if (courses.length > 0) {
+          html += `<label class="sc-dest">Save to
+            <select class="sc-dest-sel" data-act="dest">
+              <option value=""${dest === '' ? ' selected' : ''}>My library</option>
+              ${courses.map((c) => `<option value="${esc(c.id)}"${dest === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}
+            </select></label>`
+        }
+        html += `
         <button type="button" class="sc-opt" data-act="start" data-mode="record">
           <span class="sc-opt-t">Just record</span>
           <span class="sc-opt-d">Recording, live captions, notes and a recap, for you.</span>
@@ -520,7 +540,12 @@
       render()
       return
     }
+    if (act === 'dest') return
     if (act === 'choose') {
+      void ask({ type: 'sitca:card:courses' }).then((r) => {
+        courses = Array.isArray(r && r.courses) ? r.courses : []
+        if (card.state === 'choose') render()
+      })
       card = { ...card, state: 'choose' }
       render()
     } else if (act === 'close') {
@@ -537,7 +562,7 @@
       // only opens it on a press, and the next presses may be on the icon
       void float()
       render()
-      void ask({ type: 'sitca:card:start', mode }).then((r) => {
+      void ask({ type: 'sitca:card:start', mode, spaceId: dest || undefined }).then((r) => {
         if (r && r.ok) return
         if (!r) {
           card = { state: 'failed', error: 'Sitca did not answer. Reload the page and try again.' }
@@ -612,6 +637,16 @@
       if (chat.length > 40) chat = chat.slice(-40)
       render()
     })
+  })
+  root.addEventListener('change', (e) => {
+    const sel = e.target.closest && e.target.closest('.sc-dest-sel')
+    if (!sel) return
+    dest = sel.value || ''
+    try {
+      chrome.storage.local.set({ 'sitca-dest': dest })
+    } catch {
+      /* not remembered */
+    }
   })
   // keys typed into the card must not reach Meet's own shortcuts (c, d, e…)
   root.addEventListener('keydown', (e) => e.stopPropagation())

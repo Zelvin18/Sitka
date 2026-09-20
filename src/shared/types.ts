@@ -394,6 +394,24 @@ export interface BrainConversation {
 
 export type OrgRole = 'owner' | 'lead' | 'member'
 
+/** A course the person is in: to record into, to learn from. */
+export interface Course {
+  id: string
+  orgId: string
+  org: string
+  orgKind: Space
+  name: string
+  code: string
+  role: 'lecturer' | 'student'
+  /** folded away on this person's side (no longer teaching it); nothing is deleted */
+  hidden: boolean
+  members: number
+  sessions: number
+  liveEventId?: string | null
+  liveUrl?: string | null
+  liveAt?: string | null
+}
+
 export interface Organization {
   id: string
   name: string
@@ -406,6 +424,10 @@ export interface Organization {
   members: number
   spaces: number
   createdAt: number
+  /** addresses members must join with, e.g. 'students.cavendish.ac.ug'; empty = any */
+  domains?: string[]
+  /** who may make courses: the leads (lecturers) or the owner alone */
+  coursesBy?: 'leads' | 'owner'
 }
 
 export type OrgSpaceKind = 'course' | 'team' | 'project'
@@ -421,6 +443,13 @@ export interface OrgSpace {
   createdAt: number
   /** true when the signed-in person created this space: they, and the organisation's owner, may delete it */
   mine?: boolean
+  /** a course's invitation code: the link is /join/<code> */
+  code?: string
+  /** folded away on this person's side */
+  hidden?: boolean
+  /** a lecture is on right now: the room's link */
+  liveUrl?: string | null
+  liveAt?: number | null
 }
 
 export interface OrgMember {

@@ -90,8 +90,9 @@ function setCard(tabId, patch) {
   chrome.tabs.sendMessage(tabId, { type: 'sitca:card', card: next }).catch(() => undefined)
   return next
 }
-function want(tabId, mode) {
-  if (mode) wanted.set(tabId, mode)
+/** the card's choice, kept for the icon press: how to capture, and which course to file it in */
+function want(tabId, mode, spaceId) {
+  if (mode) wanted.set(tabId, { mode, spaceId: spaceId || '' })
   else wanted.delete(tabId)
   remember()
 }
@@ -237,7 +238,7 @@ async function askHandle(tabId) {
  * that is the step Chrome refuses until the icon has been pressed, and it
  * is better to learn that before the engine is woken.
  */
-async function startCapture(tab, mode) {
+async function startCapture(tab, mode, spaceId) {
   if (!tab || !tab.id) return { ok: false }
   const tabId = tab.id
   const busy = recordingTab()
@@ -256,7 +257,7 @@ async function startCapture(tab, mode) {
   } catch (err) {
     const m = String((err && err.message) || err)
     if (/invoked|activeTab|not been|permission/i.test(m)) {
-      want(tabId, mode)
+      want(tabId, mode, spaceId)
       setCard(tabId, { state: 'needIcon', mode, key: await shortcut() })
       return { ok: false, needIcon: true }
     }
@@ -267,14 +268,14 @@ async function startCapture(tab, mode) {
   clearEngineClose()
   setCard(tabId, { state: 'starting', mode, url: tab.url || '', error: undefined, sessionId: undefined, hostUrl: undefined, qr: undefined, lastLine: undefined })
   try {
-    return await startWithEngine(tab, mode)
+    return await startWithEngine(tab, mode, spaceId)
   } catch (err) {
     setCard(tabId, { state: 'failed', error: 'Sitca could not start: ' + String((err && err.message) || err) })
     return { ok: false }
   }
 }
 
-async function startWithEngine(tab, mode) {
+async function startWithEngine(tab, mode, spaceId) {
   const tabId = tab.id
   const e = await ensureEngine()
   if (!e.ready) {
@@ -301,7 +302,7 @@ async function startWithEngine(tab, mode) {
     // Stop was pressed while the engine was waking: nothing starts
     return { ok: false, cancelled: true }
   }
-  const req = { tabId, title: tab.title || '', url: tab.url || '', at: Date.now(), mode, streamId }
+  const req = { tabId, title: tab.title || '', url: tab.url || '', at: Date.now(), mode, streamId, spaceId: spaceId || undefined }
   chrome.runtime.sendMessage({ type: 'sitca:engine:start', ...req }).catch(() => undefined)
   return { ok: true }
 }
@@ -361,9 +362,9 @@ function invited(tab) {
     void openViewer(c.sessionId)
     return
   }
-  const mode = wanted.get(tab.id)
-  if (mode) {
-    void startCapture(tab, mode)
+  const w = wanted.get(tab.id)
+  if (w) {
+    void startCapture(tab, typeof w === 'string' ? w : w.mode, typeof w === 'string' ? '' : w.spaceId)
     return
   }
   // nothing chosen yet: the card unfolds its two choices, and from now on
@@ -448,8 +449,21 @@ function handle(msg, sender, reply) {
       reply({ ok: false })
       return undefined
     }
-    startCapture(tab, msg.mode === 'host' ? 'host' : 'record').then(reply, () => reply({ ok: false }))
+    startCapture(tab, msg.mode === 'host' ? 'host' : 'record', typeof msg.spaceId === 'string' ? msg.spaceId : '').then(reply, () => reply({ ok: false }))
     return true
+  }
+  if (msg.type === 'sitca:card:courses') {
+    // the courses this person teaches, as the extension's pages last reported them
+    chrome.storage.local.get('courses').then(
+      (s) => reply({ courses: Array.isArray(s.courses) ? s.courses : [] }),
+      () => reply({ courses: [] })
+    )
+    return true
+  }
+  if (msg.type === 'sitca:courses') {
+    chrome.storage.local.set({ courses: Array.isArray(msg.courses) ? msg.courses.slice(0, 50) : [] }).catch(() => undefined)
+    reply({ ok: true })
+    return undefined
   }
   if (msg.type === 'sitca:card:stop' || msg.type === 'sitca:card:left') {
     // Stop pressed, or the person left the call: either way the session ends

@@ -60,6 +60,8 @@ export interface MeetRequest {
   at: number
   /** record for this person, or host it on Sitca with a link for the room */
   mode: 'record' | 'host'
+  /** the course the session is filed in, when the card chose one */
+  spaceId?: string
   /** the engine only: Chrome's handle on the tab's sound and picture */
   streamId?: string
 }
@@ -277,6 +279,11 @@ export interface EngineStatus {
 /** The engine is up and signed in (or not): the worker may send a request. */
 export function engineReady(signedIn: boolean): void {
   void send({ type: 'sitca:engine:ready', signedIn })
+}
+
+/** The courses this person teaches, handed to the worker for the card's "Save to". */
+export function tellCourses(courses: { id: string; name: string; org: string }[]): void {
+  void send({ type: 'sitca:courses', courses })
 }
 
 /**

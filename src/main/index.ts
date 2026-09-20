@@ -1005,6 +1005,12 @@ function registerIpc(): void {
 
   // the desktop's own workspace has no plan: nothing is metered here
   ipcMain.handle('usage:get', () => null)
+  ipcMain.handle('course:mine', () => [])
+  ipcMain.handle('course:create', () => ({ error: 'Courses live on the website.' }))
+  ipcMain.handle('course:preview', () => null)
+  ipcMain.handle('course:join', () => ({ error: 'Courses live on the website.' }))
+  ipcMain.handle('course:hide', () => undefined)
+  ipcMain.handle('org:rules', () => ({ error: 'Organisations are managed on the website.' }))
   ipcMain.handle('session:source', () => undefined)
   ipcMain.handle('session:brief', () => ({ error: 'The brief is written on the website.' }))
   ipcMain.handle('answer:rate', () => undefined)

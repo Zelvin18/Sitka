@@ -13813,3 +13813,81 @@ video {
   white-space: normal;
   line-height: 1.4;
 }
+
+/* where a session is filed: the library, or a course */
+.setup2-dest {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.setup2-dest-label {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.72);
+  margin-right: 2px;
+}
+
+/* a course: live now, and the invitation */
+.course-live {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  text-decoration: none;
+  color: inherit;
+}
+.course-live-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.course-live-text b {
+  font-size: 14px;
+}
+.course-live-text span {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.course-invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius);
+}
+.course-invite-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.course-invite-text b {
+  font-size: 13.5px;
+  color: var(--text);
+}
+.course-invite-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

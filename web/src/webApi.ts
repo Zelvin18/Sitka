@@ -21,7 +21,7 @@ import {
   type SessionContext
 } from '../../src/shared/createLogic'
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
-import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Speaker } from '../../src/shared/types'
+import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Course, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
 import { createDoc, driveToken, sitcaFolder, uploadRecording } from './drive'
 import { briefHtml, briefPrompt, speechOnly } from './brief'
@@ -2317,6 +2317,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // the report is bookkeeping and must never stand between the host's tap
     // and the attendees' screens.
     await setEventStatus(c.eventId, 'ended')
+    {
+      const sp = cache.get(sessionId)?.meta.spaceId
+      if (sp) void sb.rpc('sitka_course_live', { p_space: sp, p_event: null, p_url: null }).then(() => undefined, () => undefined)
+    }
     const report: EventReport = {
       joined: c.attendeeCount,
       peak: c.attendeeCount,
@@ -2624,6 +2628,39 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     ],
 
     getUsage: async (force?: boolean) => myUsage(Boolean(force)),
+
+    // ---------- courses ----------
+    listMyCourses: async () => {
+      const { data, error } = await sb.rpc('sitka_my_courses')
+      if (error || !Array.isArray(data)) return []
+      return data as Course[]
+    },
+    createCourse: async (orgId: string, name: string, description: string) => {
+      const { data, error } = await sb.rpc('sitka_create_course', { p_org: orgId, p_name: name, p_description: description })
+      if (error) return { error: error.message.replace(/^.*?:\s*/, '') || 'Could not make the course.' }
+      const row = (Array.isArray(data) ? data[0] : data) as { id: string } | null
+      if (!row) return { error: 'The course was made but could not be read back.' }
+      const mine = await api.listMyCourses()
+      const course = mine.find((c) => c.id === row.id)
+      return course ? { course } : { error: 'The course was made but could not be read back.' }
+    },
+    previewCourse: async (code: string) => {
+      const { data } = await sb.rpc('sitka_course_preview', { p_code: code })
+      return (data as { course: string; org: string; kind: string; domains: string[]; lecturers: string[] } | null) ?? null
+    },
+    joinCourse: async (code: string) => {
+      const { data, error } = await sb.rpc('sitka_join_course', { p_code: code })
+      if (error) return { error: error.message.replace(/^.*?:\s*/, '') || 'Could not join.' }
+      track('course_join', {})
+      return (data as { spaceId: string; orgId: string; course: string; org: string; role: string }) ?? { error: 'Could not join.' }
+    },
+    hideCourse: async (spaceId: string, hidden: boolean) => {
+      await sb.rpc('sitka_hide_course', { p_space: spaceId, p_hidden: hidden }).then(() => undefined, () => undefined)
+    },
+    setOrgRules: async (orgId: string, domains: string[], coursesBy: 'leads' | 'owner') => {
+      const { error } = await sb.rpc('sitka_org_rules', { p_org: orgId, p_domains: domains, p_courses_by: coursesBy })
+      return error ? { error: error.message.replace(/^.*?:\s*/, '') } : {}
+    },
 
     rateAnswer: async (sessionId: string, question: string, answer: string, good: boolean) => {
       track(good ? 'answer_good' : 'answer_bad', {})
@@ -3919,7 +3956,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     listOrgs: async (): Promise<Organization[]> => {
       const { data: rows, error } = await sb
         .from('organizations')
-        .select('id,name,kind,owner,code,lead_code,created_at')
+        .select('id,name,kind,owner,code,lead_code,created_at,domains,courses_by')
         .order('created_at', { ascending: true })
       if (error || !rows) return []
       const ids = rows.map((r) => r.id as string)
@@ -3939,6 +3976,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           role,
           code: lead ? (r.code as string) : undefined,
           leadCode: role === 'owner' ? (r.lead_code as string) : undefined,
+          domains: Array.isArray(r.domains) ? (r.domains as string[]) : [],
+          coursesBy: r.courses_by === 'owner' ? 'owner' : 'leads',
           members: (members ?? []).filter((m) => m.org_id === r.id).length,
           spaces: (spaces ?? []).filter((s) => s.org_id === r.id).length,
           createdAt: new Date(r.created_at as string).getTime()
@@ -4018,21 +4057,23 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     listSpaces: async (orgId: string): Promise<OrgSpace[]> => {
       const { data: spaces } = await sb
         .from('org_spaces')
-        .select('id,org_id,name,kind,description,created_at,created_by')
+        .select('id,org_id,name,kind,description,created_at,created_by,code,live_url,live_at')
         .eq('org_id', orgId)
         .order('created_at', { ascending: true })
       if (!spaces || spaces.length === 0) return []
       const ids = spaces.map((s) => s.id as string)
-      const [{ data: mats }, sessionCounts] = await Promise.all([
+      const [{ data: mats }, sessionCounts, { data: hidden }] = await Promise.all([
         sb.from('org_materials').select('space_id').in('space_id', ids),
         Promise.all(
           ids.map(async (sid) => {
             const { data } = await sb.rpc('sitka_space_sessions', { p_space: sid })
             return [sid, Array.isArray(data) ? data.length : 0] as const
           })
-        )
+        ),
+        sb.from('space_hidden').select('space_id').in('space_id', ids)
       ])
       const sessionsBy = new Map(sessionCounts)
+      const hiddenIds = new Set((hidden ?? []).map((h) => h.space_id as string))
       return spaces.map((s) => ({
         id: s.id as string,
         orgId: s.org_id as string,
@@ -4042,12 +4083,23 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         sessions: sessionsBy.get(s.id as string) ?? 0,
         materials: (mats ?? []).filter((m) => m.space_id === s.id).length,
         createdAt: new Date(s.created_at as string).getTime(),
-        mine: s.created_by === user.id
+        mine: s.created_by === user.id,
+        code: (s.code as string | null) ?? undefined,
+        hidden: hiddenIds.has(s.id as string),
+        liveUrl: (s.live_url as string | null) ?? null,
+        liveAt: s.live_at ? new Date(s.live_at as string).getTime() : null
       }))
     },
     createSpace: async (orgId: string, name: string, kind: OrgSpaceKind, description: string) => {
       const clean = name.trim()
       if (!clean) return { error: 'Give it a name.' }
+      if (kind === 'course') {
+        // a course comes with its invitation code and its lecturer
+        const made = await api.createCourse(orgId, clean, description.trim())
+        if (made.error) return { error: made.error }
+        const space = (await api.listSpaces(orgId)).find((s) => s.id === made.course?.id)
+        return space ? { space } : { error: 'Created, but could not be read back.' }
+      }
       const id = uid()
       const { error } = await sb.from('org_spaces').insert({
         id,
@@ -4283,6 +4335,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           frameBusy: false,
           workTimer: window.setInterval(() => void confPollWork(), 3000),
           statsTimer: window.setInterval(() => void confPollStats(), 5000)
+        }
+        // a session recorded into a course: the course page says it is live, and where
+        if (d.meta.spaceId) {
+          void sb.rpc('sitka_course_live', { p_space: d.meta.spaceId, p_event: eventId, p_url: conf.url }).then(() => undefined, () => undefined)
         }
         return { url: conf.url }
       } catch (err) {
