@@ -242,6 +242,12 @@ function setExpanded(on: boolean): void {
   }
   stage.classList.add('expanded')
   document.documentElement.classList.add('expanded')
+  // the phone's player, sideways: its own controls fold away (they mis-aim
+  // inside a turned picture) and our bar drives it instead
+  if (stage.classList.contains('native')) {
+    video().controls = false
+    el('bar').style.display = ''
+  }
   const req = stage.requestFullscreen as undefined | (() => Promise<void>)
   if (typeof req === 'function') {
     // Real full screen, and the screen turned to landscape where the browser
@@ -280,6 +286,11 @@ function unlockOrientation(): void {
 }
 function leaveExpanded(): void {
   const stage = el('stage')
+  if (stage.classList.contains('native')) {
+    // back inline: the phone's own controls again (once it has played), our bar away
+    if (stage.classList.contains('playing')) video().controls = true
+    el('bar').style.display = 'none'
+  }
   stage.classList.remove('expanded', 'rotated')
   document.documentElement.classList.remove('expanded')
   window.removeEventListener('resize', fitRotation)
@@ -427,15 +438,27 @@ function goNative(url: string): void {
   const v = video()
   const stage = el('stage')
   v.src = url
-  v.controls = true
+  // The phone's controls stay folded until the first play: before that, the
+  // picture carries our own Play in the middle, which anyone knows to press.
+  // The first press is a direct tap, so the phone allows it.
+  v.controls = false
   v.hidden = false
   v.preload = 'metadata'
-  stage.classList.add('native', 'hasvideo')
+  if (!v.poster) v.poster = `/api/thumb?id=${encodeURIComponent(pageId)}`
+  stage.classList.add('native', 'hasvideo', 'paused')
   stage.classList.remove('loading')
   el('bar').style.display = 'none'
   mediaReady = true
   previewed = true
-  v.addEventListener('playing', () => stage.classList.add('playing'), { once: true })
+  v.addEventListener(
+    'playing',
+    () => {
+      stage.classList.add('playing')
+      // from here the phone's own controls take over, unless the stage fills the screen (ours then)
+      if (!stage.classList.contains('expanded')) v.controls = true
+    },
+    { once: true }
+  )
 }
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
@@ -829,8 +852,9 @@ function wireMedia(): void {
     const t = e.target as HTMLElement
     if (t.closest('.bar, .playbig, .xfull, .askfab, .sheet, .dock, a, input, select')) return
     // the phone's own player has its own controls: a tap on them is theirs
-    // alone (answering it here too paused what they had just started)
-    if (stage.classList.contains('native')) return
+    // alone (answering it here too paused what they had just started); only
+    // sideways, with our bar in charge, does a tap on the picture toggle
+    if (stage.classList.contains('native') && !stage.classList.contains('expanded')) return
     if (!mediaReady) return
     if (v.paused) void play()
     else v.pause()

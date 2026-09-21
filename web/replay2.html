@@ -91,7 +91,11 @@ h1.title{font-family:var(--sans);font-weight:700;font-size:clamp(23px,3vw,36px);
 .stage-wait .mark{width:28px;height:28px}
 .stage-wait a.openraw{color:#fff;text-decoration:underline;pointer-events:auto}
 /* the phone's own player: our button, bar and waiting words step aside; the title lifts to the top and lets taps through */
-.stage.native .playbig,.stage.native .stage-wait,.stage.native .pstatus,.stage.native .bar,.stage.native .shade,.stage.native .grain{display:none!important}
+.stage.native .stage-wait,.stage.native .pstatus,.stage.native .bar,.stage.native .shade,.stage.native .grain{display:none!important}
+/* our own Play sits on the picture until it plays; the phone's controls come out once it does */
+.stage.native:not(.expanded) .playbig{top:auto;bottom:calc(min(56.25vw,56vh) / 2);transform:translate(-50%,50%)}
+/* filling the screen sideways: our bar drives the phone's player, which keeps its own controls folded */
+.stage.native.expanded .bar{display:flex!important}
 /* the title sits above the picture, as a heading, and the picture is the phone's own player, untouched */
 .stage.native{display:flex;flex-direction:column;height:auto;min-height:0;background:var(--bg,#0c0c0d)}
 .stage.native .hero{position:static;order:-1;padding:18px 20px 14px;align-items:flex-start;opacity:1!important;transform:none!important;pointer-events:auto!important}
@@ -166,6 +170,7 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 .lead{font-family:var(--sans);font-weight:400;font-size:clamp(17px,1.7vw,21px);line-height:1.6;letter-spacing:-.005em;color:var(--text);margin:0 0 36px}
 .lead p{margin:0 0 14px}
 .lead p:last-child{margin:0}
+.lead-h{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t2);margin:0 0 12px}
 .lead.pending{color:var(--t3);font-style:italic}
 .sec{margin-bottom:40px}
 .moments{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
@@ -389,6 +394,7 @@ html,body{overflow-x:hidden;max-width:100vw}
       <label class="follow"><input type="checkbox" id="follow" checked> Follow the words as it plays</label>
     </aside>
     <div class="main">
+      <h4 class="lead-h">Summary</h4>
       <div class="lead" id="lead"></div>
       <div class="dlrow" id="dlrow" hidden>
         <button class="dl" id="dlnotes" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M4 19h16"/></svg>Download the notes</button>
