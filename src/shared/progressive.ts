@@ -369,6 +369,12 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
 
   const bytesToTime = (b: number): number => (duration ? (b / size) * duration : 0)
   const timeToBytes = (t: number): number => (duration ? Math.floor((t / duration) * size) : 0)
+  // The file's header (everything before its first fragment), kept aside.
+  // After the parser is reset for a jump, Safari's engine will not take a
+  // bare fragment: it wants the header again first. Chrome forgives the
+  // omission; Safari answers with a decode error a few seconds in.
+  const initLen = fragmentAt(headBytes, kind)
+  const init: ArrayBuffer | null = initLen > 0 ? head.slice(0, initLen) : null
 
   const wait = (ms_: number): Promise<void> => new Promise((r) => setTimeout(r, ms_))
 
@@ -397,13 +403,15 @@ export async function streamMedia(video: HTMLVideoElement, source: ByteSource, o
       const before: number[] = []
       for (let i = 0; i < video.buffered.length; i++) before.push(video.buffered.start(i))
       const first = await source.range(start, Math.min(size, start + 2 * 1024 * 1024) - 1)
-      // the parser must start this fragment clean, not as a continuation
+      // the parser must start this fragment clean, not as a continuation:
+      // reset, then the header again, then the fragment
       if (ms.readyState === 'open') {
         try {
           sb.abort()
         } catch {
           /* nothing in flight */
         }
+        if (init) await appendWithRoom(init.slice(0))
       }
       await appendWithRoom(first)
       const b = video.buffered

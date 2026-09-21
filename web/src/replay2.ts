@@ -350,6 +350,44 @@ async function streamWhole(v: HTMLVideoElement, url: string, knownSize?: number)
     return false
   }
 }
+/** where the recording lives, kept for a second way in should the stream fail */
+let lastFound: { whole: string | null; parts: string[] } | null = null
+/** the stream gave up partway: the file itself is handed to the player, at the same moment */
+let fellBack = false
+async function fallBackFromStream(): Promise<boolean> {
+  const v = video()
+  if (fellBack || !lastFound || !streamedHere) return false
+  fellBack = true
+  const at = v.currentTime
+  console.warn('[recap] the stream failed at', at.toFixed(1), '— playing the file itself')
+  el('playsub').textContent = 'One moment…'
+  try {
+    ;(v as HTMLVideoElement & { srcObject: unknown }).srcObject = null
+  } catch {
+    /* no engine attached */
+  }
+  if (lastFound.whole) {
+    v.src = lastFound.whole
+  } else {
+    // no single file: the parts, fetched and joined, then played as one
+    const blobs = await Promise.all(lastFound.parts.map(async (p) => (await fetch(p)).blob()))
+    const raw = new Blob(blobs, { type: mediaType(new Uint8Array(await blobs[0].slice(0, 12).arrayBuffer())) })
+    v.src = URL.createObjectURL(raw)
+  }
+  el('stage').classList.remove('err')
+  el('stage').classList.add('loading')
+  v.load()
+  v.addEventListener(
+    'loadedmetadata',
+    () => {
+      if (at > 0.5) v.currentTime = at
+      v.play().catch(refused)
+    },
+    { once: true }
+  )
+  return true
+}
+let streamedHere = false
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
 let candidateAt = 0
@@ -383,6 +421,7 @@ function loadMedia(): Promise<boolean> {
         // One question answers all of it: which store holds this recording,
         // whether it was joined into a single file, and the link to each part.
         const found = await store.media(data.owner, data.sessionId)
+        lastFound = { whole: found.whole, parts: found.parts }
         // One whole file first, when the session has made one.
         //
         // The recorder writes its file in fragments with an empty index, and
@@ -399,6 +438,7 @@ function loadMedia(): Promise<boolean> {
         const wholeFirst = Boolean(found.whole) && !(IOS && HAS_ENGINE && found.parts.length > 0)
         if (found.whole && wholeFirst) {
           const streamed = await streamWhole(v, found.whole, found.wholeSize)
+          streamedHere = streamed
           if (!streamed) v.src = found.whole
           v.hidden = false
           mediaReady = true
@@ -441,6 +481,7 @@ function loadMedia(): Promise<boolean> {
               }
             })
         if (streamed) {
+          streamedHere = true
           mediaReady = true
           el('stage').classList.add('hasvideo')
           el('playtext').textContent = 'Play'
@@ -600,6 +641,12 @@ function wireMedia(): void {
   // words on the pill, so a failure is never a silent black box.
   v.addEventListener('error', () => {
     const code = v.error?.code
+    // the stream broke partway (an engine that will not take a piece): the
+    // file itself takes over from the same moment, before anything is said
+    if ((code === 3 || code === 4) && !fellBack && streamedHere) {
+      void fallBackFromStream()
+      return
+    }
     // a form the browser cannot open: try the next one before saying so
     if ((code === 4 || code === 3) && tryNextCandidate()) return
     const why =
