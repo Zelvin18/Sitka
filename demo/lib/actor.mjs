@@ -19,14 +19,22 @@ export function mark(page, name, extra = {}) {
 /** every page filmed, with where its film lands */
 export const films = []
 export async function prepare(page, name) {
-  page.__t0 = Date.now()
   page.__name = name
+  const f = films.find((x) => x.p === page)
+  if (f) {
+    // named again by the scene: the film keeps up
+    f.page = name
+    return
+  }
+  page.__t0 = Date.now()
   const v = page.video()
-  if (v) films.push({ page: name, path: await v.path() })
+  if (v) films.push({ page: name, path: await v.path(), p: page })
   await page.addInitScript(overlay)
   page.on('load', () => page.evaluate(overlay).catch(() => undefined))
   await page.evaluate(overlay).catch(() => undefined)
 }
+/** the films, for the record on disk */
+export const filmList = () => films.map(({ page, path }) => ({ page, path }))
 
 const demo = (page, fn, ...args) => page.evaluate(([f, a]) => window.__demo && window.__demo[f](...a), [fn, args]).catch(() => undefined)
 
@@ -86,6 +94,7 @@ export async function type(page, text, opts = {}) {
 export const caption = (page, text) => demo(page, 'caption', text)
 export const chip = (page, text) => demo(page, 'chip', text)
 export const fade = (page, on) => demo(page, 'fade', on)
+export const popup = (page, src) => demo(page, 'popup', src)
 export const hideCursor = (page, on) => demo(page, 'hide', on)
 
 /** a moment of reading before the next thing */
@@ -93,5 +102,5 @@ export const read = (ms) => sleep(ms ?? rnd(900, 1500))
 
 /** the last mark of every page in a context: how its film lines up with its clock */
 export function closing(ctx) {
-  for (const p of ctx.pages()) if (p.__name && !p.isClosed()) mark(p, 'close')
+  for (const p of ctx.pages()) if (p.__t0 && !p.isClosed()) mark(p, 'close')
 }

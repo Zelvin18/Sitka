@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Sign in – Choose an account</title>
+<title>Choose an account</title>
 <style>
   /* the familiar "choose an account" card: a stage set that goes nowhere but the demo */
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;background:#f0f4f9;font-family:'Google Sans',Roboto,'Segoe UI',system-ui,sans-serif;color:#1f1f1f}
   .card{width:min(1040px,calc(100% - 48px));margin:48px auto 0;background:#fff;border-radius:28px;padding:36px;display:grid;grid-template-columns:1fr 1fr;gap:24px;min-height:500px}
+  /* inside the small window: one column, the card is the window */
+  @media(max-width:600px){html,body{background:#fff}.card{width:100%;margin:0;padding:28px 28px 8px;grid-template-columns:1fr;gap:6px;min-height:0;border-radius:0}.list{padding-top:18px}h1{font-size:24px;margin:8px 0 6px}.foot{width:100%;padding:0 28px}}
   .g{font-size:26px;font-weight:500;letter-spacing:-.01em;margin-bottom:14px;display:flex;gap:2px}
   .g b{font-weight:500}
+  .acc-mark{width:22px;height:22px;border-radius:7px;background:#4a6cf7;display:inline-block;margin-right:8px}
   h1{font-size:34px;font-weight:400;margin:14px 0 12px}
   .sub{font-size:16px;color:#444746;line-height:1.5}
   .sub b{font-weight:500;color:#1f1f1f}
@@ -29,12 +32,12 @@
 <body>
 <div class="card">
   <div>
-    <div class="g"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></div>
+    <div class="g"><span class="acc-mark"></span>Accounts</div>
     <h1>Choose an account</h1>
     <div class="sub">to continue to <b>Sitca</b></div>
   </div>
   <div class="list">
-    <div class="acct" id="daniel"><div class="av">D</div><div class="t"><b>Daniel Mwangi</b><span>daniel.mwangi@gmail.com</span></div></div>
+    <div class="acct" id="daniel"><div class="av">D</div><div class="t"><b>Daniel Mwangi</b><span>daniel.mwangi@example.com</span></div></div>
     <div class="acct"><div class="av o">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="#444746"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z"/></svg></div><div class="t"><b>Use another account</b></div></div>
   </div>
@@ -43,9 +46,13 @@
 <script>
   // the chosen account leads on to wherever the demo says
   document.getElementById('daniel').onclick = () => {
-    const next = new URLSearchParams(location.search).get('next') || '/'
     document.body.style.transition = 'opacity .25s'
     document.body.style.opacity = '0.4'
+    if (window.parent !== window) {
+      setTimeout(() => window.parent.postMessage('sitca-demo:chosen', '*'), 300)
+      return
+    }
+    const next = new URLSearchParams(location.search).get('next') || '/'
     setTimeout(() => { location.href = next }, 350)
   }
 </script>

@@ -41,18 +41,23 @@ const has = (page, name) => at(page, name) !== undefined
 // { page, from, to } in mark names, with +/- seconds; a scene whose marks are
 // missing (a shorter take) is skipped
 const STORY = [
-  { page: 'gate', from: ['gate', -0.3], to: ['google-end', 0.2] },
+  { page: 'gate', from: ['gate', -0.2], to: ['google-end', -0.3] },
   { page: 'meet', from: ['meet', 0], to: ['meet', 2.6] },
-  { page: 'app', from: ['home', -0.2], to: ['recording', 9.5] },
-  { page: 'app', from: ['theatre', -1.4], to: ['theatre-end', 0.3] },
+  { page: 'app', from: ['home', 0], to: ['setup', -0.4] },
+  { page: 'app', from: ['setup', 0.6], to: ['recording', 8] },
+  { page: 'app', from: ['theatre', -1.2], to: ['ask', 9.5] },
+  { page: 'app', from: ['ask-end', -1.5], to: ['theatre-end', 0.3] },
   { page: 'app', from: ['notes', -1.0], to: ['notes', 3.2] },
-  { page: 'app', from: ['notes-later', 0], to: ['catchup-end', 0.2] },
-  { page: 'app', from: ['end', -1.2], to: ['drive', 0] },
-  { page: 'app', from: ['drive', 0], to: ['drive', 9.5] },
+  { page: 'app', from: ['notes-later', 0], to: ['catchup', 7.5] },
+  { page: 'app', from: ['catchup-end', -3], to: ['catchup-end', 0.2] },
+  { page: 'app', from: ['end', -1.2], to: ['end', 3] },
+  { page: 'app', from: ['session', -0.4], to: ['drive', 0] },
+  { page: 'app', from: ['drive', 0], to: ['drive', 5.5] },
   { page: 'drive', from: ['drive-open', 0], to: ['drive-end', 0] },
-  { page: 'app', from: ['share', -1.2], to: ['share-end', 0.2] },
-  { page: 'whatsapp', from: ['whatsapp', 0], to: ['whatsapp-end', 0] },
-  { page: 'phone', from: ['recap', -0.2], to: ['recap-end', 1.2], phone: true }
+  { page: 'app', from: ['share', -1.0], to: ['share-end', 0.2] },
+  { page: 'whatsapp', from: ['whatsapp', 1.0], to: ['whatsapp-end', 0] },
+  { page: 'phone', from: ['recap', -0.2], to: ['recap', 5], phone: true },
+  { page: 'phone', from: ['recap-ask', -1.5], to: ['recap-ask', 10.5], phone: true }
 ]
 
 const pieces = []
@@ -70,7 +75,7 @@ for (const [i, s] of STORY.entries()) {
   const out = here(`./out/cut/${String(i).padStart(2, '0')}-${s.page}.mp4`)
   // the phone stands on a dark stage, its own picture blurred large behind it
   const vf = s.phone
-    ? `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=40:8,eq=brightness=-0.25[bg];[0:v]scale=-2:${H - 80}[ph];[bg][ph]overlay=(W-w)/2:(H-h)/2,fps=${FPS},format=yuv420p`
+    ? `[0:v]crop=iw:ih-84:0:0,split[a][b];[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=40:8,eq=brightness=-0.25[bg];[b]scale=-2:${H - 80}[ph];[bg][ph]overlay=(W-w)/2:(H-h)/2,fps=${FPS},format=yuv420p`
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,fps=${FPS},format=yuv420p`
   run(['-y', '-ss', from.toFixed(3), '-to', to.toFixed(3), '-i', f.path, ...(s.phone ? ['-filter_complex', vf] : ['-vf', vf]), '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', out])
   const len = to - from
@@ -101,7 +106,7 @@ for (const t of timeline) {
   if (meetingFrom < -2 || meetingFrom > 150) continue
   audioInputs.push('-i', voice)
   n++
-  filters.push(`[${n}:a]atrim=start=${Math.max(0, meetingFrom).toFixed(3)}:end=${(Math.max(0, meetingFrom) + t.len).toFixed(3)},asetpts=PTS-STARTPTS,volume=0.55,afade=t=in:d=0.4,afade=t=out:st=${Math.max(0, t.len - 0.6).toFixed(3)}:d=0.6,adelay=${Math.round(t.start * 1000)}|${Math.round(t.start * 1000)}[v${n}]`)
+  filters.push(`[${n}:a]atrim=start=${Math.max(0, meetingFrom).toFixed(3)}:end=${(Math.max(0, meetingFrom) + t.len).toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.55,afade=t=in:d=0.4,afade=t=out:st=${Math.max(0, t.len - 0.6).toFixed(3)}:d=0.6,adelay=${Math.round(t.start * 1000)}|${Math.round(t.start * 1000)}[v${n}]`)
 }
 const music = here('./assets/music.mp3')
 let musicIdx = 0
@@ -114,8 +119,12 @@ if (existsSync(music)) {
 const mixIn = [...Array.from({ length: n - (musicIdx ? 1 : 0) }, (_, i) => `[v${i + 1}]`), ...(musicIdx ? ['[mu]'] : [])]
 const final = here('./out/sitca-demo.mp4')
 if (mixIn.length > 0) {
-  filters.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0[a]`)
-  run(['-y', '-i', silent, ...audioInputs, '-filter_complex', filters.join(';'), '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', final])
+  // a bed of silence the whole length first: the mix then starts at zero
+  // and runs to the end whatever the pieces' own timings
+  audioInputs.push('-f', 'lavfi', '-t', storyT.toFixed(2), '-i', 'anullsrc=r=48000:cl=stereo')
+  n++
+  filters.push(`${['[' + n + ':a]', ...mixIn].join('')}amix=inputs=${mixIn.length + 1}:normalize=0:duration=first[a]`)
+  run(['-y', '-i', silent, ...audioInputs, '-filter_complex', filters.join(';'), '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', storyT.toFixed(2), final])
 } else {
   run(['-y', '-i', silent, '-c', 'copy', final])
 }

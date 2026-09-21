@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Sitca – My Drive</title>
+<title>Sitca – Cloud drive</title>
 <style>
   /* a cloud drive folder with the two files Sitca just wrote: a stage set */
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;background:#f8fafd;font-family:'Google Sans',Roboto,'Segoe UI',system-ui,sans-serif;color:#1f1f1f}
   .top{height:64px;display:flex;align-items:center;gap:16px;padding:0 20px}
   .logo{display:flex;align-items:center;gap:8px;font-size:22px;color:#444746;width:220px}
-  .logo i{width:30px;height:26px;background:conic-gradient(from 200deg,#fbbc04 0 33%,#34a853 0 66%,#4285f4 0);clip-path:polygon(25% 0,75% 0,100% 55%,75% 100%,25% 100%,0 55%);display:inline-block}
+  .logo i{width:26px;height:26px;border-radius:8px;background:#4a6cf7;display:inline-block}
   .search{flex:1;max-width:720px;height:46px;background:#e9eef6;border-radius:24px;display:flex;align-items:center;padding:0 18px;color:#444746;font-size:15px;gap:12px}
   .av{margin-left:auto;width:34px;height:34px;border-radius:50%;background:#1e88e5;color:#fff;display:grid;place-items:center;font-weight:500}
   .body{display:grid;grid-template-columns:250px 1fr;height:calc(100% - 64px)}
@@ -37,15 +37,15 @@
 </head>
 <body>
 <div class="top">
-  <div class="logo"><i></i>Drive</div>
-  <div class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="#444746"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>Search in Drive</div>
+  <div class="logo"><i></i>Cloud</div>
+  <div class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="#444746"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>Search your files</div>
   <div class="av">D</div>
 </div>
 <div class="body">
   <div class="nav">
     <div class="new">＋ New</div>
     <div class="i">Home</div>
-    <div class="i on">My Drive</div>
+    <div class="i on">My files</div>
     <div class="i">Computers</div>
     <div class="i">Shared with me</div>
     <div class="i">Recent</div>
@@ -53,7 +53,7 @@
     <div class="i">Trash</div>
   </div>
   <div class="main">
-    <div class="crumb"><span>My Drive</span> › Sitca</div>
+    <div class="crumb"><span>My files</span> › Sitca</div>
     <table>
       <thead><tr><th style="width:52%">Name</th><th>Owner</th><th>Last modified</th><th>File size</th></tr></thead>
       <tbody>

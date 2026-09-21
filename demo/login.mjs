@@ -8,11 +8,11 @@ const SITE = process.env.SITE || 'https://sitcaai.vercel.app'
 const profile = fileURLToPath(new URL('./profile', import.meta.url))
 const ctx = await chromium.launchPersistentContext(profile, {
   headless: false,
-  viewport: { width: 1600, height: 900 },
-  args: ['--disable-blink-features=AutomationControlled']
+  viewport: null,
+  args: ['--disable-blink-features=AutomationControlled', '--start-maximized']
 })
 const page = ctx.pages()[0] ?? (await ctx.newPage())
 await page.goto(`${SITE}/app`)
-console.log('Sign in as Daniel in the window, wait for the home page, then close the window.')
+console.log('In the window: sign in (Continue with Google, or the Create account tab as "Daniel Mwangi"). When the home page shows, close the window.')
 await new Promise((resolve) => ctx.on('close', resolve))
 console.log('Profile saved. Now run: npm run record')

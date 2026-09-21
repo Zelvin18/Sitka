@@ -10,7 +10,7 @@ import { createServer } from 'node:http'
 import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { extname, join } from 'node:path'
-import { prepare, glide, click, type, caption, chip, fade, read, sleep, mark, marks, films, closing } from './lib/actor.mjs'
+import { prepare, glide, click, type, caption, chip, fade, popup, read, sleep, mark, marks, filmList, closing } from './lib/actor.mjs'
 
 const SITE = process.env.SITE || 'https://sitcaai.vercel.app'
 const AUDIO = process.env.AUDIO || 'tab' // tab: the call's sound; mic: Priya through a fake microphone
@@ -41,9 +41,10 @@ const assetsServer = createServer((req, res) => {
   res.end(readFileSync(f))
 }).listen(SET + 1)
 
+const save = () => writeFileSync(here('./out/marks.json'), JSON.stringify({ marks, films: filmList(), recapUrl, sessionTitle }, null, 2))
 const done = (scene) => {
   if (until && until === scene) {
-    writeFileSync(here('./out/marks.json'), JSON.stringify({ marks, films, recapUrl, sessionTitle }, null, 2))
+    save()
     console.log(`stopped after "${scene}"`)
     return true
   }
@@ -98,15 +99,22 @@ let sessionTitle = 'Q3 planning with Priya'
   await read(1400)
   await click(page, page.locator('#ggoogle'))
   await caption(page, '')
-  await sleep(400)
-  await fade(page, true)
-  await sleep(380)
-  await page.goto(set('google.html?next=' + encodeURIComponent(SITE + '/app')))
-  await sleep(300)
+  await sleep(500)
+  // Google's window opens over the page, Daniel's account in it
+  await popup(page, true)
+  await sleep(500)
   mark(page, 'google')
-  await read(1100)
-  await click(page, page.locator('#daniel'))
-  await sleep(900)
+  await read(1300)
+  const chosen = page.evaluate(() => new Promise((r) => window.addEventListener('message', (e) => e.data === 'sitca-demo:chosen' && r(true), { once: true })))
+  await click(page, page.locator('#__demo #daniel'))
+  await chosen
+  await popup(page, false)
+  // the workspace opening: the door's own loader, then the home page (next scene)
+  await page.evaluate(() => {
+    document.getElementById('gatecard')?.classList.add('hidden')
+    document.getElementById('gateload')?.classList.remove('hidden')
+  })
+  await sleep(1500)
   mark(page, 'google-end')
   closing(ctx)
   await ctx.close()
@@ -118,9 +126,8 @@ let sessionTitle = 'Q3 planning with Priya'
 // =====================================================================
 const args = [
   '--disable-blink-features=AutomationControlled',
-  '--use-fake-ui-for-media-stream',
   '--autoplay-policy=no-user-gesture-required',
-  '--auto-select-tab-capture-source-by-title=Meet',
+  '--auto-select-tab-capture-source-by-title=Video call',
   ...(AUDIO === 'mic' ? ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${here('./assets/priya.wav')}%noloop`] : [])
 ]
 const ctx = await chromium.launchPersistentContext(here('./profile'), {
@@ -133,10 +140,30 @@ const ctx = await chromium.launchPersistentContext(here('./profile'), {
 await mockGoogle(ctx)
 await mockDrive(ctx, sessionTitle)
 // every page the context opens gets the hand and the captions
-ctx.on('page', (p) => void prepare(p, 'p' + ctx.pages().length))
+ctx.on('page', (p) => {
+  console.log('  (new page)', p.url())
+  void prepare(p, 'p' + ctx.pages().length)
+})
+
+// a clean slate: the takes before this one leave no sessions behind
+if (process.argv.includes('--clean')) {
+  const p = await ctx.newPage()
+  await p.goto(`${SITE}/app`, { waitUntil: 'networkidle' })
+  await p.waitForSelector('.home-action', { timeout: 60000 })
+  const n = await p.evaluate(async () => {
+    const list = await window.sitka.listSessions()
+    for (const m of list) await window.sitka.deleteSession(m.id)
+    return list.length
+  })
+  console.log('cleaned', n, 'sessions')
+  await p.close()
+}
 
 // -- the call, in its own tab: Priya is talking --
+// The share takes what the window shows of the tab: the call page is sized
+// to fit inside this screen's window, so the whole room is in the picture.
 const meet = ctx.pages()[0] ?? (await ctx.newPage())
+await meet.setViewportSize({ width: 1280, height: 640 })
 await prepare(meet, 'meet')
 await meet.goto(set('meet.html#talk'))
 if (AUDIO === 'tab') {
@@ -157,6 +184,8 @@ await read(2600)
 const app = await ctx.newPage()
 await prepare(app, 'app')
 await app.goto(`${SITE}/app`, { waitUntil: 'networkidle' })
+await sleep(2500)
+await app.screenshot({ path: here('./out/debug-home.png') })
 await app.waitForSelector('.home-action', { timeout: 60000 })
 await sleep(500)
 mark(app, 'home')
@@ -164,6 +193,12 @@ await caption(app, 'A meeting is on. Daniel opens Sitca.')
 await read(1600)
 await caption(app, '')
 await click(app, app.locator('.home-action').first())
+// what today is: a session of his own
+await app.waitForSelector('text=Just for me', { timeout: 30000 })
+await read(1000)
+await click(app, app.locator('button, .intent-card', { hasText: 'Just for me' }).first())
+await sleep(2000)
+await app.screenshot({ path: here('./out/debug-setup.png') })
 await app.waitForSelector('.setup2-kind', { timeout: 30000 })
 await read(900)
 mark(app, 'setup')
@@ -183,13 +218,13 @@ mark(app, 'recording')
 await caption(app, '')
 await sleep(1200)
 await caption(app, 'Sitca listens: the words arrive as they are said')
-await app.waitForSelector('.transcript-line, .seg, .tline', { timeout: 60000 }).catch(() => undefined)
-await read(6500)
+await read(9000)
 await caption(app, '')
-if (done('live')) {
+if (until === 'live') {
   await sleep(1500)
   closing(ctx)
   await ctx.close()
+  done('live')
   process.exit(0)
 }
 
@@ -222,7 +257,7 @@ await caption(app, 'Notes write themselves as the meeting goes on')
 mark(app, 'notes')
 // the notes need a couple of minutes of meeting behind them: the rest of
 // Priya's talk runs here (cut in post, marked "later")
-await sleep(75000)
+await sleep(60000)
 await caption(app, '')
 await app.evaluate(() => window.scrollTo(0, 0))
 await read(1200)
@@ -244,7 +279,7 @@ await meet.evaluate(() => window.meet && window.meet.talk(false))
 await click(app, app.locator('button', { hasText: 'End session' }))
 mark(app, 'end')
 await caption(app, 'Meeting over. One press.')
-await app.waitForSelector('.tab-row', { timeout: 120000 })
+await app.waitForSelector('.tab-row:has-text("Overview")', { timeout: 180000 })
 await sleep(1500)
 await caption(app, '')
 mark(app, 'session')
@@ -257,9 +292,10 @@ if (await video.count()) {
   await read(2600)
   await click(app, video)
 }
-if (done('session')) {
+if (until === 'session') {
   closing(ctx)
   await ctx.close()
+  done('session')
   process.exit(0)
 }
 
@@ -302,9 +338,10 @@ await click(app, app.locator('button', { hasText: /Copy link|Copied/ }))
 await caption(app, '')
 await read(700)
 mark(app, 'share-end')
-if (done('share')) {
+if (until === 'share') {
   closing(ctx)
   await ctx.close()
+  done('share')
   process.exit(0)
 }
 
@@ -362,6 +399,6 @@ if (done('whatsapp')) process.exit(0)
 
 server.close()
 assetsServer.close()
-writeFileSync(here('./out/marks.json'), JSON.stringify({ marks, films, recapUrl, sessionTitle }, null, 2))
+save()
 console.log('recorded. marks in out/marks.json')
 process.exit(0)
