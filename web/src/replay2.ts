@@ -798,6 +798,9 @@ function wireMedia(): void {
   stage.addEventListener('click', (e) => {
     const t = e.target as HTMLElement
     if (t.closest('.bar, .playbig, .xfull, .askfab, .sheet, .dock, a, input, select')) return
+    // the phone's own player has its own controls: a tap on them is theirs
+    // alone (answering it here too paused what they had just started)
+    if (stage.classList.contains('native')) return
     if (!mediaReady) return
     if (v.paused) void play()
     else v.pause()
