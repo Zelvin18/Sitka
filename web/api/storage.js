@@ -26,6 +26,10 @@ export default async function handler(req, res) {
   const cfg = r2Config()
 
   if (req.method === 'GET') {
+    // The recording as a playlist for a phone's own player lives here too
+    // (one function fewer: the deployment's plan allows only so many).
+    const q = new URL(req.url, 'http://x').searchParams
+    if (q.get('op') === 'hls') return await playlist(req, res, cfg, q)
     // A quick look at whether this deployment is wired up, safe to open in a
     // browser. Nothing secret is reported, only whether each piece is set.
     return res.status(200).json({
@@ -226,17 +230,96 @@ async function mediaLinks(res, cfg, owner, body) {
     whole,
     wholeSize: wholeObj ? wholeObj.size : undefined,
     parts,
-    hls: indexed && parts.length > 0 ? `/api/hls?owner=${ownerId}&session=${sessionId}` : null,
+    hls: indexed && parts.length > 0 ? `/api/storage?op=hls&owner=${ownerId}&session=${sessionId}` : null,
     expiresIn: READ_SECS
   })
 }
 
-/** May this asker (by token) watch this session? The rule the links follow, for hls.js. */
-export async function mayWatch(token, ownerId, sessionId) {
+/** May this asker (by token) watch this session? The rule the links follow. */
+async function mayWatch(token, ownerId, sessionId) {
   askerToken = token || ''
   const owner = token ? await userOf(token) : null
   if (owner && owner === ownerId) return true
   return (await isShared(sessionId)) || (await memberCanWatch(sessionId))
+}
+
+/**
+ * A recording as a playlist, for phones.
+ *
+ * Safari (every browser on an iPhone or iPad) plays HLS natively and starts
+ * within a second or two: it fetches a small playlist, then the recording
+ * piece by piece. The pieces are the recorder's own fragments, addressed by
+ * byte range inside the parts already in R2 — nothing is copied or
+ * rewritten, and no video passes through this server. The fragment index
+ * beside the parts (index.json, written by the app after a session) says
+ * where each piece is and when it plays.
+ *
+ *   GET /api/storage?op=hls&owner=<uuid>&session=<uuid>[&t=<token>]
+ */
+async function playlist(req, res, cfg, q) {
+  if (!cfg) return res.status(501).json({ error: 'not-configured' })
+  const owner = String(q.get('owner') || '')
+  const session = String(q.get('session') || '')
+  if (!UUID.test(owner) || !UUID.test(session)) return res.status(400).json({ error: 'Bad session.' })
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim() || String(q.get('t') || '')
+  if (!(await mayWatch(token, owner, session))) return res.status(403).json({ error: 'Not allowed.' })
+
+  const prefix = `${owner}/${session}`
+  const ix = await r2Fetch(cfg, 'GET', `${prefix}/index.json`)
+  if (!ix.ok) return res.status(404).json({ error: 'No index for this recording yet.' })
+  let index
+  try {
+    index = await ix.json()
+  } catch {
+    return res.status(500).json({ error: 'The index could not be read.' })
+  }
+  const parts = Array.isArray(index.parts) ? index.parts : []
+  const frags = Array.isArray(index.frags) ? index.frags : []
+  if (parts.length === 0 || frags.length === 0 || typeof index.init !== 'number') return res.status(500).json({ error: 'The index is incomplete.' })
+
+  // the parts, each by its link; a fragment is a byte range of the part it sits in
+  const links = parts.map((p) => presign(cfg, 'GET', `${prefix}/${p.name}`, READ_SECS))
+  const starts = []
+  let at = 0
+  for (const p of parts) {
+    starts.push(at)
+    at += Number(p.size) || 0
+  }
+  const locate = (offset, size) => {
+    let i = starts.length - 1
+    while (i > 0 && starts[i] > offset) i--
+    const within = offset - starts[i]
+    if (within + size > (Number(parts[i].size) || 0)) return null // straddles two parts: not addressable
+    return { i, within }
+  }
+  const initAt = locate(0, index.init)
+  if (!initAt) return res.status(500).json({ error: 'The header straddles parts.' })
+
+  const body = []
+  let target = 1
+  for (let k = 0; k < frags.length; k++) {
+    const [offset, size, start] = frags[k]
+    const next = k + 1 < frags.length ? frags[k + 1][2] : Number(index.duration) || start + 3
+    const dur = Math.max(0.05, next - start)
+    if (dur > target) target = dur
+    const where = locate(offset, size)
+    if (!where) return res.status(500).json({ error: `Fragment ${k} straddles parts.` })
+    body.push(`#EXTINF:${dur.toFixed(3)},`, `#EXT-X-BYTERANGE:${size}@${where.within}`, links[where.i])
+  }
+  const lines = [
+    '#EXTM3U',
+    '#EXT-X-VERSION:7',
+    '#EXT-X-PLAYLIST-TYPE:VOD',
+    '#EXT-X-INDEPENDENT-SEGMENTS',
+    `#EXT-X-TARGETDURATION:${Math.ceil(target)}`,
+    '#EXT-X-MEDIA-SEQUENCE:0',
+    `#EXT-X-MAP:URI="${links[initAt.i]}",BYTERANGE="${index.init}@${initAt.within}"`,
+    ...body,
+    '#EXT-X-ENDLIST'
+  ]
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
+  res.setHeader('Cache-Control', 'private, max-age=600')
+  return res.status(200).send(lines.join('\n') + '\n')
 }
 
 /**
