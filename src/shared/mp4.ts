@@ -86,6 +86,81 @@ export function isFragmentedMp4(b: Uint8Array): boolean {
 }
 
 /**
+ * Where every fragment of a fragmented MP4 sits, and when it plays: the
+ * index a playlist needs to hand a phone the recording piece by piece,
+ * each piece a byte range of the file it is in. Read from the recording's
+ * bytes once, kept beside the parts.
+ */
+export interface FragIndex {
+  v: 1
+  /** bytes of the header before the first fragment (ftyp, moov, …) */
+  init: number
+  /** seconds, for the last fragment's length when nothing follows it */
+  duration: number
+  /** [offset in the whole stream, size, start seconds] per fragment, in order */
+  frags: [number, number, number][]
+}
+export function fragmentIndex(b: Uint8Array, durationSec?: number): FragIndex | null {
+  const top = boxes(b, 0, b.length)
+  const moov = top.find((x) => x.type === 'moov')
+  const firstMoof = top.find((x) => x.type === 'moof')
+  if (!moov || !firstMoof || !child(b, moov, 'mvex')) return null
+  // the video track's clock, or the first track's when there is no picture
+  let videoId = 0
+  let videoScale = 0
+  let anyId = 0
+  let anyScale = 0
+  for (const trak of children(b, moov, 'trak')) {
+    const tkhd = child(b, trak, 'tkhd')
+    const mdia = child(b, trak, 'mdia')
+    const mdhd = mdia && child(b, mdia, 'mdhd')
+    const hdlr = mdia && child(b, mdia, 'hdlr')
+    if (!tkhd || !mdia || !mdhd) continue
+    const tv = b[tkhd.start + tkhd.head]
+    const id = tv === 1 ? u32(b, tkhd.start + tkhd.head + 20) : u32(b, tkhd.start + tkhd.head + 12)
+    const mv = b[mdhd.start + mdhd.head]
+    const scale = mv === 1 ? u32(b, mdhd.start + mdhd.head + 20) : u32(b, mdhd.start + mdhd.head + 12)
+    if (!anyId) {
+      anyId = id
+      anyScale = scale
+    }
+    if (hdlr && type4(b, hdlr.start + hdlr.head + 8) === 'vide') {
+      videoId = id
+      videoScale = scale
+    }
+  }
+  const trackId = videoId || anyId
+  const scale = videoId ? videoScale : anyScale
+  if (!trackId || !scale) return null
+  const frags: [number, number, number][] = []
+  for (let i = 0; i < top.length; i++) {
+    const moof = top[i]
+    if (moof.type !== 'moof') continue
+    // the fragment is the moof and the mdat(s) that follow it, up to the next moof
+    let end = moof.start + moof.size
+    for (let j = i + 1; j < top.length && top[j].type !== 'moof'; j++) end = top[j].start + top[j].size
+    let start = -1
+    for (const traf of children(b, moof, 'traf')) {
+      const tfhd = child(b, traf, 'tfhd')
+      const tfdt = child(b, traf, 'tfdt')
+      if (!tfhd || !tfdt) continue
+      if (u32(b, tfhd.start + tfhd.head + 4) !== trackId) continue
+      const ver = b[tfdt.start + tfdt.head]
+      const t = ver === 1 ? u64(b, tfdt.start + tfdt.head + 4) : u32(b, tfdt.start + tfdt.head + 4)
+      start = t / scale
+    }
+    if (start < 0) {
+      // a fragment with no sample of the clock track: it goes with the one before
+      if (frags.length) frags[frags.length - 1][1] = end - frags[frags.length - 1][0]
+      continue
+    }
+    frags.push([moof.start, end - moof.start, Math.round(start * 1000) / 1000])
+  }
+  if (frags.length === 0) return null
+  return { v: 1, init: firstMoof.start, duration: durationSec && durationSec > 0 ? durationSec : frags[frags.length - 1][2] + 3, frags }
+}
+
+/**
  * The plain file, or null when the input is not a fragmented MP4 this can
  * handle. A null means "leave the file as it is", never a broken file.
  */

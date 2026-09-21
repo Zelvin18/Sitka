@@ -441,6 +441,15 @@ function loadMedia(): Promise<boolean> {
         // whether it was joined into a single file, and the link to each part.
         const found = await store.media(data.owner, data.sessionId)
         lastFound = { whole: found.whole, parts: found.parts }
+        // An iPhone or iPad plays the recording as a playlist in Safari's own
+        // player: a tiny index, then the pieces, starting within a second or
+        // two — the way every video site delivers to a phone. The joined
+        // file (whose index alone is megabytes) is never on that path.
+        if (IOS && found.hls) {
+          goNative(found.hls)
+          console.info('[recap] iPhone: the recording as a playlist in the phone’s own player')
+          return true
+        }
         // One whole file first, when the session has made one.
         //
         // The recorder writes its file in fragments with an empty index, and

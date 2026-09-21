@@ -1247,6 +1247,7 @@ function registerIpc(): void {
   ipcMain.handle('session:videoParts', () => [])
   ipcMain.handle('session:videoPartsSized', () => [])
   ipcMain.handle('session:videoUrl', () => null)
+  ipcMain.handle('session:videoHls', () => null)
   // desktop recordings are local files; phones reach only what the website stores
   ipcMain.handle('session:convertForPhones', () => ({
     ok: false,

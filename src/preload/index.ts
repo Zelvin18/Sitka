@@ -148,6 +148,8 @@ const api = {
   listVideoPartsSized: (id: string): Promise<{ url: string; size: number }[]> => ipcRenderer.invoke('session:videoPartsSized', id),
   /** a link to the recording as one whole file, playable natively; null when there is none yet */
   videoUrl: (id: string): Promise<string | null> => ipcRenderer.invoke('session:videoUrl', id),
+  /** the recording as a playlist for a phone's own player, when its index exists */
+  videoHls: (id: string): Promise<string | null> => ipcRenderer.invoke('session:videoHls', id),
   /** re-record an older WebM recording as MP4 so phones can play it; progress arrives on window 'sitka:convert' */
   convertForPhones: (id: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('session:convertForPhones', id),

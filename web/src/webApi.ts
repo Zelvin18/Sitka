@@ -40,7 +40,7 @@ import {
 } from '../../src/shared/studioLogic'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
-import { defragmentMp4, isFragmentedMp4 } from '../../src/shared/mp4'
+import { defragmentMp4, fragmentIndex, isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore, type Where } from './store'
 import type {
   AiStreamEvent,
@@ -527,7 +527,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     await sb.from('saved_recaps').update(patch).eq('user_id', user.id).eq('recap_id', id)
   }
   /** a kept recap's recording, by the recorder's folder */
-  async function savedMedia(id: string): Promise<{ whole: string | null; wholeSize?: number; parts: { url: string; size: number }[] } | null> {
+  async function savedMedia(id: string): Promise<{ whole: string | null; wholeSize?: number; parts: { url: string; size: number }[]; hls?: string | null } | null> {
     let owner = savedOwners.get(id)
     if (!owner) {
       const { data } = await sb.from('recaps').select('owner').eq('id', id).maybeSingle()
@@ -537,7 +537,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (!owner) return null
     const m = await store.media(owner, id)
     const parts = m.parts.map((url, i) => ({ url, size: m.partSizes?.[i] ?? 0 }))
-    return { whole: m.whole, wholeSize: m.wholeSize, parts }
+    return { whole: m.whole, wholeSize: m.wholeSize, parts, hls: m.hls ?? null }
   }
 
   // ---------- links written before the address changed ----------
@@ -602,6 +602,58 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // start within a second or two. Runs once; a second call is a no-op.
   const consolidating = new Set<string>()
   const JOIN_MAX_BYTES = 700 * 1024 * 1024
+  /**
+   * The recording's fragment index, written beside its parts as index.json:
+   * where every fragment sits (which part, at what byte) and when it plays.
+   * From it, hls.js hands a phone the recording as a playlist. Written once;
+   * a recording whose fragments straddle parts (an odd upload) gets none,
+   * and plays the older ways.
+   */
+  async function writeFragmentIndex(
+    id: string,
+    bytes: Uint8Array,
+    objects: { name: string; size?: number }[],
+    durationMs?: number
+  ): Promise<boolean> {
+    try {
+      if (mediaType(bytes.subarray(0, 12)) !== 'video/mp4') return false
+      const parts = objects
+        .filter((o) => /^part-\d+\.webm$/.test(o.name))
+        .sort((a, b) => (a.name < b.name ? -1 : 1))
+        .map((o) => ({ name: o.name, size: Number(o.size ?? 0) }))
+      if (parts.length === 0 || parts.some((p) => p.size <= 0)) return false
+      const total = parts.reduce((n, p) => n + p.size, 0)
+      if (total !== bytes.byteLength) {
+        console.info('[sitka] no fragment index: the parts and the joined bytes differ in length', total, bytes.byteLength)
+        return false
+      }
+      const ix = fragmentIndex(bytes, durationMs ? durationMs / 1000 : undefined)
+      if (!ix) return false
+      // every fragment, and the header, must sit inside one part
+      let at = 0
+      const bounds = parts.map((p) => {
+        const b = [at, at + p.size] as [number, number]
+        at += p.size
+        return b
+      })
+      const inside = (offset: number, size: number): boolean => bounds.some(([s, e]) => offset >= s && offset + size <= e)
+      if (!inside(0, ix.init) || !ix.frags.every(([o, s]) => inside(o, s))) {
+        console.info('[sitka] no fragment index: a fragment straddles two parts')
+        return false
+      }
+      const blob = new Blob([JSON.stringify({ ...ix, parts })], { type: 'application/json' })
+      const { error } = await store.upload(`${user.id}/${id}/index.json`, blob, 'application/json')
+      if (error) {
+        console.warn('Sitca: the fragment index could not be stored', error)
+        return false
+      }
+      console.info('[sitka] fragment index written', ix.frags.length, 'pieces')
+      return true
+    } catch (err) {
+      console.warn('Sitca: could not index the recording', err)
+      return false
+    }
+  }
   async function consolidateRecording(id: string): Promise<void> {
     if (consolidating.has(id)) return
     consolidating.add(id)
@@ -621,6 +673,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const bytes = await api.readVideo(id, 'video')
       if (!bytes || bytes.byteLength < 5000) return
       const kind = mediaType(bytes.subarray(0, 12))
+      // the fragment index, kept beside the parts: a phone plays the recording
+      // from it as a playlist, piece by piece, starting at once
+      await writeFragmentIndex(id, bytes, listing.objects, d.meta.durationMs)
       // The recorder writes MP4 in fragments with an empty header, which a
       // player must read to the end before showing a frame. Rewritten with
       // the index first, it starts in a second however long the session ran.
@@ -3469,6 +3524,22 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return store.url(videoPath(id), whereOf(d.meta))
     },
 
+    // The recording as a playlist, for a phone's own player: its own with a
+    // token to open it, a kept recap or a course's lecture by the sharing rule.
+    videoHls: async (id: string) => {
+      const d = cache.get(id) ?? (await loadSession(id))
+      if (!d || d.meta.readOnly) {
+        const m = await savedMedia(id).catch(() => null)
+        return m?.hls ?? null
+      }
+      if (d.meta.audioOnly || d.meta.sample) return null
+      const m = await store.media(user.id, id).catch(() => null)
+      if (!m?.hls) return null
+      const { data } = await sb.auth.getSession()
+      const t = data.session?.access_token
+      return t ? `${m.hls}&t=${encodeURIComponent(t)}` : m.hls
+    },
+
     convertForPhones: (id: string) => convertForPhones(id),
 
     // The parts of a recording as links, in order, so the player can stream
@@ -5495,6 +5566,50 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return true
   }
   setTimeout(() => void flattenOldRecordings(), 45000)
+
+  // ---------- recordings made before the fragment index ----------
+  // A recording without its index plays on a phone the slow way. On a
+  // laptop, with time to spare, the newest such recordings are read once
+  // and indexed, one at a time; from then on every phone gets the playlist.
+  const INDEXED = 'sitka.indexed.' + user.id
+  async function indexOldRecordings(): Promise<void> {
+    if (window.innerWidth < 900 || !(await store.ready())) return
+    let done: string[] = []
+    try {
+      done = JSON.parse(localStorage.getItem(INDEXED) || '[]')
+    } catch {
+      done = []
+    }
+    const { data } = await sb.from('sessions').select('id,meta').order('created_at', { ascending: false }).limit(12)
+    const rows = ((data as { id: string; meta: SessionMeta }[] | null) ?? []).filter(
+      (r) => r.meta && r.meta.status === 'complete' && r.meta.mime === 'video/mp4' && !r.meta.audioOnly && !r.meta.sample && !done.includes(r.id)
+    )
+    for (const r of rows) {
+      try {
+        const m = await store.media(user.id, r.id)
+        if (m.hls || m.parts.length === 0) {
+          done.push(r.id)
+          continue
+        }
+        const listing = await store.list(`${user.id}/${r.id}`)
+        const total = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).reduce((n, f) => n + Number(f.size ?? 0), 0)
+        if (total === 0 || total > JOIN_MAX_BYTES) {
+          done.push(r.id)
+          continue
+        }
+        const bytes = await api.readVideo(r.id, 'video')
+        if (bytes) await writeFragmentIndex(r.id, bytes, listing.objects, r.meta.durationMs)
+        done.push(r.id)
+      } catch (err) {
+        console.warn('Sitca: could not index an older recording', r.id, err)
+      }
+      localStorage.setItem(INDEXED, JSON.stringify(done.slice(-200)))
+      // one at a time, with a breath between: the page stays responsive
+      await sleep(4000)
+    }
+    localStorage.setItem(INDEXED, JSON.stringify(done.slice(-200)))
+  }
+  setTimeout(() => void indexOldRecordings(), 20000)
 
   const MIGRATE_AT = 'sitka.migrated-at.' + user.id
   async function migrateOldRecordings(): Promise<void> {

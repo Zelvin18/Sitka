@@ -34,6 +34,8 @@ export interface Media {
   parts: string[]
   /** bytes of each part, in the same order, when the store reports them */
   partSizes?: number[]
+  /** a playlist of the recording for a phone's own player, when the store has its index */
+  hls?: string | null
 }
 
 /** A bucket served straight from Cloudflare's edge, when one is set up. */
@@ -219,6 +221,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       whole: string | null
       wholeSize?: number
       parts: { url: string; size?: number }[]
+      hls?: string | null
     }>('media', { owner, session })
     if (res && res.where !== 'none') {
       const parts = res.parts ?? []
@@ -228,7 +231,8 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
         whole: res.whole,
         wholeSize: res.wholeSize,
         parts: parts.map((p) => p.url),
-        partSizes: sizes.every((n) => n > 0) ? sizes : undefined
+        partSizes: sizes.every((n) => n > 0) ? sizes : undefined,
+        hls: res.hls ?? null
       }
     }
     const dir = `${owner}/${session}`

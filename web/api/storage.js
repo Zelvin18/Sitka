@@ -218,13 +218,25 @@ async function mediaLinks(res, cfg, owner, body) {
     .filter((o) => /\/part-\d+\.webm$/.test(o.key))
     .sort((a, b) => (a.key < b.key ? -1 : 1))
     .map((o) => ({ url: presign(cfg, 'GET', o.key, READ_SECS), size: o.size }))
+  // a recording with its fragment index beside it can be handed to a phone
+  // as a playlist (see hls.js): piece by piece, starting at once
+  const indexed = objects.some((o) => o.key === `${ownerId}/${sessionId}/index.json`)
   return res.status(200).json({
     where: whole || parts.length > 0 ? 'r2' : 'none',
     whole,
     wholeSize: wholeObj ? wholeObj.size : undefined,
     parts,
+    hls: indexed && parts.length > 0 ? `/api/hls?owner=${ownerId}&session=${sessionId}` : null,
     expiresIn: READ_SECS
   })
+}
+
+/** May this asker (by token) watch this session? The rule the links follow, for hls.js. */
+export async function mayWatch(token, ownerId, sessionId) {
+  askerToken = token || ''
+  const owner = token ? await userOf(token) : null
+  if (owner && owner === ownerId) return true
+  return (await isShared(sessionId)) || (await memberCanWatch(sessionId))
 }
 
 /**

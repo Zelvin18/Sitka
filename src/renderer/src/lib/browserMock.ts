@@ -79,6 +79,7 @@ export function installBrowserMockIfNeeded(): void {
     listVideoParts: async () => [],
     listVideoPartsSized: async () => [],
     videoUrl: async () => null,
+    videoHls: async () => null,
     convertForPhones: async () => ({ ok: false, error: 'Not available here.' }),
     setRecordingState: async () => undefined,
     markNow: async () => undefined,

@@ -155,7 +155,7 @@ export default function SessionView({
   // its link, the parts as a stream, the whole file read into memory. A way
   // that errors, or that gives no data in twenty seconds, hands over to the
   // next; only when the last is exhausted does the player say what it tried.
-  type Way = 'url' | 'stream' | 'blob'
+  type Way = 'hls' | 'url' | 'stream' | 'blob'
   const ladderRef = useRef<{ ways: Way[]; tried: string[] }>({ ways: [], tried: [] })
   const loadGenRef = useRef(0)
   /** counts the ways tried in this load, so a late watchdog from an earlier way cannot skip the next */
@@ -527,6 +527,19 @@ export default function SessionView({
         return
       }
       try {
+        if (way === 'hls') {
+          // a phone's own player, handed the recording as a playlist: the
+          // pieces by byte range, starting within a second or two
+          const url = await window.sitka.videoHls(sessionId).catch(() => null)
+          if (gen !== loadGenRef.current) return
+          if (!url) {
+            void advance(gen)
+            return
+          }
+          diagRef.current = 'the recording as a playlist'
+          setVideoSrc(url)
+          return
+        }
         if (way === 'url') {
           // one whole file by its link: native, progressive, the fastest start
           const url = await window.sitka.videoUrl(sessionId)
@@ -691,7 +704,7 @@ export default function SessionView({
     // On an iPhone or iPad the parts stream is the quick start: Safari's own
     // loader is slow to open a long file by its link. Elsewhere the whole
     // file by its link is the quickest, the stream next.
-    ladderRef.current = { ways: IOS ? ['stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
+    ladderRef.current = { ways: IOS ? ['hls', 'stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
     if (!videoWanted || stillRecording || preparing) return undefined
     void (async () => {
       // a tab opened in the background waits until it is looked at
