@@ -432,10 +432,11 @@ function loadMedia(): Promise<boolean> {
         // and the first slice is playing within seconds however long the
         // event ran; the rest arrive behind it. Only a file already rewritten
         // with its index first (which seeks best) is played natively.
-        // On an iPhone the parts stream starts sooner than Safari's own loader
-        // opens a long file by its link; the whole file is kept for when there
-        // are no parts, or no engine.
-        const wholeFirst = Boolean(found.whole) && !(IOS && HAS_ENGINE && found.parts.length > 0)
+        // The whole file comes first wherever there is one: a file rewritten
+        // with its index first plays natively on every phone (Safari's own
+        // loader seeks it instantly and never trips), and a fragmented one is
+        // read in slices through the same engine the parts would use.
+        const wholeFirst = Boolean(found.whole)
         if (found.whole && wholeFirst) {
           const streamed = await streamWhole(v, found.whole, found.wholeSize)
           streamedHere = streamed
