@@ -632,10 +632,50 @@ function refused(err: unknown): void {
   el('bar').style.display = 'none'
 }
 
+/**
+ * A play that is taking long on this connection is said so, and after a
+ * while the file itself is offered to the phone's own player, which opens
+ * anything the browser can play. What happened is also told to ops once.
+ */
+let stallTimers: number[] = []
+let stallTold = false
+function watchStart(): void {
+  const v = video()
+  stallTimers.forEach((t) => window.clearTimeout(t))
+  stallTimers = []
+  const wait = el('stagewait').querySelector('span') as HTMLElement | null
+  const started = (): boolean => v.readyState >= 2 && !v.paused
+  stallTimers.push(
+    window.setTimeout(() => {
+      if (started() || !wait) return
+      wait.textContent = 'Still loading on this connection…'
+    }, 12000),
+    window.setTimeout(() => {
+      if (started()) return
+      if (!stallTold) {
+        stallTold = true
+        const b = []
+        for (let i = 0; i < v.buffered.length; i++) b.push(`${v.buffered.start(i).toFixed(0)}-${v.buffered.end(i).toFixed(0)}`)
+        const line = `recap slow start: ready ${v.readyState} net ${v.networkState} err ${v.error?.code ?? '-'} t ${v.currentTime.toFixed(1)} buf [${b.join(' ')}] src ${v.currentSrc.slice(0, 40)} ${streamedHere ? 'stream' : 'native'}`
+        try {
+          navigator.sendBeacon('/api/notify', JSON.stringify({ lines: [line], user: 'recap-visitor', page: location.pathname, ua: navigator.userAgent.slice(0, 120) }))
+        } catch {
+          /* nothing to say it to */
+        }
+      }
+      const url = lastFound?.whole
+      if (!url || !wait) return
+      wait.innerHTML = 'Taking long here. <a class="openraw" href="' + url + '" target="_blank" rel="noopener">Open the recording in your phone’s player</a>'
+      ;(el('stagewait') as HTMLElement).style.pointerEvents = 'auto'
+    }, 25000)
+  )
+}
+
 function play(at?: number): void {
   const v = video()
   playRequested = true
   previewed = true
+  watchStart()
   if (mediaReady) {
     if (at !== undefined) v.currentTime = at
     v.play().catch(refused)

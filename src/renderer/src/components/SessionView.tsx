@@ -616,14 +616,14 @@ export default function SessionView({
   // still being recorded (by the extension's engine, or another tab): there
   // is no file to play yet; the words arrive as they are said instead
   const stillRecording = data?.meta.status === 'recording'
-  // Just ended, and the whole file not yet made: the last pieces are still
-  // being uploaded and joined. Playing now would fail; the player says
-  // "preparing" and starts the moment the whole file is announced (or after
-  // a couple of minutes regardless, in case the announcement never comes).
+  // Just ended: the last pieces may still be on their way up. The player
+  // holds for those few seconds only (or while an upload is known to be
+  // pending), then plays the parts as a stream; the whole file is joined
+  // in the background and announced when done — nobody waits for it.
   const endedAt = data ? data.meta.createdAt + (data.meta.durationMs || 0) : 0
   const wholeReady = Boolean(data?.meta.whole)
   const [preparingOver, setPreparingOver] = useState(false)
-  const preparing =
+  const joining =
     Boolean(data) &&
     !stillRecording &&
     !wholeReady &&
@@ -631,8 +631,8 @@ export default function SessionView({
     !data?.meta.saved &&
     !data?.meta.sample &&
     !data?.meta.audioOnly &&
-    Date.now() - endedAt < 180000 &&
-    !preparingOver
+    Date.now() - endedAt < 180000
+  const preparing = joining && !preparingOver && (Boolean(data?.meta.recordingPending) || Date.now() - endedAt < 15000)
   // While another page records this session (the extension's engine, or a
   // laptop watched from a phone), this one reads the row again every few
   // seconds: the words, the conversation from the card, and then the end,
@@ -663,18 +663,19 @@ export default function SessionView({
     return () => window.clearInterval(look)
   }, [following, sessionId])
   useEffect(() => {
-    if (!preparing) return undefined
-    const t = window.setTimeout(() => setPreparingOver(true), 120000)
+    if (!joining) return undefined
+    // the hold is short whatever happens: at most half a minute
+    const t = window.setTimeout(() => setPreparingOver(true), 30000)
     const look = window.setInterval(() => {
       void window.sitka.refreshSession(sessionId).then((m) => {
-        if (m && m.whole) setData((d) => (d ? { ...d, meta: { ...d.meta, ...m } } : d))
+        if (m && (m.whole || !m.recordingPending)) setData((d) => (d ? { ...d, meta: { ...d.meta, ...m } } : d))
       })
     }, 4000)
     return () => {
       window.clearTimeout(t)
       window.clearInterval(look)
     }
-  }, [preparing, sessionId])
+  }, [joining, sessionId])
   useEffect(() => {
     const gen = ++loadGenRef.current
     loadStartRef.current = Date.now()
@@ -1130,8 +1131,7 @@ export default function SessionView({
           <div className="live-block" style={{ margin: '12px 24px 0' }}>
             <Mark size={14} live />
             <div className="live-block-text">
-              <b>Almost ready.</b>
-              <span>The last pieces are being joined into one file. It plays here the moment that is done.</span>
+              <b>Finishing up…</b>
             </div>
           </div>
         )}
