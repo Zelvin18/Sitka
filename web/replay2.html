@@ -96,6 +96,12 @@ h1.title{font-family:var(--sans);font-weight:700;font-size:clamp(23px,3vw,36px);
 .stage.native{display:flex;flex-direction:column;height:auto;min-height:0;background:var(--bg,#0c0c0d)}
 .stage.native .hero{position:static;order:-1;padding:18px 20px 14px;align-items:flex-start;opacity:1!important;transform:none!important;pointer-events:auto!important}
 .stage.native video{position:relative;inset:auto;width:100%;height:auto;aspect-ratio:16/9;max-height:56vh}
+/* the phone's player still fills the screen sideways on request: one button on the picture */
+.nfull{position:absolute;right:12px;z-index:3;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(12,12,13,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer}
+.stage.native:not(.expanded) .nfull{display:flex;top:auto;bottom:12px}
+.stage.native.expanded{display:block;height:100vh;height:100dvh;background:#000}
+.stage.native.expanded video{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;max-height:none}
+.stage.native.expanded .hero{display:none}
 .stage.loading:not(.err) .stage-wait{display:flex}
 @media(max-width:900px){.stage-wait{padding-bottom:26vh}}
 .stage.loading:not(.err) .playbig{opacity:0;pointer-events:none}
@@ -158,6 +164,8 @@ html[data-theme=light] .mini .mbar i{background:var(--ink)}
 
 .main{min-width:0}
 .lead{font-family:var(--sans);font-weight:400;font-size:clamp(17px,1.7vw,21px);line-height:1.6;letter-spacing:-.005em;color:var(--text);margin:0 0 36px}
+.lead p{margin:0 0 14px}
+.lead p:last-child{margin:0}
 .lead.pending{color:var(--t3);font-style:italic}
 .sec{margin-bottom:40px}
 .moments{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
@@ -362,6 +370,7 @@ html,body{overflow-x:hidden;max-width:100vw}
       <span class="pring"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg><span class="ring"></span></span>
     </button>
     <div class="stage-wait" id="stagewait" aria-live="polite"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span data-words="Fetching the recording|Almost there">Fetching the recording</span></div>
+    <button class="nfull" id="nfull" type="button" aria-label="Fill the screen" title="Fill the screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     <button class="xfull" id="xfull" type="button" aria-label="Leave full screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <button class="askfab" id="askfab" type="button"><svg class="mark" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Ask Sitca</button>
     <div class="bar" id="bar">
@@ -380,7 +389,7 @@ html,body{overflow-x:hidden;max-width:100vw}
       <label class="follow"><input type="checkbox" id="follow" checked> Follow the words as it plays</label>
     </aside>
     <div class="main">
-      <p class="lead" id="lead"></p>
+      <div class="lead" id="lead"></div>
       <div class="dlrow" id="dlrow" hidden>
         <button class="dl" id="dlnotes" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M4 19h16"/></svg>Download the notes</button>
         <span class="dlhint">A PDF of the summary, the moments and the notes, to keep.</span>

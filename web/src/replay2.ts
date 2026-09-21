@@ -12,6 +12,36 @@ import { isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore } from './store'
 import { downloadBytes, fileName, notesPdf } from './notesFile'
 
+/**
+ * Notes as stored by an earlier writer sometimes carry their line breaks as
+ * the two characters "\n" (a JSON habit), which read as one endless line.
+ * They become real breaks; a stray "\\n" on its own line becomes a break too.
+ */
+function tidyNotes(s: string): string {
+  return s
+    .replace(/\\r/g, '')
+    .replace(/\\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+const escH = (s: string): string => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string)
+/**
+ * A summary written as one block of sentences reads as a page when it is
+ * broken into a few short paragraphs: the sentences are grouped in twos and
+ * threes, never mid-sentence.
+ */
+function paragraphs(text: string): string {
+  const t = tidyNotes(text)
+  if (t.includes('\n\n')) return t.split(/\n{2,}/).map((p) => `<p>${escH(p.trim())}</p>`).join('')
+  const sentences = t.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [t]
+  if (sentences.length <= 2) return `<p>${escH(t)}</p>`
+  const per = sentences.length >= 6 ? 3 : 2
+  const out: string[] = []
+  for (let i = 0; i < sentences.length; i += per) out.push(sentences.slice(i, i + per).join(' '))
+  return out.map((p) => `<p>${escH(p)}</p>`).join('')
+}
+
 installFocusGuard()
 // A refreshed page starts at its top. Browsers put a reloaded page back
 // where it was scrolled, which lands people mid-section with no bearings.
@@ -807,6 +837,11 @@ function wireMedia(): void {
   })
   el('pp').onclick = () => (v.paused ? void play() : v.pause())
   el('fullbtn').onclick = () => setExpanded(!stage.classList.contains('expanded'))
+  // the phone's own player: our one button fills the screen sideways
+  el('nfull').onclick = (e) => {
+    e.stopPropagation()
+    setExpanded(true)
+  }
   el('xfull').onclick = () => setExpanded(false)
   el('askfab').onclick = () => setSheet(true)
   document.addEventListener('fullscreenchange', () => {
@@ -1408,13 +1443,13 @@ async function boot(): Promise<void> {
           kind: d.kindWord === 'live event' ? 'Live event' : 'Session',
           summary: d.summary,
           moments: d.highlights.map((h) => h.label),
-          notes: d.notes
+          notes: tidyNotes(d.notes)
         })
       )
     }
   }
   const lead = el('lead')
-  if (d.summary) lead.textContent = d.summary
+  if (d.summary) lead.innerHTML = paragraphs(d.summary)
   else {
     lead.textContent = 'Sitca is writing the summary. It appears here in a moment.'
     lead.classList.add('pending')
@@ -1422,7 +1457,7 @@ async function boot(): Promise<void> {
   if (d.notes.trim()) {
     el('notesec').hidden = false
     const notes = el('notes')
-    notes.innerHTML = md(d.notes)
+    notes.innerHTML = md(tidyNotes(d.notes))
     // long notes fold on a phone: a glance first, the rest on request
     if (window.innerWidth < 900 && notes.scrollHeight > 420) {
       notes.classList.add('folded')
@@ -1470,7 +1505,7 @@ async function boot(): Promise<void> {
       const fresh = await loadEvent().catch(() => null)
       if (fresh?.summary) {
         data = fresh
-        lead.textContent = fresh.summary
+        lead.innerHTML = paragraphs(fresh.summary)
         lead.classList.remove('pending')
         if (fresh.highlights.length) {
           el('chapters').innerHTML = '<span class="fill" id="cfill"></span>'

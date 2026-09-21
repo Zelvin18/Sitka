@@ -196,7 +196,8 @@ function parseNotesAnswer(out: string): { notes: string; moments: SessionNotes['
     return { notes: m[1].trim(), moments }
   }
   const j = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
-  if (j?.notes) return { notes: j.notes, moments: Array.isArray(j.moments) ? j.moments : [] }
+  // line breaks typed as the two characters "\n" inside the string become real ones
+  if (j?.notes) return { notes: j.notes.replace(/\\n/g, '\n'), moments: Array.isArray(j.moments) ? j.moments : [] }
   return null
 }
 function mendJson(raw: string): string {

@@ -90,7 +90,8 @@ export default function NotesPane({
       )}
 
       <div className="section-title">Notes</div>
-      <AiText text={notes.markdown} onSeek={onSeek} />
+      {/* line breaks an earlier writer left as the two characters "\n" read as real ones */}
+      <AiText text={notes.markdown.replace(/\\n/g, '\n')} onSeek={onSeek} />
       {updating && (
         <div className="transcript-waiting">
           <span className="dots">
