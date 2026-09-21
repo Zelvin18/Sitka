@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meet – wkr-qzbm-dfe</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  /* A video-call room, the way everyone knows one: dark, two tiles, a bar of
+     round buttons at the foot. A stage set for the demo — it does nothing. */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#202124;color:#e8eaed;font-family:'Google Sans',Roboto,'Segoe UI',system-ui,sans-serif;overflow:hidden}
+  .stage{position:absolute;inset:0 0 80px;padding:16px;display:grid;grid-template-columns:1fr;gap:12px}
+  .tile{position:relative;border-radius:12px;overflow:hidden;background:#3c4043}
+  .tile.main{background:radial-gradient(ellipse at 30% 20%,#2b2f36,#1b1d21 70%)}
+  .tile .bg{position:absolute;inset:0;background:
+      radial-gradient(circle at 78% 30%,rgba(255,255,255,.06),transparent 22%),
+      radial-gradient(circle at 20% 80%,rgba(255,255,255,.04),transparent 30%),
+      linear-gradient(180deg,#2a2d33,#1c1e22);}
+  .tile .shelf{position:absolute;left:8%;right:8%;top:22%;height:2px;background:rgba(255,255,255,.08)}
+  .tile .plant{position:absolute;right:9%;bottom:18%;width:120px;height:170px}
+  .avatar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:160px;height:160px;border-radius:50%;display:grid;place-items:center;font-size:64px;font-weight:500;color:#fff;background:#8e24aa;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  .tile.small .avatar{width:64px;height:64px;font-size:28px;background:#1e88e5}
+  .name{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:8px;font-size:14px;background:rgba(0,0,0,.35);padding:6px 10px;border-radius:6px}
+  .name .mic{width:16px;height:16px;fill:#e8eaed}
+  .ring{position:absolute;inset:0;border-radius:12px;border:3px solid transparent;transition:border-color .12s}
+  .tile.speaking .ring{border-color:#8ab4f8}
+  .speak{position:absolute;right:12px;top:12px;display:none;gap:3px;align-items:flex-end;height:20px;background:rgba(0,0,0,.35);padding:4px 7px;border-radius:12px}
+  .tile.speaking .speak{display:flex}
+  .speak i{width:4px;background:#8ab4f8;border-radius:2px;animation:bar .5s ease-in-out infinite alternate}
+  .speak i:nth-child(2){animation-delay:.12s}.speak i:nth-child(3){animation-delay:.24s}
+  @keyframes bar{from{height:4px}to{height:14px}}
+  .tile.small{position:absolute;right:28px;bottom:96px;width:220px;height:124px;z-index:2;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  .bar{position:absolute;left:0;right:0;bottom:0;height:80px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 20px}
+  .time{font-size:14px;display:flex;gap:10px;align-items:center}
+  .time .sep{opacity:.5}
+  .ctr{display:flex;gap:8px;justify-content:center}
+  .b{width:48px;height:48px;border-radius:50%;background:#3c4043;display:grid;place-items:center;border:none;cursor:pointer}
+  .b svg{width:22px;height:22px;fill:#e8eaed}
+  .b.red{background:#ea4335}
+  .b.leave{width:70px;border-radius:24px}
+  .b.on{background:#8ab4f8}.b.on svg{fill:#202124}
+  .right{display:flex;justify-content:flex-end;gap:6px}
+  .ic{width:44px;height:44px;border-radius:50%;background:transparent;border:none;display:grid;place-items:center;position:relative}
+  .ic svg{width:22px;height:22px;fill:#e8eaed}
+  .ic .n{position:absolute;top:2px;right:2px;font-size:10px;background:#8ab4f8;color:#202124;border-radius:9px;padding:1px 5px;font-weight:700}
+  .cap{position:absolute;left:50%;bottom:100px;transform:translateX(-50%);max-width:70%;background:rgba(0,0,0,.6);padding:10px 16px;border-radius:8px;font-size:18px;display:none}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="tile main" id="priya">
+    <div class="bg"></div>
+    <div class="shelf"></div>
+    <svg class="plant" viewBox="0 0 120 170" fill="none" opacity=".55"><path d="M60 170V95" stroke="#6b7f5c" stroke-width="4"/><path d="M60 110c-20-6-40-2-50-24 22-4 40 6 50 24z" fill="#5f7a4e"/><path d="M60 100c18-10 36-8 52-30-22-6-42 4-52 30z" fill="#6f8f5c"/><path d="M60 92c-8-18-4-38 14-52 10 20 2 40-14 52z" fill="#7a9c66"/><rect x="40" y="150" width="40" height="20" rx="4" fill="#4a4e57"/></svg>
+    <div class="avatar">P</div>
+    <div class="ring"></div>
+    <div class="speak"><i></i><i></i><i></i></div>
+    <div class="name"><svg class="mic" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>Priya Sharma</div>
+  </div>
+  <div class="tile small" id="daniel">
+    <div class="bg"></div>
+    <div class="avatar">D</div>
+    <div class="ring"></div>
+    <div class="name">You</div>
+  </div>
+</div>
+<div class="cap" id="cap"></div>
+<div class="bar">
+  <div class="time"><span id="clock">10:02 AM</span><span class="sep">|</span><span>wkr-qzbm-dfe</span></div>
+  <div class="ctr">
+    <button class="b" title="Microphone"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg></button>
+    <button class="b red" title="Camera"><svg viewBox="0 0 24 24"><path d="M21 6.5l-4 4V7a1 1 0 0 0-1-1H4l17 17zM3.3 2 2 3.3 4.7 6H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12c.4 0 .7-.2.8-.5l3.9 3.9 1.3-1.3z"/></svg></button>
+    <button class="b" title="Captions"><svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-9 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z"/></svg></button>
+    <button class="b" title="Present now"><svg viewBox="0 0 24 24"><path d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18zM12 8l-4 4h3v3h2v-3h3z"/></svg></button>
+    <button class="b" title="Raise hand"><svg viewBox="0 0 24 24"><path d="M18.5 10a1 1 0 0 0-1 1v-6a1 1 0 0 0-2 0v5a1 1 0 0 0-2 0V4a1 1 0 0 0-2 0v6a1 1 0 0 0-2 0V6.5a1 1 0 0 0-2 0v9.2l-2.3-2.3a1.3 1.3 0 0 0-1.9 1.8l4 4.8A6 6 0 0 0 12 22a7.5 7.5 0 0 0 7.5-7.5V11a1 1 0 0 0-1-1z"/></svg></button>
+    <button class="b" title="More"><svg viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+    <button class="b red leave" title="Leave call"><svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button>
+  </div>
+  <div class="right">
+    <button class="ic" title="Meeting details"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg></button>
+    <button class="ic" title="People"><svg viewBox="0 0 24 24"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .05 1.2.9 2 2 2 3.45V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg><span class="n">2</span></button>
+    <button class="ic" title="Chat"><svg viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.2L4 17.2V4h16z"/></svg></button>
+    <button class="ic" title="Activities"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H5V5h14zM7 12h2v5H7zm4-5h2v10h-2zm4 3h2v7h-2z"/></svg></button>
+  </div>
+</div>
+<script>
+  // the clock runs; Priya "speaks" in natural bursts while the recorder says so
+  const clock = document.getElementById('clock')
+  const start = new Date(); start.setHours(10, 2, 0, 0)
+  const t0 = Date.now()
+  setInterval(() => {
+    const d = new Date(start.getTime() + (Date.now() - t0))
+    let h = d.getHours(); const m = String(d.getMinutes()).padStart(2, '0'); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12
+    clock.textContent = `${h}:${m} ${ap}`
+  }, 1000)
+  const priya = document.getElementById('priya')
+  let talking = false
+  function burst () {
+    if (!talking) { priya.classList.remove('speaking'); return }
+    const on = Math.random() < 0.8
+    priya.classList.toggle('speaking', on)
+    setTimeout(burst, on ? 700 + Math.random() * 1800 : 250 + Math.random() * 500)
+  }
+  window.meet = {
+    talk (v) { talking = v; burst() },
+    caption (text) { const c = document.getElementById('cap'); c.textContent = text; c.style.display = text ? 'block' : 'none' }
+  }
+  // a keepalive for the fake mic: the page that is "the call" stays audible to the share
+  if (location.hash === '#talk') window.meet.talk(true)
+</script>
+</body>
+</html>

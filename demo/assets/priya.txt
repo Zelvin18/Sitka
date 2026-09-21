@@ -1,0 +1,17 @@
+Okay, I think we can start. Thanks for joining, Daniel. I know Grace and Kev couldn't make it, so let's keep this tight and you can pass it on.
+
+First, the Q3 numbers. We closed the quarter at four hundred and twelve thousand dollars in revenue, against a target of four hundred and eighty. So that is a shortfall of about sixty-eight thousand, roughly fourteen percent under plan.
+
+Now, the important part is why. It is not demand. Sign-ups were actually up twenty-two percent quarter on quarter. The shortfall comes almost entirely from the enterprise pipeline: three contracts we expected to close in September slipped into October. Two of them are already signed this week, so a big part of that gap is timing, not lost business.
+
+The one we did lose was the Meridian deal. They went with a competitor mainly on onboarding time. Their feedback was that our setup took their team almost three weeks. That is the thing I want us to fix before the next push.
+
+Which brings me to the launch. We had been going back and forth between October the twenty-ninth and November the twelfth for the new onboarding flow. After talking to the design team this morning, I am making the call: we launch on November the twelfth. The extra two weeks give Amina's team time to finish the guided setup and get the self-serve import working properly, and we avoid launching into the last week of October when half of sales is at the conference.
+
+So the decision is November twelfth, and it is firm unless something breaks in testing.
+
+Three action items. One, Kev owns the migration tooling. I need the self-serve import tested with at least five real customer data sets by the end of this month. Two, Grace, when you see this, please draft the customer email for the launch, and share it with me by Friday. Three, Daniel, can you get the two signed contracts into the revenue forecast and send the updated Q4 view to finance by Wednesday.
+
+One more thing on budget. We are holding the hiring plan as it is. The two engineering roles stay open, but the marketing role is paused until we see the November numbers.
+
+Any questions from your side? Okay, if not, let's leave it there. Thanks, Daniel. Please make sure the others get the notes.

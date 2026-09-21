@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in – Choose an account</title>
+<style>
+  /* the familiar "choose an account" card: a stage set that goes nowhere but the demo */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#f0f4f9;font-family:'Google Sans',Roboto,'Segoe UI',system-ui,sans-serif;color:#1f1f1f}
+  .card{width:min(1040px,calc(100% - 48px));margin:48px auto 0;background:#fff;border-radius:28px;padding:36px;display:grid;grid-template-columns:1fr 1fr;gap:24px;min-height:500px}
+  .g{font-size:26px;font-weight:500;letter-spacing:-.01em;margin-bottom:14px;display:flex;gap:2px}
+  .g b{font-weight:500}
+  h1{font-size:34px;font-weight:400;margin:14px 0 12px}
+  .sub{font-size:16px;color:#444746;line-height:1.5}
+  .sub b{font-weight:500;color:#1f1f1f}
+  .list{padding-top:52px}
+  .acct{display:flex;align-items:center;gap:16px;padding:12px 8px;border-top:1px solid #e3e3e3;cursor:pointer;border-radius:8px}
+  .acct:hover{background:#f6f8fa}
+  .acct:last-child{border-bottom:1px solid #e3e3e3}
+  .av{width:36px;height:36px;border-radius:50%;background:#1e88e5;color:#fff;display:grid;place-items:center;font-weight:500;flex:none}
+  .av.o{background:#f0f4f9;color:#444746;border:1px solid #c4c7c5}
+  .acct .t{display:flex;flex-direction:column;gap:2px}
+  .acct .t b{font-weight:500;font-size:14px}
+  .acct .t span{font-size:14px;color:#444746}
+  .foot{width:min(1040px,calc(100% - 48px));margin:20px auto;display:flex;justify-content:space-between;font-size:12px;color:#444746}
+  .foot span{margin-left:22px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <div class="g"><b style="color:#4285f4">G</b><b style="color:#ea4335">o</b><b style="color:#fbbc05">o</b><b style="color:#4285f4">g</b><b style="color:#34a853">l</b><b style="color:#ea4335">e</b></div>
+    <h1>Choose an account</h1>
+    <div class="sub">to continue to <b>Sitca</b></div>
+  </div>
+  <div class="list">
+    <div class="acct" id="daniel"><div class="av">D</div><div class="t"><b>Daniel Mwangi</b><span>daniel.mwangi@gmail.com</span></div></div>
+    <div class="acct"><div class="av o">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="#444746"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z"/></svg></div><div class="t"><b>Use another account</b></div></div>
+  </div>
+</div>
+<div class="foot"><div>English (United States)</div><div><span>Help</span><span>Privacy</span><span>Terms</span></div></div>
+<script>
+  // the chosen account leads on to wherever the demo says
+  document.getElementById('daniel').onclick = () => {
+    const next = new URLSearchParams(location.search).get('next') || '/'
+    document.body.style.transition = 'opacity .25s'
+    document.body.style.opacity = '0.4'
+    setTimeout(() => { location.href = next }, 350)
+  }
+</script>
+</body>
+</html>

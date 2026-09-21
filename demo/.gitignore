@@ -1,0 +1,9 @@
+node_modules
+.demo-pass
+out
+assets/*.wav
+assets/*.mp3
+assets/parts
+profile
+profile-fresh
+profile-phone

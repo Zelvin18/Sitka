@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitca – My Drive</title>
+<style>
+  /* a cloud drive folder with the two files Sitca just wrote: a stage set */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#f8fafd;font-family:'Google Sans',Roboto,'Segoe UI',system-ui,sans-serif;color:#1f1f1f}
+  .top{height:64px;display:flex;align-items:center;gap:16px;padding:0 20px}
+  .logo{display:flex;align-items:center;gap:8px;font-size:22px;color:#444746;width:220px}
+  .logo i{width:30px;height:26px;background:conic-gradient(from 200deg,#fbbc04 0 33%,#34a853 0 66%,#4285f4 0);clip-path:polygon(25% 0,75% 0,100% 55%,75% 100%,25% 100%,0 55%);display:inline-block}
+  .search{flex:1;max-width:720px;height:46px;background:#e9eef6;border-radius:24px;display:flex;align-items:center;padding:0 18px;color:#444746;font-size:15px;gap:12px}
+  .av{margin-left:auto;width:34px;height:34px;border-radius:50%;background:#1e88e5;color:#fff;display:grid;place-items:center;font-weight:500}
+  .body{display:grid;grid-template-columns:250px 1fr;height:calc(100% - 64px)}
+  .nav{padding:8px 12px}
+  .new{width:110px;height:56px;border-radius:16px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;margin:4px 0 14px}
+  .nav div.i{padding:8px 16px;border-radius:20px;font-size:14px;color:#1f1f1f;margin:2px 0}
+  .nav div.i.on{background:#c2e7ff}
+  .main{background:#fff;border-radius:16px 0 0 0;padding:16px 24px}
+  .crumb{display:flex;align-items:center;gap:8px;font-size:22px;padding:6px 0 16px;color:#1f1f1f}
+  .crumb span{color:#444746}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;color:#444746;font-weight:500;padding:8px 12px;border-bottom:1px solid #e3e3e3}
+  td{padding:0 12px;height:48px;border-bottom:1px solid #eef0f2;vertical-align:middle}
+  tr:hover td{background:#f8fafd}
+  .f{display:flex;align-items:center;gap:12px}
+  .ico{width:20px;height:20px;border-radius:4px;display:inline-block}
+  .ico.v{background:#e53935}
+  .ico.d{background:#4285f4}
+  .mini{width:40px;height:40px;border-radius:8px;background:#f0f4f9;display:grid;place-items:center}
+  .mini svg{width:22px;height:22px}
+  .owner{display:flex;align-items:center;gap:8px;color:#444746}
+  .owner i{width:20px;height:20px;border-radius:50%;background:#1e88e5;display:inline-block}
+  .new-tag{font-size:11px;background:#e6f4ea;color:#137333;border-radius:4px;padding:2px 6px;margin-left:8px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo"><i></i>Drive</div>
+  <div class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="#444746"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>Search in Drive</div>
+  <div class="av">D</div>
+</div>
+<div class="body">
+  <div class="nav">
+    <div class="new">＋ New</div>
+    <div class="i">Home</div>
+    <div class="i on">My Drive</div>
+    <div class="i">Computers</div>
+    <div class="i">Shared with me</div>
+    <div class="i">Recent</div>
+    <div class="i">Starred</div>
+    <div class="i">Trash</div>
+  </div>
+  <div class="main">
+    <div class="crumb"><span>My Drive</span> › Sitca</div>
+    <table>
+      <thead><tr><th style="width:52%">Name</th><th>Owner</th><th>Last modified</th><th>File size</th></tr></thead>
+      <tbody>
+        <tr><td><div class="f"><span class="ico v"></span><span id="vname">Q3 planning with Priya.webm</span><span class="new-tag">Just now</span></div></td><td><div class="owner"><i></i>me</div></td><td>Just now</td><td id="vsize">38.4 MB</td></tr>
+        <tr><td><div class="f"><span class="ico d"></span><span id="dname">Q3 planning with Priya — brief</span><span class="new-tag">Just now</span></div></td><td><div class="owner"><i></i>me</div></td><td>Just now</td><td>—</td></tr>
+        <tr><td><div class="f"><span class="ico v"></span>Weekly sync — 12 Sep.webm</div></td><td><div class="owner"><i></i>me</div></td><td>12 Sep 2026</td><td>121 MB</td></tr>
+        <tr><td><div class="f"><span class="ico d"></span>Weekly sync — 12 Sep — brief</div></td><td><div class="owner"><i></i>me</div></td><td>12 Sep 2026</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search)
+  if (q.get('title')) {
+    document.getElementById('vname').textContent = q.get('title') + '.webm'
+    document.getElementById('dname').textContent = q.get('title') + ' — brief'
+  }
+  if (q.get('size')) document.getElementById('vsize').textContent = q.get('size')
+</script>
+</body>
+</html>

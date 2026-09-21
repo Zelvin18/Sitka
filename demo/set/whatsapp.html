@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Product team – Chat</title>
+<style>
+  /* A web messenger, as everyone knows one: chats down the left, the group
+     on the right, green bubbles for your own words. A stage set. */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#d1d7db;overflow:hidden}
+  .app{position:absolute;inset:0;display:grid;grid-template-columns:400px 1fr;background:#fff}
+  .side{border-right:1px solid #e9edef;display:flex;flex-direction:column;min-width:0}
+  .top{height:60px;background:#f0f2f5;display:flex;align-items:center;padding:0 16px;gap:12px}
+  .av{width:40px;height:40px;border-radius:50%;background:#6b7c93;color:#fff;display:grid;place-items:center;font-weight:600;flex:none}
+  .top .sp{flex:1}
+  .top svg{width:22px;height:22px;fill:#54656f;margin-left:14px}
+  .search{padding:8px 12px;background:#fff;border-bottom:1px solid #e9edef}
+  .search div{background:#f0f2f5;border-radius:8px;height:36px;display:flex;align-items:center;padding:0 12px;color:#54656f;font-size:14px;gap:12px}
+  .search svg{width:18px;height:18px;fill:#54656f}
+  .list{flex:1;overflow:auto}
+  .row{display:flex;gap:14px;padding:0 16px;height:72px;align-items:center;cursor:pointer}
+  .row:hover{background:#f5f6f6}
+  .row.sel{background:#f0f2f5}
+  .row .t{flex:1;min-width:0;border-bottom:1px solid #e9edef;height:100%;display:flex;flex-direction:column;justify-content:center;gap:3px}
+  .row .n{display:flex;justify-content:space-between;font-size:16px;color:#111b21}
+  .row .n small{font-size:12px;color:#667781}
+  .row .p{font-size:13.5px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .n .b{background:#25d366;color:#fff;font-size:11px;border-radius:10px;padding:1px 6px;font-weight:600}
+  .main{display:flex;flex-direction:column;min-width:0;background:#efeae2}
+  .main .top{border-left:1px solid #e9edef}
+  .main .top .who{display:flex;flex-direction:column;gap:2px}
+  .main .top .who b{font-size:16px;font-weight:500;color:#111b21}
+  .main .top .who span{font-size:13px;color:#667781}
+  .msgs{flex:1;overflow:auto;padding:20px 8% 12px;display:flex;flex-direction:column;gap:6px;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:26px 26px}
+  .day{align-self:center;background:#fff;color:#54656f;font-size:12.5px;padding:5px 12px;border-radius:8px;box-shadow:0 1px .5px rgba(11,20,26,.13);margin:6px 0 10px}
+  .m{max-width:62%;padding:6px 8px 8px 9px;border-radius:8px;background:#fff;box-shadow:0 1px .5px rgba(11,20,26,.13);font-size:14.2px;color:#111b21;line-height:1.35;position:relative;animation:in .18s ease}
+  @keyframes in{from{opacity:0;transform:translateY(4px)}}
+  .m .s{display:block;font-size:12.8px;font-weight:600;margin-bottom:2px}
+  .m .tm{float:right;font-size:11px;color:#667781;margin:8px 0 -4px 10px}
+  .m.me{align-self:flex-end;background:#d9fdd3}
+  .m .tm .tick{color:#53bdeb;margin-left:3px}
+  .m a{color:#027eb5;word-break:break-all}
+  .prev{margin:-2px -4px 6px -5px;background:#cfeec9;border-radius:6px;padding:10px;display:flex;gap:10px;align-items:center}
+  .prev .mk{width:44px;height:44px;border-radius:8px;background:#141416;display:grid;place-items:center;flex:none}
+  .prev .mk svg{width:26px;height:26px;color:#fff}
+  .prev b{display:block;font-size:14px;font-weight:600}
+  .prev span{display:block;font-size:12.5px;color:#54656f}
+  .prev i{display:block;font-size:11.5px;color:#8696a0;font-style:normal;margin-top:2px}
+  .foot{height:62px;background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:0 16px}
+  .foot svg{width:24px;height:24px;fill:#54656f}
+  .foot input{flex:1;height:42px;border:none;border-radius:8px;padding:0 14px;font-size:15px;font-family:inherit;outline:none;background:#fff}
+  .typing{font-size:12.5px;color:#25d366;display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <div class="top"><div class="av" style="background:#1e88e5">D</div><div class="sp"></div>
+      <svg viewBox="0 0 24 24"><path d="M12 20.66a8.66 8.66 0 1 1 0-17.32 8.66 8.66 0 0 1 0 17.32zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M8 11h8v2H8z"/><path d="M11 8h2v8h-2z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+    </div>
+    <div class="search"><div><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>Search or start a new chat</div></div>
+    <div class="list">
+      <div class="row sel"><div class="av" style="background:#8e24aa">PT</div><div class="t"><div class="n">Product team<small>10:41</small></div><div class="p">Kev: can someone send notes from the Q3 call?</div></div></div>
+      <div class="row"><div class="av" style="background:#e07a5f">G</div><div class="t"><div class="n">Grace Wanjiru<small>10:12</small></div><div class="p">Sorry, missed the call — was the launch date decided?</div></div></div>
+      <div class="row"><div class="av" style="background:#3d8bfd">M</div><div class="t"><div class="n">Mum<small>Yesterday</small></div><div class="p">Call me when you are free 🙂</div></div></div>
+      <div class="row"><div class="av" style="background:#2a9d8f">DS</div><div class="t"><div class="n">Design squad<small>Yesterday</small></div><div class="p">Amina: new onboarding screens are in Figma</div></div></div>
+      <div class="row"><div class="av" style="background:#f4a261">K</div><div class="t"><div class="n">Kev<small>Mon</small></div><div class="p">🎉 nice work on the release</div></div></div>
+      <div class="row"><div class="av" style="background:#6d597a">L</div><div class="t"><div class="n">Landlord<small>Sun</small></div><div class="p">Received, thanks</div></div></div>
+      <div class="row"><div class="av" style="background:#264653">FC</div><div class="t"><div class="n">Football Sat ⚽<small>Sat</small></div><div class="p">Sam: 4pm at the usual pitch</div></div></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="av" style="background:#8e24aa">PT</div><div class="who"><b>Product team</b><span id="members">Grace, Kev, Amina, You</span><span class="typing" id="typing">Grace is typing…</span></div><div class="sp"></div>
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+    </div>
+    <div class="msgs" id="msgs">
+      <div class="day">Today</div>
+      <div class="m"><span class="s" style="color:#e07a5f">Grace Wanjiru</span>Morning all — I can't make the 10:00 with Priya, client call clashes 😩<span class="tm">9:48</span></div>
+      <div class="m"><span class="s" style="color:#f4a261">Kev</span>Same, I'm on support today. Daniel are you in?<span class="tm">9:50</span></div>
+      <div class="m me">Yes I'm in, I'll capture it with Sitca so nobody misses anything<span class="tm">9:51<span class="tick">✓✓</span></span></div>
+      <div class="m"><span class="s" style="color:#2a9d8f">Amina</span>Legend 🙌<span class="tm">9:52</span></div>
+      <div class="m"><span class="s" style="color:#f4a261">Kev</span>can someone send notes from the Q3 call?<span class="tm">10:41</span></div>
+    </div>
+    <div class="foot">
+      <svg viewBox="0 0 24 24"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20zm0-18a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm-3.5 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm7 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM12 17.5c-2.3 0-4.3-1.3-5.2-3.3h10.4c-.9 2-2.9 3.3-5.2 3.3z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
+      <input id="box" placeholder="Type a message" autocomplete="off">
+      <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
+    </div>
+  </div>
+</div>
+<script>
+  const msgs = document.getElementById('msgs')
+  const box = document.getElementById('box')
+  const now = () => { const d = new Date(); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}` }
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+  function bubble (html, me, who, color) {
+    const d = document.createElement('div')
+    d.className = 'm' + (me ? ' me' : '')
+    d.innerHTML = (who ? `<span class="s" style="color:${color}">${who}</span>` : '') + html + `<span class="tm">${now()}${me ? '<span class="tick">✓✓</span>' : ''}</span>`
+    msgs.appendChild(d)
+    msgs.scrollTop = msgs.scrollHeight
+    return d
+  }
+  const MARK = '<svg viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>'
+  function send () {
+    const text = box.value.trim()
+    if (!text) return
+    box.value = ''
+    const url = /https?:\/\/\S+/.exec(text)?.[0]
+    const title = window.previewTitle || 'Q3 planning with Priya — recap'
+    const preview = url
+      ? `<div class="prev"><div class="mk">${MARK}</div><div><b>${esc(title)}</b><span>The summary, key moments and notes — and it answers questions about the session.</span><i>sitcaai.vercel.app</i></div></div>`
+      : ''
+    bubble(preview + esc(text).replace(/https?:\/\/\S+/, (u) => `<a href="${u}">${u}</a>`), true)
+    // a friend who was waiting for exactly this
+    setTimeout(() => { document.getElementById('typing').style.display = 'block' }, 1600)
+    setTimeout(() => {
+      document.getElementById('typing').style.display = 'none'
+      bubble('Opening it now 👀', false, 'Grace Wanjiru', '#e07a5f')
+    }, 3600)
+  }
+  box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send() } })
+  window.chat = { send, bubble }
+</script>
+</body>
+</html>
