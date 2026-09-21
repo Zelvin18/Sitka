@@ -23,7 +23,7 @@ import {
 import { DESCRIBE_ASK, DESCRIBE_SCREEN, READ_PICTURE, READ_PICTURE_ASK, cleanDescription } from '../../src/shared/visionLogic'
 import { ON_SCREEN_PREFIX, REWRITE_VERSION, type Course, type Speaker } from '../../src/shared/types'
 import { personNote } from '../../src/shared/person'
-import { createDoc, driveToken, sitcaFolder, uploadRecording } from './drive'
+import { createDoc, driveToken, sitcaFolder, uploadRecording, warmDrive } from './drive'
 import { briefHtml, briefPrompt, speechOnly } from './brief'
 import { limitMessage, overLimit as overPlanLimit, type Usage } from '../../src/shared/plans'
 import { assignSpeakers, listSpeakers, speakerName, speakersNote, transcriptLine, type Utterance } from '../../src/shared/speakers'
@@ -158,13 +158,59 @@ function transcriptBlock(segments: TranscriptSegment[], speakers?: Speaker[]): s
 }
 function extractJson<T>(text: string): T | null {
   const a = text.indexOf('{')
+  if (a < 0) return null
   const b = text.lastIndexOf('}')
-  if (a < 0 || b <= a) return null
+  const raw = b > a ? text.slice(a, b + 1) : text.slice(a)
   try {
-    return JSON.parse(text.slice(a, b + 1)) as T
+    return JSON.parse(raw) as T
+  } catch {
+    /* mended below */
+  }
+  try {
+    return JSON.parse(mendJson(raw)) as T
   } catch {
     return null
   }
+}
+/**
+ * A model's JSON, mended: real line breaks and tabs typed inside a string
+ * (the usual slip in long notes) become escapes, and an answer cut off
+ * mid-way has its open string and brackets closed, so what was written
+ * still reads.
+ */
+function mendJson(raw: string): string {
+  let out = ''
+  let inStr = false
+  let esc = false
+  const stack: string[] = []
+  for (const ch of raw) {
+    if (inStr) {
+      if (esc) {
+        esc = false
+        out += ch
+      } else if (ch === '\\') {
+        esc = true
+        out += ch
+      } else if (ch === '"') {
+        inStr = false
+        out += ch
+      } else if (ch === '\n') out += '\\n'
+      else if (ch === '\r') out += '\\r'
+      else if (ch === '\t') out += '\\t'
+      else out += ch
+      continue
+    }
+    if (ch === '"') inStr = true
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']')
+    else if (ch === '}' || ch === ']') stack.pop()
+    out += ch
+  }
+  if (esc) out = out.slice(0, -1)
+  if (inStr) out += '"'
+  // a trailing comma before the closing bracket is not JSON
+  out = out.replace(/,\s*$/, '')
+  while (stack.length) out += stack.pop()
+  return out
 }
 function uid(): string {
   return crypto.randomUUID()
@@ -183,6 +229,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // Recordings live in Cloudflare R2, everything else in Supabase. The store
   // hides the difference, and keeps reading recordings made before the move.
   const store = createStore(sb)
+  warmDrive()
   /** Where a session's recording is kept. Older sessions never say, and are in Supabase. */
   const whereOf = (m?: { store?: 'r2' | 'sb' }): Where => (m?.store === 'r2' ? 'r2' : 'sb')
 
@@ -1576,7 +1623,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
       '- Never draw with characters: no boxes, lines or arrows made of +, -, | or v, no ASCII art, no diagrams typed out. For a process or a structure use a ```flow block (one connection per line, "A -> B"); for numbers a ```chart block; for a comparison a markdown table. Never wrap an ordinary answer, notes or a list in ``` fences: fences are only for chart, flow and document blocks, and for code when the user asked for code. Headings are ## or ###, never a numbered line in bold.',
-      '- Do not end answers with offers like "let me know if you want more" — just answer.',
+      '- End each answer with ONE short follow-up question on its own last line, offering a concrete next step that fits what was just asked — a detailed summary of that point, an example, the counter-argument, where it was said, how it compares — like "Want a detailed summary of the safety points?" or "Shall I explain how the benchmark works?". Specific, never the generic "let me know if you want more". Skip it only after a document block.',
       '- Talking to the user, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said", not "the transcript shows" or "according to the transcript". The word transcript is for you, not for them.',
       '- Use judgement about when a moment citation helps. In conversation, cite when the user would want to jump to that moment: a specific claim, a figure, a decision, "when was X said". Do NOT cite inside anything the user will keep or share — a ```document block, a summary, notes, the main topics, a study guide, an outline — unless they ask for the moments. A summary reads as prose, not as a list of timestamps.',
       '- When the user asks you to write, draft, design or develop a document — a report, letter, plan, memo, proposal, agenda, study notes, one-pager, a set of slides in outline — produce the whole document inside one fenced block that starts with ```document, whose first line is "Title: <the title>" and whose body is markdown (headings, paragraphs, lists, tables). The app shows it as a document the user can open, copy and download. Keep any words outside the block to one short sentence.',
@@ -1606,7 +1653,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Match the length of your answer to the question: short and direct by default; structure only for catch-ups and summaries.',
       '- Formatting: **bold** for key terms, "-" bullets for genuine lists, "## " headings only in long answers, tables only for comparisons. This renders on a phone — keep it tight.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
-      '- Do not end answers with offers like "let me know if you want more" — just answer.',
+      '- End each answer with ONE short follow-up question on its own last line, offering a concrete next step that fits what was just asked — a detailed summary of that point, an example, the counter-argument, where it was said, how it compares — like "Want a detailed summary of the safety points?" or "Shall I explain how the benchmark works?". Specific, never the generic "let me know if you want more". Skip it only after a document block.',
       materials ? `\nEvent materials shared by the host:\n${materials.slice(0, 14000)}` : '',
       preEvent ? '' : `\nTranscript so far:\n${transcriptBlock(segments)}`
     ]
@@ -1965,6 +2012,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // Beyond this, phones keep the still frames: direct connections cost the
   // host's upload for every viewer. Larger rooms need a media server.
   const RTC_MAX_PEERS = 12
+  // The picture's budget: the host's upload is shared among the phones, so
+  // each gets as much as the room allows — a full 2.5 Mbps for a few
+  // viewers (slides and text stay sharp), less as the room grows.
+  const RTC_UPLOAD_BUDGET = 10_000_000
+  function rtcTune(): void {
+    const r = rtc
+    if (!r) return
+    const each = Math.max(700_000, Math.min(2_500_000, Math.floor(RTC_UPLOAD_BUDGET / Math.max(1, r.peers.size))))
+    for (const pc of r.peers.values()) {
+      for (const sender of pc.getSenders()) {
+        if (sender.track?.kind !== 'video') continue
+        const p = sender.getParameters()
+        if (!p.encodings || p.encodings.length === 0) continue
+        if (p.encodings[0].maxBitrate === each) continue
+        p.encodings[0].maxBitrate = each
+        p.encodings[0].maxFramerate = 15
+        ;(p as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = 'maintain-resolution'
+        void sender.setParameters(p).catch(() => undefined)
+      }
+    }
+  }
   async function rtcOfferTo(id: string): Promise<void> {
     const r = rtc
     if (!r) return
@@ -1974,25 +2042,19 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     r.peers.set(id, pc)
     for (const t of r.stream.getVideoTracks()) {
-      // live, not a film: keep up rather than polish, and drop detail before
-      // dropping time when the connection tightens
+      // a shared screen is mostly text and slides: keep the detail, and let
+      // the frame rate give first when the connection tightens
       try {
-        t.contentHint = 'motion'
+        t.contentHint = 'detail'
       } catch {
         /* older browser */
       }
       // the picture and the sound travel as separate streams on purpose: sent
       // together, a phone holds the picture back to line it up with the sound
       // (lip sync), and the room runs a second or two behind the host
-      const sender = pc.addTrack(t, new MediaStream([t]))
-      const p = sender.getParameters()
-      if (p.encodings && p.encodings.length > 0) {
-        p.encodings[0].maxBitrate = 900_000
-        p.encodings[0].maxFramerate = 15
-        ;(p as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = 'maintain-framerate'
-        void sender.setParameters(p).catch(() => undefined)
-      }
+      pc.addTrack(t, new MediaStream([t]))
     }
+    rtcTune()
     // the room's sound as well: someone joining from elsewhere hears the
     // host as if they were there (their phone keeps it muted until they ask)
     for (const t of r.stream.getAudioTracks()) {
@@ -2015,6 +2077,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         pc.close()
         if (r.peers.get(id) === pc) r.peers.delete(id)
+        rtcTune()
       }
     }
     try {
@@ -2735,10 +2798,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         window.dispatchEvent(new CustomEvent('sitka:drive', { detail: { sessionId: id, stage, sent, total } }))
       }
       try {
-        const d = cache.get(id) ?? (await loadSession(id)) ?? (await loadSavedRecap(id))
-        if (!d) return { error: 'This session could not be read.' }
+        // Google's window first, while the tap that asked for it still counts
         say('asking')
         const t = await driveToken()
+        const d = cache.get(id) ?? (await loadSession(id)) ?? (await loadSavedRecap(id))
+        if (!d) return { error: 'This session could not be read.' }
         const folder = await sitcaFolder(t)
         const title = (d.meta.title || 'Session').replace(/[\/:*?"<>|]+/g, ' ').trim()
         let fileUrl = ''
@@ -3482,13 +3546,36 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const whole =
         (await fetchObject(videoPath(id), 'r2')) ?? (await fetchObject(videoPath(id), 'sb'))
       if (!whole) {
-        // the one request the player itself uses: where the recording is, by link
-        const m = await store.media(user.id, id).catch(() => null)
+        // the one request the player itself uses: where the recording is, by
+        // link — the recorder's folder for a kept recap or a course's lecture
+        const m =
+          (await savedMedia(id).catch(() => null)) ??
+          (await store
+            .media(user.id, id)
+            .then((x) => ({ whole: x.whole, parts: x.parts.map((url, i) => ({ url, size: x.partSizes?.[i] ?? 0 })) }))
+            .catch(() => null))
         if (m?.whole) {
           const r = await fetch(m.whole, { cache: 'no-store' }).catch(() => null)
           if (r && r.ok) return new Uint8Array(await r.arrayBuffer())
         }
-        console.error('Sitca: no recording found for session', id)
+        if (m && m.parts.length > 0) {
+          // its parts, in order, joined here
+          const bufs: ArrayBuffer[] = []
+          for (const p of m.parts) {
+            const r = await fetch(p.url, { cache: 'no-store' }).catch(() => null)
+            if (!r || !r.ok) return null
+            bufs.push(await r.arrayBuffer())
+          }
+          const out = new Uint8Array(bufs.reduce((n, b) => n + b.byteLength, 0))
+          let at = 0
+          for (const b of bufs) {
+            out.set(new Uint8Array(b), at)
+            at += b.byteLength
+          }
+          return out
+        }
+        // nothing anywhere: the page says so itself; not a fault to report
+        console.warn('Sitca: no recording found for session', id)
         return null
       }
       return new Uint8Array(whole)
@@ -4908,7 +4995,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           '- kind "important": points the speaker emphasized, stressed, repeated, or flagged.',
           '- kind "question": actual questions asked aloud during the session, quoted or closely paraphrased.',
           'Each moment needs "time" copied exactly from a transcript timestamp (like "12:37") and a short "label" (max 12 words).',
-          'Return ONLY a JSON object, no prose and no code fences:',
+          'Return ONLY a JSON object, no prose and no code fences. Inside the "notes" string every line break is written as the two characters \\n, never a real line break, and every double quote as \\".',
           '{"notes": "<markdown string>", "moments": [{"time": "M:SS", "label": string, "kind": "important" | "question"}]}',
           'Keep the moments list complete for the whole session so far (carry earlier moments forward, do not drop them).'
         ].join('\n')

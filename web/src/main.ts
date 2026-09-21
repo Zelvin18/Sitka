@@ -370,7 +370,7 @@ function speakWithPhone(text: string): Promise<void> {
     const v = pickVoice()
     if (v) u.voice = v
     u.lang = v?.lang || LANG_CODES[myLang] || 'en'
-    u.rate = 1.05
+    u.rate = 1.05 * catchUpRate()
     u.onend = () => resolve()
     u.onerror = () => resolve()
     window.speechSynthesis.speak(u)
@@ -393,12 +393,19 @@ function playVoice(blob: Blob): Promise<void> {
     a.onended = done
     a.onerror = done
     a.src = url
+    a.playbackRate = catchUpRate()
     a.play().catch(done)
   })
 }
 interface Spoken {
   text: string
   voice: Promise<Blob | null> | null
+}
+/** The voice can only say a line once it has heard it, so it always runs a
+ * little behind the speaker. When lines queue up it speaks a touch faster
+ * and closes the gap, rather than drifting further back. */
+function catchUpRate(): number {
+  return speakQ.length >= 2 ? 1.25 : speakQ.length === 1 ? 1.12 : 1
 }
 let speakQ: Spoken[] = []
 let speakingNow = false
@@ -1482,6 +1489,7 @@ function bubble(cls: string, text: string): HTMLElement {
   const d = document.createElement('div')
   d.className = cls
   d.textContent = text
+  el('askhome').classList.add('compact')
   el('chat').appendChild(d)
   el('pane-ask').scrollTop = el('pane-ask').scrollHeight
   return d
@@ -1490,6 +1498,7 @@ function aiBubble(text: string): HTMLElement {
   const d = document.createElement('div')
   d.className = 'bub-a md'
   d.innerHTML = md(text)
+  el('askhome').classList.add('compact')
   el('chat').appendChild(d)
   el('pane-ask').scrollTop = el('pane-ask').scrollHeight
   return d
@@ -1642,6 +1651,12 @@ el('roomtext').addEventListener('keydown', (e) => {
   if (ke.key === 'Enter' && !ke.shiftKey) {
     e.preventDefault()
     ;(el('roomsend') as HTMLButtonElement).click()
+  }
+})
+document.querySelectorAll<HTMLElement>('.askchip[data-ask]').forEach((c) => {
+  c.onclick = () => {
+    ask(c.dataset.ask || '')
+    ;(document.querySelector('[data-pane=ask]') as HTMLElement).click()
   }
 })
 el('catchup').onclick = () => {

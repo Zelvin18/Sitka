@@ -131,7 +131,9 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 }
 
 const VIDEO_CHUNK_MS = 3000
-const STT_CHUNK_MS = 4000
+// shorter pieces reach the room sooner: the captions and the spoken
+// translation run that much closer to the speaker
+const STT_CHUNK_MS = 3000
 const MIN_AUDIO_BYTES = 4000
 /** below this loudest moment a caption chunk is silence: not sent, never invented */
 const SILENCE_RMS = 0.0035

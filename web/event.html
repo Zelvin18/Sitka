@@ -127,9 +127,9 @@
         <div class="stagepaused" id="stagepaused">Screen paused</div>
         <button class="stagemin" id="stageminbtn" title="Hide the screen to make room for the words">Hide</button>
         <span class="stagetag"><span class="ldot"></span>STAGE</span>
-        <button class="stageask" id="stageaskbtn"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.6 0-3.1-.4-4.4-1.2L3 20l1.2-5.1A8.5 8.5 0 1 1 21 11.5z"/></svg><span>Ask Sitca</span></button>
+        <button class="stageask" id="stageaskbtn" title="Open the conversation with Sitca" aria-label="Ask Sitca"><svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span class="stageask-text"><b>Ask Sitca</b><small>about what you are watching</small></span></button>
         <div class="stagedrawer hidden" id="stagedrawer">
-          <div class="stagedrawer-head"><b>Ask Sitca</b><span class="small">Only you see this</span><button class="stagedrawer-x" id="stagedrawerclose" aria-label="Close">×</button></div>
+          <div class="stagedrawer-head"><b>Ask Sitca</b><span class="small">Only you see this</span><button class="stagedrawer-x" id="stagedrawerclose" title="Fold Sitca away — the conversation stays">Close</button></div>
           <div class="stagedrawer-body" id="stagedrawerbody"></div>
           <div class="stagedrawer-foot" id="stagedrawerfoot"></div>
         </div>
@@ -153,9 +153,18 @@
     <div id="segs"></div>
   </div>
   <div class="pane" id="pane-ask">
-    <div class="notice hidden" id="prenotice"><b>The event hasn't started yet</b> — but the host has briefed me. Ask what it's about, who's speaking, or what to prepare.</div>
-    <div class="notice" id="livenotice">Ask about anything being said — it answers for <b>you</b>. Or tap <b>Catch me up</b> if you just arrived.</div>
-    <button class="btn btn2" style="margin:0 0 6px" id="catchup"><svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 1.9"/></svg>Catch me up</button>
+    <div class="askhome" id="askhome">
+      <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
+      <div class="askhome-title">Ask Sitca</div>
+      <div class="askhome-sub hidden" id="prenotice"><b>The event hasn't started yet</b> — but the host has briefed me. Ask what it's about, who's speaking, or what to prepare.</div>
+      <div class="askhome-sub" id="livenotice">Listening with you. Ask about anything being said — the answer is for <b>you</b> alone.</div>
+      <div class="askchips">
+        <button class="askchip" id="catchup"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 1.9"/></svg>Catch me up</button>
+        <button class="askchip" data-ask="Explain what is being said right now, simply."><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Explain this simply</button>
+        <button class="askchip" data-ask="Define the key terms used so far, in a sentence each."><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Define the terms</button>
+        <button class="askchip" data-ask="Why does what is being said matter for me?"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>Why it matters for me</button>
+      </div>
+    </div>
     <div id="chat"></div>
   </div>
   <div class="pane" id="pane-room">

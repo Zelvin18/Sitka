@@ -46,6 +46,15 @@ function script(): Promise<void> {
   })
 }
 
+/**
+ * Google's script, fetched ahead of the press. A phone opens Google's
+ * window only in the moment of a tap: if the script still had to load
+ * first, the moment would have passed and the window would be blocked.
+ */
+export function warmDrive(): void {
+  window.setTimeout(() => void script().catch(() => undefined), 2500)
+}
+
 /** Leave to write to Drive, asked once per visit (Google shows its own window). */
 export async function driveToken(): Promise<string> {
   if (token && token.until > Date.now() + 60000) return token.value

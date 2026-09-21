@@ -662,7 +662,9 @@ export default function OrgView({
               {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} here
             </div>
           </div>
-          {lead && active.kind === 'course' && (
+          {lead && (
+          <div className="org-space-actions">
+          {active.kind === 'course' && (
             // hosting: students join while it happens; the course says it is live
             <button
               className="btn btn-primary btn-sm"
@@ -673,7 +675,6 @@ export default function OrgView({
               Host a lecture
             </button>
           )}
-          {lead && (
             <button
               className={`btn btn-sm${active.kind === 'course' ? ' btn-ghost' : ' btn-primary'}`}
               onClick={() => onStartSession(captureKind, false, active.id, active.name)}
@@ -682,8 +683,6 @@ export default function OrgView({
               <IconScreen size={13} strokeWidth={2} />
               {active.kind === 'course' ? 'Record' : 'Capture a meeting'}
             </button>
-          )}
-          {lead && (
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => onStartSession(captureKind, true, active.id, active.name)}
@@ -691,11 +690,10 @@ export default function OrgView({
             >
               <IconMic size={13} strokeWidth={2} />
             </button>
-          )}
-          {lead && (
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteSpace(active)} title={`Delete this ${noun}`}>
               <IconTrash size={13} strokeWidth={2} />
             </button>
+          </div>
           )}
         </div>
         {active.liveUrl && (
