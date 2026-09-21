@@ -178,6 +178,27 @@ function extractJson<T>(text: string): T | null {
  * mid-way has its open string and brackets closed, so what was written
  * still reads.
  */
+/**
+ * The notes, as the model writes them: a NOTES heading, the markdown, a
+ * MOMENTS heading, one moment per line ("12:37 | important | label"). Plain
+ * text survives a long lecture where JSON with escaped line breaks did not.
+ * An answer in the old JSON shape is still read.
+ */
+function parseNotesAnswer(out: string): { notes: string; moments: SessionNotes['moments'] } | null {
+  const text = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim()
+  const m = /(?:^|\n)#+\s*NOTES\s*\n([\s\S]*?)(?:\n#+\s*MOMENTS\s*\n([\s\S]*))?$/i.exec(text)
+  if (m && m[1].trim()) {
+    const moments: SessionNotes['moments'] = []
+    for (const line of (m[2] || '').split('\n')) {
+      const mm = /^\s*[-*]?\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*\|\s*(important|question)\s*\|\s*(.+?)\s*$/i.exec(line)
+      if (mm) moments.push({ time: mm[1], kind: mm[2].toLowerCase() as 'important' | 'question', label: mm[3].slice(0, 120) })
+    }
+    return { notes: m[1].trim(), moments }
+  }
+  const j = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
+  if (j?.notes) return { notes: j.notes, moments: Array.isArray(j.moments) ? j.moments : [] }
+  return null
+}
 function mendJson(raw: string): string {
   let out = ''
   let inStr = false
@@ -308,6 +329,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           .map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : typeof a === 'string' ? a : JSON.stringify(a)))
           .join(' ')
           .slice(0, 300)
+        // Google's sign-in library talks to the console when its prompt is
+        // dismissed or a phone's account picker declines: not a fault of ours
+        if (/GSI_LOGGER|FedCM|One Tap/i.test(text)) return
         reportError(location.pathname, `console: ${text}`)
       } catch {
         /* never let the reporting itself fail the app */
@@ -4994,9 +5018,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           'Also detect notable moments:',
           '- kind "important": points the speaker emphasized, stressed, repeated, or flagged.',
           '- kind "question": actual questions asked aloud during the session, quoted or closely paraphrased.',
-          'Each moment needs "time" copied exactly from a transcript timestamp (like "12:37") and a short "label" (max 12 words).',
-          'Return ONLY a JSON object, no prose and no code fences. Inside the "notes" string every line break is written as the two characters \\n, never a real line break, and every double quote as \\".',
-          '{"notes": "<markdown string>", "moments": [{"time": "M:SS", "label": string, "kind": "important" | "question"}]}',
+          'Each moment needs a time copied exactly from a transcript timestamp (like 12:37) and a short label (max 12 words).',
+          'Answer in exactly this shape, plain text, no code fences, no words before or after it:',
+          '## NOTES',
+          '<the notes, in markdown, as many lines as needed>',
+          '## MOMENTS',
+          '- 12:37 | important | <label>',
+          '- 14:02 | question | <label>',
           'Keep the moments list complete for the whole session so far (carry earlier moments forward, do not drop them).'
         ].join('\n')
         const materials = await sessionMaterialsBlock(id)
@@ -5006,15 +5034,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             content: `${materials ? materials + '\n\n' : ''}${speakersNote(d.meta.speakers) ? speakersNote(d.meta.speakers) + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
           }
         ], 6000)
-        const parsed = extractJson<{ notes?: string; moments?: SessionNotes['moments'] }>(out)
-        if (!parsed?.notes) {
+        const parsed = parseNotesAnswer(out)
+        if (!parsed) {
           // a whole lecture's notes in one answer can run past the model's room: said where it can be seen
           reportError(location.pathname, `notes could not be read from the answer (${out.length} chars, ${d.segments.length} lines): ${out.slice(0, 200)}`)
           return { error: 'Could not update notes.' }
         }
         const notes: SessionNotes = {
           markdown: parsed.notes,
-          moments: Array.isArray(parsed.moments) ? parsed.moments : [],
+          moments: parsed.moments,
           updatedAt: Date.now()
         }
         d.notes = notes

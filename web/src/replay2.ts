@@ -392,6 +392,21 @@ async function fallBackFromStream(): Promise<boolean> {
   return true
 }
 let streamedHere = false
+/** the phone's own player takes the file: our overlay steps aside */
+function goNative(url: string): void {
+  const v = video()
+  const stage = el('stage')
+  v.src = url
+  v.controls = true
+  v.hidden = false
+  v.preload = 'metadata'
+  stage.classList.add('native', 'hasvideo')
+  stage.classList.remove('loading')
+  el('bar').style.display = 'none'
+  mediaReady = true
+  previewed = true
+  v.addEventListener('playing', () => stage.classList.add('playing'), { once: true })
+}
 /** the forms of the recording still worth trying, first one loaded */
 let candidates: Blob[] = []
 let candidateAt = 0
@@ -442,6 +457,15 @@ function loadMedia(): Promise<boolean> {
         // read in slices through the same engine the parts would use.
         const wholeFirst = Boolean(found.whole)
         if (found.whole && wholeFirst) {
+          // On an iPhone or iPad the joined file is handed to Safari's own
+          // player, controls and all: it plays a plain MP4 by its link on
+          // every model and connection, and its own Play button is the one
+          // tap that always works there. Nothing of ours sits over it.
+          if (IOS) {
+            goNative(found.whole)
+            console.info('[recap] iPhone: the file in the phone’s own player')
+            return true
+          }
           const streamed = await streamWhole(v, found.whole, found.wholeSize)
           streamedHere = streamed
           if (!streamed) v.src = found.whole

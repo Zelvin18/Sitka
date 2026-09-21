@@ -90,6 +90,11 @@ h1.title{font-family:var(--sans);font-weight:700;font-size:clamp(23px,3vw,36px);
 .stage-wait{position:absolute;inset:0;z-index:2;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font-size:13.5px;font-weight:600;letter-spacing:.01em;background:rgba(0,0,0,.28);pointer-events:none;text-shadow:0 1px 8px rgba(0,0,0,.5)}
 .stage-wait .mark{width:28px;height:28px}
 .stage-wait a.openraw{color:#fff;text-decoration:underline;pointer-events:auto}
+/* the phone's own player: our button, bar and waiting words step aside; the title lifts to the top and lets taps through */
+.stage.native .playbig,.stage.native .stage-wait,.stage.native .pstatus,.stage.native .bar{display:none!important}
+.stage.native .hero,.stage.native .shade,.stage.native .grain{pointer-events:none!important}
+.stage.native .hero{top:0;bottom:auto;justify-content:flex-start;padding-top:18px}
+.stage.native.playing .hero,.stage.native.playing .shade{opacity:0;transition:opacity .3s}
 .stage.loading:not(.err) .stage-wait{display:flex}
 @media(max-width:900px){.stage-wait{padding-bottom:26vh}}
 .stage.loading:not(.err) .playbig{opacity:0;pointer-events:none}
