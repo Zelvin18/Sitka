@@ -74,7 +74,7 @@ async function mockDrive(ctx, title) {
   )
 }
 
-const VIEW = { width: 1600, height: 900 }
+const VIEW = { width: 1920, height: 1080 }
 let recapUrl = ''
 let sessionTitle = 'Q3 planning with Priya'
 
@@ -91,11 +91,26 @@ let sessionTitle = 'Q3 planning with Priya'
   await mockGoogle(ctx)
   const page = ctx.pages()[0] ?? (await ctx.newPage())
   await prepare(page, 'gate')
+  // the opening card
+  await page.goto(set('title.html'))
+  await sleep(300)
+  mark(page, 'title')
+  await sleep(3600)
+  mark(page, 'title-end')
+  // the call, as the story opens: Priya talking, Daniel in the corner
+  await page.goto(set('meet.html#talk'))
+  await sleep(400)
+  mark(page, 'call')
+  await caption(page, 'Daniel is in a call with Priya. The rest of the team could not make it.')
+  await sleep(3600)
+  await caption(page, '')
+  await read(500)
+  mark(page, 'call-end')
   await page.goto(`${SITE}/app`, { waitUntil: 'networkidle' })
   await page.waitForSelector('#ggoogle', { timeout: 30000 })
   await sleep(600)
   mark(page, 'gate')
-  await caption(page, 'Sign in — it takes one tap')
+  await caption(page, 'He opens Sitca. Signing in is one tap.')
   await read(1400)
   await click(page, page.locator('#ggoogle'))
   await caption(page, '')
@@ -145,8 +160,8 @@ ctx.on('page', (p) => {
   void prepare(p, 'p' + ctx.pages().length)
 })
 
-// a clean slate: the takes before this one leave no sessions behind
-if (process.argv.includes('--clean')) {
+// a clean slate: the demo account's library holds nothing from earlier takes
+if (!process.argv.includes('--keep')) {
   const p = await ctx.newPage()
   await p.goto(`${SITE}/app`, { waitUntil: 'networkidle' })
   await p.waitForSelector('.home-action', { timeout: 60000 })
@@ -163,6 +178,8 @@ if (process.argv.includes('--clean')) {
 // The share takes what the window shows of the tab: the call page is sized
 // to fit inside this screen's window, so the whole room is in the picture.
 const meet = ctx.pages()[0] ?? (await ctx.newPage())
+// sized to what this screen's window shows, so the share (which takes the
+// visible tab) gets the whole room
 await meet.setViewportSize({ width: 1280, height: 640 })
 await prepare(meet, 'meet')
 await meet.goto(set('meet.html#talk'))
@@ -178,7 +195,7 @@ if (AUDIO === 'tab') {
 }
 await sleep(500)
 mark(meet, 'meet')
-await read(2600)
+await read(1500)
 
 // -- Sitca, in a second tab --
 const app = await ctx.newPage()
@@ -280,7 +297,12 @@ await click(app, app.locator('button', { hasText: 'End session' }))
 mark(app, 'end')
 await caption(app, 'Meeting over. One press.')
 await app.waitForSelector('.tab-row:has-text("Overview")', { timeout: 180000 })
-await sleep(1500)
+// the recording itself, on screen, before this scene counts
+await app.waitForFunction(() => {
+  const v = document.querySelector('video')
+  return Boolean(v && v.readyState >= 2)
+}, null, { timeout: 40000 }).catch(() => undefined)
+await sleep(800)
 await caption(app, '')
 mark(app, 'session')
 sessionTitle = (await app.locator('.page-title, h1').first().textContent().catch(() => '')) || sessionTitle
@@ -349,6 +371,10 @@ if (until === 'share') {
 const wa = await ctx.newPage()
 await prepare(wa, 'whatsapp')
 await wa.goto(set('whatsapp.html'))
+// the link's preview carries the session's real name
+await wa.evaluate((t) => {
+  window.previewTitle = t + ' — recap'
+}, sessionTitle)
 await sleep(400)
 mark(wa, 'whatsapp')
 await read(1400)
@@ -395,6 +421,23 @@ if (done('whatsapp')) process.exit(0)
   await read(1500)
   closing(pctx)
   await pctx.close()
+  // the closing card, at full size
+  const ectx = await chromium.launchPersistentContext(here('./profile-fresh'), {
+    headless: false,
+    viewport: VIEW,
+    recordVideo: { dir: OUT, size: VIEW },
+    args: ['--disable-blink-features=AutomationControlled']
+  })
+  const epage = ectx.pages()[0] ?? (await ectx.newPage())
+  await prepare(epage, 'endcard')
+  await epage.goto(set('end.html'))
+  await sleep(300)
+  mark(epage, 'endcard')
+  await sleep(4200)
+  mark(epage, 'endcard-end')
+  closing(ectx)
+  await ectx.close()
+
 }
 
 server.close()

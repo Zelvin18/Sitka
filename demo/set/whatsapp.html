@@ -94,7 +94,9 @@
 <script>
   const msgs = document.getElementById('msgs')
   const box = document.getElementById('box')
-  const now = () => { const d = new Date(); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}` }
+  // the chat's own morning: the earlier messages say 9:48–10:41, the new ones follow
+  let minute = 44
+  const now = () => `10:${String(minute++).padStart(2, '0')}`
   const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
   function bubble (html, me, who, color) {
     const d = document.createElement('div')

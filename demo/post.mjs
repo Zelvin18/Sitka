@@ -41,24 +41,28 @@ const has = (page, name) => at(page, name) !== undefined
 // { page, from, to } in mark names, with +/- seconds; a scene whose marks are
 // missing (a shorter take) is skipped
 const STORY = [
+  { page: 'gate', from: ['title', 0], to: ['title-end', 0] },
+  { page: 'gate', from: ['call', -0.3], to: ['call-end', 0] },
   { page: 'gate', from: ['gate', -0.2], to: ['google-end', -0.3] },
-  { page: 'meet', from: ['meet', 0], to: ['meet', 2.6] },
   { page: 'app', from: ['home', 0], to: ['setup', -0.4] },
   { page: 'app', from: ['setup', 0.6], to: ['recording', 8] },
-  { page: 'app', from: ['theatre', -1.2], to: ['ask', 9.5] },
+  { page: 'app', from: ['theatre', -1.2], to: ['ask', 8.5] },
   { page: 'app', from: ['ask-end', -1.5], to: ['theatre-end', 0.3] },
   { page: 'app', from: ['notes', -1.0], to: ['notes', 3.2] },
-  { page: 'app', from: ['notes-later', 0], to: ['catchup', 7.5] },
+  { page: 'app', from: ['notes-later', 0], to: ['catchup', 7] },
   { page: 'app', from: ['catchup-end', -3], to: ['catchup-end', 0.2] },
-  { page: 'app', from: ['end', -1.2], to: ['end', 3] },
+  { page: 'app', from: ['end', -1.2], to: ['end', 2.6] },
   { page: 'app', from: ['session', -0.4], to: ['drive', 0] },
   { page: 'app', from: ['drive', 0], to: ['drive', 5.5] },
   { page: 'drive', from: ['drive-open', 0], to: ['drive-end', 0] },
   { page: 'app', from: ['share', -1.0], to: ['share-end', 0.2] },
   { page: 'whatsapp', from: ['whatsapp', 1.0], to: ['whatsapp-end', 0] },
   { page: 'phone', from: ['recap', -0.2], to: ['recap', 5], phone: true },
-  { page: 'phone', from: ['recap-ask', -1.5], to: ['recap-ask', 10.5], phone: true }
+  { page: 'phone', from: ['recap-ask', -1.5], to: ['recap-ask', 10.5], phone: true },
+  { page: 'endcard', from: ['endcard', 0], to: ['endcard-end', 0] }
 ]
+/** scenes melt into one another over this long */
+const XF = 0.4
 
 const pieces = []
 let storyT = 0
@@ -80,16 +84,27 @@ for (const [i, s] of STORY.entries()) {
   run(['-y', '-ss', from.toFixed(3), '-to', to.toFixed(3), '-i', f.path, ...(s.phone ? ['-filter_complex', vf] : ['-vf', vf]), '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', out])
   const len = to - from
   timeline.push({ scene: s, start: storyT, len, filmFrom: from - f.offset })
-  storyT += len
-  pieces.push(out)
+  storyT += len - (pieces.length > 0 ? XF : 0)
+  pieces.push({ out, len })
   console.log(`cut ${s.page} ${s.from[0]} → ${s.to[0]}: ${len.toFixed(1)}s`)
 }
 
-// joined
-const list = here('./out/cut/list.txt')
-writeFileSync(list, pieces.map((p) => `file '${p.replace(/\\/g, '/')}'`).join('\n'))
+// joined, each scene melting into the next
 const silent = here('./out/cut/silent.mp4')
-run(['-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', silent])
+{
+  const ins = pieces.flatMap((p) => ['-i', p.out])
+  const chain = []
+  let acc = pieces[0].len
+  let prev = '[0:v]'
+  for (let i = 1; i < pieces.length; i++) {
+    const outLabel = i === pieces.length - 1 ? '[v]' : `[x${i}]`
+    chain.push(`${prev}[${i}:v]xfade=transition=fade:duration=${XF}:offset=${(acc - XF).toFixed(3)}${outLabel}`)
+    acc = acc - XF + pieces[i].len
+    prev = outLabel
+  }
+  if (pieces.length === 1) run(['-y', '-i', pieces[0].out, '-c', 'copy', silent])
+  else run(['-y', ...ins, '-filter_complex', chain.join(';'), '-map', '[v]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-r', String(FPS), silent])
+}
 console.log(`joined: ${storyT.toFixed(1)}s`)
 
 // ---------- sound ----------

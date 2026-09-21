@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitca</title>
+<style>
+  /* the closing card: the mark, the name, where to go */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#0c0c0d;color:#fff;font-family:Inter,'Segoe UI',system-ui,sans-serif;overflow:hidden}
+  .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+  .row{display:flex;align-items:center;gap:18px;opacity:0;animation:in .7s ease .2s forwards}
+  .mark{width:56px;height:56px}
+  .name{font-size:52px;font-weight:750;letter-spacing:-.03em}
+  p{font-size:24px;color:#a3a3ab;opacity:0;animation:in .7s ease .7s forwards}
+  .url{font-size:20px;color:#fff;background:#1f1f22;border:1px solid #2e2e33;border-radius:999px;padding:12px 26px;opacity:0;animation:in .7s ease 1.1s forwards}
+  @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="row"><svg class="mark" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span class="name">Sitca</span></div>
+  <p>Meetings, lectures and talks — captured, answered, shared.</p>
+  <div class="url">sitcaai.vercel.app</div>
+</div>
+</body>
+</html>

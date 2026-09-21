@@ -22,9 +22,9 @@
       #__demo .rip{position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(20,20,22,.22);transform:translate(-50%,-50%) scale(.3);opacity:0;pointer-events:none}
       #__demo .rip.go{animation:__rip .42s ease-out}
       @keyframes __rip{0%{transform:translate(-50%,-50%) scale(.3);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.4);opacity:0}}
-      #__demo .cap{position:absolute;left:50%;bottom:6%;transform:translateX(-50%) translateY(12px);max-width:78%;padding:12px 22px;border-radius:14px;background:rgba(20,20,22,.82);color:#fff;font:600 24px/1.3 Inter,'Segoe UI',system-ui,sans-serif;letter-spacing:-.01em;text-align:center;opacity:0;transition:opacity .28s ease,transform .28s ease;backdrop-filter:blur(10px);box-shadow:0 12px 34px rgba(0,0,0,.35)}
+      #__demo .cap{display:block;position:absolute;left:50%;bottom:6%;transform:translateX(-50%) translateY(12px);max-width:78%;padding:12px 22px;border-radius:14px;background:rgba(20,20,22,.82);color:#fff;font:600 24px/1.3 Inter,'Segoe UI',system-ui,sans-serif;letter-spacing:-.01em;text-align:center;opacity:0;transition:opacity .28s ease,transform .28s ease;backdrop-filter:blur(10px);box-shadow:0 12px 34px rgba(0,0,0,.35)}
       #__demo .cap.on{opacity:1;transform:translateX(-50%) translateY(0)}
-      #__demo .chip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);padding:14px 26px;border-radius:999px;background:rgba(20,20,22,.86);color:#fff;font:600 22px Inter,'Segoe UI',system-ui,sans-serif;opacity:0;transition:opacity .3s ease,transform .3s ease;box-shadow:0 12px 34px rgba(0,0,0,.35)}
+      #__demo .chip{display:block;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);padding:14px 26px;border-radius:999px;background:rgba(20,20,22,.86);color:#fff;font:600 22px Inter,'Segoe UI',system-ui,sans-serif;opacity:0;transition:opacity .3s ease,transform .3s ease;box-shadow:0 12px 34px rgba(0,0,0,.35)}
       #__demo .chip.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
       #__demo .fade{position:absolute;inset:0;background:#000;opacity:0;transition:opacity .35s ease}
       #__demo .fade.on{opacity:1}
