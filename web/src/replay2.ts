@@ -292,6 +292,10 @@ async function preview(): Promise<void> {
   try {
     v.muted = true
     await v.play()
+    // On a phone the preview's play waits for the file, and the person may
+    // tap Play meanwhile: then it is theirs, and it keeps playing. Pausing
+    // here would cut their playback short (an AbortError on the pill).
+    if (playRequested) return
     v.pause()
     v.currentTime = 0
   } catch {
@@ -590,17 +594,28 @@ function loadMedia(): Promise<boolean> {
  * hand this runs inside the tap and always works; while it is still coming
  * the request is kept and honoured the moment it lands.
  */
-let abortRetried = false
+let abortRetries = 0
 function refused(err: unknown): void {
   // The browser said no. Say why on the pill, and hand the recording its own
   // controls, which a browser always honours from a direct tap.
   const v = video()
   const name = err instanceof Error ? err.name : String(err)
-  // a play cut short by a load that replaced it is not a refusal: it is asked
-  // again once the new load has had a moment
-  if (name === 'AbortError' && !abortRetried) {
-    abortRetried = true
-    window.setTimeout(() => v.play().catch(refused), 400)
+  // a play cut short by a load or a seek that crossed it is not a refusal:
+  // it is asked again once things have settled, a few times if need be
+  if (name === 'AbortError' && abortRetries < 4) {
+    abortRetries++
+    window.setTimeout(() => {
+      if (!v.paused) return
+      v.play().catch(refused)
+    }, 500 * abortRetries)
+    return
+  }
+  if (name === 'AbortError') {
+    // still cut short: the recording's own controls, which a tap always reaches
+    v.controls = true
+    el('bar').style.display = 'none'
+    el('playtext').textContent = 'Tap the recording to play'
+    el('playsub').textContent = ''
     return
   }
   console.error('[recap] play refused', name, err)
