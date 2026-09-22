@@ -15,6 +15,7 @@ import type {
   Slide,
   MemoryObject,
   OrgMember,
+  OrgOverview,
   OrgSpace,
   OrgSpaceKind,
   Organization,
@@ -106,6 +107,13 @@ const api = {
   /** the owner removes the organisation for everyone: its spaces and materials go with it, sessions stay with whoever recorded them */
   deleteOrg: (orgId: string): Promise<{ error?: string }> => ipcRenderer.invoke('org:delete', orgId),
   listOrgMembers: (orgId: string): Promise<OrgMember[]> => ipcRenderer.invoke('org:members', orgId),
+  /** the administration's view of an organisation: people, courses, the month */
+  orgOverview: (orgId: string): Promise<OrgOverview | null> => ipcRenderer.invoke('org:overview', orgId),
+  setOrgMemberRole: (orgId: string, userId: string, role: 'lead' | 'member'): Promise<{ error?: string }> =>
+    ipcRenderer.invoke('org:setRole', orgId, userId, role),
+  removeOrgMember: (orgId: string, userId: string): Promise<{ error?: string }> => ipcRenderer.invoke('org:remove', orgId, userId),
+  newOrgCodes: (orgId: string): Promise<{ code?: string; leadCode?: string; error?: string }> => ipcRenderer.invoke('org:newCodes', orgId),
+  renameOrg: (orgId: string, name: string): Promise<{ error?: string }> => ipcRenderer.invoke('org:rename', orgId, name),
   listSpaces: (orgId: string): Promise<OrgSpace[]> => ipcRenderer.invoke('org:spaces', orgId),
   createSpace: (
     orgId: string,

@@ -460,6 +460,42 @@ export interface OrgMember {
   joinedAt: number
 }
 
+/** the whole organisation, as its administration sees it */
+export interface OrgOverview {
+  name: string
+  kind: Space
+  owner: string
+  domains: string[]
+  coursesBy: 'leads' | 'owner'
+  /** the invitation codes; the owner alone receives them */
+  code: string | null
+  leadCode: string | null
+  month: { sessions: number; hours: number; asks: number; active: number }
+  members: {
+    userId: string
+    name: string
+    email: string
+    role: OrgRole
+    joinedAt: number
+    sessions: number
+    courses: number
+    lastSeen: number | null
+  }[]
+  courses: {
+    id: string
+    name: string
+    kind: OrgSpaceKind
+    code: string | null
+    createdAt: number
+    lecturers: string[]
+    students: number
+    sessions: number
+    materials: number
+    liveUrl: string | null
+    lastSession: number | null
+  }[]
+}
+
 export interface SpaceMaterial {
   id: string
   name: string

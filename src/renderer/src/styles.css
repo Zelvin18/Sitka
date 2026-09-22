@@ -13934,3 +13934,187 @@ video {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- the organisation's administration ---- */
+.org-admin-wait {
+  color: var(--text-3);
+  font-size: 13.5px;
+  padding: 24px 0;
+}
+.org-admin-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.org-admin-sub {
+  font-size: 13.5px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.org-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 18px 0 8px;
+}
+.org-stat {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.org-stat b {
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.org-stat span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.org-table {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.org-tr {
+  display: grid;
+  grid-template-columns: 2.2fr 1.6fr 0.8fr 0.8fr 0.9fr 1.1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  text-align: left;
+  width: 100%;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+}
+.org-tr:first-child {
+  border-top: none;
+}
+button.org-tr {
+  cursor: pointer;
+}
+button.org-tr:hover {
+  background: var(--bg-soft);
+}
+.org-th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--bg-soft);
+}
+.org-tr-people {
+  grid-template-columns: 2.6fr 1.1fr 0.7fr 0.8fr 1fr 0.7fr;
+}
+.org-td-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.org-td-live {
+  font-size: 10px;
+}
+.org-td-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.org-td-actions {
+  text-align: right;
+}
+.org-role-sel {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+.org-admin-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-admin-find {
+  max-width: 260px;
+  margin-bottom: 8px;
+}
+.org-admin-empty {
+  padding: 14px 16px;
+  color: var(--text-3);
+  font-size: 13.5px;
+}
+.org-admin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+.org-admin-cards .invite-card {
+  margin: 0;
+}
+.org-codes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.org-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.org-code span {
+  width: 76px;
+  color: var(--text-3);
+}
+.org-code code {
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-size: 15px;
+  flex: 1;
+}
+.org-admin-note {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 60;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 859px) {
+  .org-tr,
+  .org-tr-people {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .org-th {
+    display: none;
+  }
+  .org-td-actions {
+    text-align: left;
+  }
+}

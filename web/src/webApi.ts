@@ -2818,6 +2818,68 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       downloadText(`${base}.txt`, row.text)
       return { ok: true }
     },
+    // ---------- the organisation's administration ----------
+    orgOverview: async (orgId: string) => {
+      const { data, error } = await sb.rpc('sitka_org_overview', { p_org: orgId })
+      if (error) {
+        if (/does not exist|function/i.test(error.message)) reportError(location.pathname, 'orgOverview: run supabase/orgadmin.sql')
+        return null
+      }
+      const o = data as Record<string, unknown>
+      const ms = (o.month as Record<string, unknown>) ?? {}
+      const when = (v: unknown): number => (v ? new Date(String(v)).getTime() : 0)
+      return {
+        name: String(o.name ?? ''),
+        kind: (o.kind === 'business' ? 'business' : 'education') as Space,
+        owner: String(o.owner ?? ''),
+        domains: Array.isArray(o.domains) ? (o.domains as string[]) : [],
+        coursesBy: o.coursesBy === 'owner' ? 'owner' : 'leads',
+        code: typeof o.code === 'string' ? o.code : null,
+        leadCode: typeof o.leadCode === 'string' ? o.leadCode : null,
+        month: { sessions: Number(ms.sessions ?? 0), hours: Number(ms.hours ?? 0), asks: Number(ms.asks ?? 0), active: Number(ms.active ?? 0) },
+        members: ((o.members as Record<string, unknown>[]) ?? []).map((m) => ({
+          userId: String(m.userId),
+          name: String(m.name ?? ''),
+          email: String(m.email ?? ''),
+          role: (m.role as OrgRole) ?? 'member',
+          joinedAt: when(m.joinedAt),
+          sessions: Number(m.sessions ?? 0),
+          courses: Number(m.courses ?? 0),
+          lastSeen: m.lastSeen ? when(m.lastSeen) : null
+        })),
+        courses: ((o.courses as Record<string, unknown>[]) ?? []).map((c) => ({
+          id: String(c.id),
+          name: String(c.name ?? ''),
+          kind: (c.kind as OrgSpaceKind) ?? 'course',
+          code: typeof c.code === 'string' ? c.code : null,
+          createdAt: when(c.createdAt),
+          lecturers: Array.isArray(c.lecturers) ? (c.lecturers as string[]) : [],
+          students: Number(c.students ?? 0),
+          sessions: Number(c.sessions ?? 0),
+          materials: Number(c.materials ?? 0),
+          liveUrl: typeof c.liveUrl === 'string' ? c.liveUrl : null,
+          lastSession: c.lastSession ? when(c.lastSession) : null
+        }))
+      }
+    },
+    setOrgMemberRole: async (orgId: string, userId: string, role: 'lead' | 'member') => {
+      const { error } = await sb.rpc('sitka_org_set_role', { p_org: orgId, p_user: userId, p_role: role })
+      return error ? { error: error.message } : {}
+    },
+    removeOrgMember: async (orgId: string, userId: string) => {
+      const { error } = await sb.rpc('sitka_org_remove', { p_org: orgId, p_user: userId })
+      return error ? { error: error.message } : {}
+    },
+    newOrgCodes: async (orgId: string) => {
+      const { data, error } = await sb.rpc('sitka_org_new_codes', { p_org: orgId })
+      if (error) return { error: error.message }
+      const d = data as { code?: string; leadCode?: string }
+      return { code: d.code, leadCode: d.leadCode }
+    },
+    renameOrg: async (orgId: string, name: string) => {
+      const { error } = await sb.rpc('sitka_org_rename', { p_org: orgId, p_name: name })
+      return error ? { error: error.message } : {}
+    },
     hideCourse: async (spaceId: string, hidden: boolean) => {
       await sb.rpc('sitka_hide_course', { p_space: spaceId, p_hidden: hidden }).then(() => undefined, () => undefined)
     },

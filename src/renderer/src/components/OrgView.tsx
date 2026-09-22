@@ -14,6 +14,7 @@ import { sizeLabel } from '@shared/materialsLogic'
 import ChatPane from './ChatPane'
 import ConfirmDialog from './ConfirmDialog'
 import MaterialsPanel from './MaterialsPanel'
+import OrgAdmin from './OrgAdmin'
 import { formatDate, formatDuration } from '../lib/format'
 import {
   IconBriefcase,
@@ -460,6 +461,22 @@ export default function OrgView({
             </div>
           )}
 
+          {lead ? (
+            <div style={{ marginTop: 36 }}>
+              <OrgAdmin
+                org={org}
+                onOpenSpace={(id) => {
+                  const s = spaces.find((x) => x.id === id)
+                  if (s) setActive(s)
+                }}
+                onChanged={() => {
+                  void refresh()
+                  onChanged()
+                }}
+              />
+            </div>
+          ) : (
+            <>
           <div className="section-title" style={{ marginTop: 36 }}>
             People
           </div>
@@ -477,6 +494,8 @@ export default function OrgView({
               </div>
             ))}
           </div>
+            </>
+          )}
 
           <div className="org-foot">
             <span>
