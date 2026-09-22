@@ -52,15 +52,32 @@ if (!Array.isArray(rows) || rows.length !== 1) {
 const { id, owner, meta } = rows[0]
 console.log('session', id, '·', meta.title || '(untitled)', '·', meta.status, '· length', meta.durationMs ? Math.round(meta.durationMs / 1000) + ' s' : 'unknown', '· whole', Boolean(meta.whole), '· pending', Boolean(meta.recordingPending))
 
-// ---------- what the cloud holds ----------
-const objs = await r2List(cfg, `${owner}/${id}/`)
+// ---------- what the cloud holds: R2 first, then Supabase's own storage ----------
+// (a page whose reach to R2 failed at the time falls back to Supabase storage)
+const BUCKET = 'recordings'
+async function sbList(prefix) {
+  const r = await fetch(`${SUPA}/storage/v1/object/list/${BUCKET}`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/json' },
+    body: JSON.stringify({ prefix, limit: 1000, offset: 0, sortBy: { column: 'name', order: 'asc' } })
+  })
+  if (!r.ok) throw new Error(`supabase list ${prefix}: ${r.status}`)
+  return (await r.json()).filter((row) => row.id).map((row) => ({ key: `${prefix}/${row.name}`, size: Number(row.metadata?.size ?? 0), from: 'sb' }))
+}
+const inR2 = (await r2List(cfg, `${owner}/${id}/`)).map((o) => ({ ...o, from: 'r2' }))
+const inSb = await sbList(`${owner}/${id}`).catch(() => [])
+const objs = inR2.length > 0 ? inR2 : inSb
 const parts = objs.filter((o) => /\/part-\d+\.webm$/.test(o.key)).sort((a, b) => (a.key < b.key ? -1 : 1))
-const whole = objs.find((o) => o.key === `${owner}/${id}.webm`) || (await r2List(cfg, `${owner}/${id}.webm`)).find((o) => o.key === `${owner}/${id}.webm`)
-console.log('parts:', parts.length, parts.map((p) => (p.size / 1e6).toFixed(1) + 'MB').join(' '), '· whole file:', whole ? (whole.size / 1e6).toFixed(1) + ' MB' : 'none')
+const whole = (await r2List(cfg, `${owner}/${id}.webm`)).find((o) => o.key === `${owner}/${id}.webm`)
+console.log('parts:', parts.length, parts.length ? `in ${parts[0].from === 'r2' ? 'R2' : 'Supabase storage'}:` : '', parts.map((p) => (p.size / 1e6).toFixed(1) + 'MB').join(' '), '· whole file in R2:', whole ? (whole.size / 1e6).toFixed(1) + ' MB' : 'none')
 if (look) process.exit(0)
 if (parts.length === 0) {
   console.error('no parts in the cloud: nothing to mend from')
   process.exit(1)
+}
+async function fetchPart(p) {
+  if (p.from === 'sb') return fetch(`${SUPA}/storage/v1/object/${BUCKET}/${p.key.split('/').map(encodeURIComponent).join('/')}`, { headers: auth })
+  return r2Fetch(cfg, 'GET', p.key)
 }
 // the parts must be an unbroken run from the first: a gap would splice
 // the picture across missing minutes
@@ -79,7 +96,7 @@ mkdirSync(work, { recursive: true })
 const joined = join(work, 'parts.bin')
 const bufs = []
 for (const p of parts) {
-  const r = await r2Fetch(cfg, 'GET', p.key)
+  const r = await fetchPart(p)
   if (!r.ok) throw new Error(`fetch ${p.key}: ${r.status}`)
   const b = Buffer.from(await r.arrayBuffer())
   if (b.length !== p.size) throw new Error(`${p.key}: got ${b.length} of ${p.size}`)
