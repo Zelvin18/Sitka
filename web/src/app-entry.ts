@@ -570,14 +570,21 @@ async function boot(): Promise<void> {
   // needs a script from Google, which an extension is not allowed to load,
   // so inside the extension the button is the only Google way in.
   if (!IN_EXTENSION) {
+    const known = el('gknown')
     googleModule
       .then((m) =>
-        m.quietGoogle((token, nonce) =>
-          withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () =>
-            supabaseFromGoogle(token, nonce)
-          )
+        m.quietGoogle(
+          (token, nonce) =>
+            withBusy(google ?? (el('gsignin') as HTMLButtonElement), 'Signing you in…', () =>
+              supabaseFromGoogle(token, nonce)
+            ),
+          known
         )
       )
+      .then(() => {
+        // Google drew its own button: one is enough on a card this plain
+        if (known.childElementCount > 0 && google) google.classList.add('hidden')
+      })
       .catch(() => undefined)
   }
   ;(el('gsignin') as HTMLButtonElement).onclick = () =>

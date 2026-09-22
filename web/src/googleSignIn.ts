@@ -119,6 +119,7 @@ interface GsiMoment {
 }
 interface GsiId {
   initialize(o: Record<string, unknown>): void
+  renderButton(parent: HTMLElement, o: Record<string, unknown>): void
   prompt(cb?: (m: GsiMoment) => void): void
   cancel(): void
   disableAutoSelect(): void
@@ -169,7 +170,7 @@ function gsiScript(): Promise<GsiId> {
  * produces. Nothing happens at all when the client id is not set, when the
  * page is inside another site's frame, or when Google decides not to offer.
  */
-export async function quietGoogle(onToken: (token: string, nonce: string) => void): Promise<void> {
+export async function quietGoogle(onToken: (token: string, nonce: string) => void, mount?: HTMLElement | null): Promise<void> {
   if (!GOOGLE_CLIENT_ID) return
   if (window.top !== window.self) return
   // A one-time code ties Google's proof to this very page load: Google is
@@ -211,6 +212,25 @@ export async function quietGoogle(onToken: (token: string, nonce: string) => voi
     use_fedcm_for_prompt: true,
     context: 'signin'
   })
+  // Google's own button, drawn where the card asked for it. When Google
+  // knows the person it reads "Continue as <their name>", and one tap is
+  // the whole sign-in — no chooser, no second window.
+  if (mount) {
+    try {
+      id.renderButton(mount, {
+        type: 'standard',
+        theme: 'filled_black',
+        size: 'large',
+        shape: 'pill',
+        text: 'continue_with',
+        logo_alignment: 'center',
+        width: Math.min(360, Math.max(240, mount.clientWidth || 320))
+      })
+      mount.classList.remove('hidden')
+    } catch {
+      /* Google would not draw it: our own button is there */
+    }
+  }
   id.prompt()
 }
 
