@@ -112,6 +112,12 @@
 #gate{transition:opacity .35s ease}
 #gate.gone{opacity:0;pointer-events:none}
 .gwait .mark{width:18px;height:18px}
+/* the word on the way back to the call, over everything, for a moment */
+.gback{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--bg,#fff);color:var(--text,#141416);font-family:inherit;animation:gfade .25s ease}
+.gback .mark{width:30px;height:30px;margin-bottom:8px}
+.gback b{font-size:20px;letter-spacing:-.01em}
+.gback span{font-size:14px;color:var(--t2,#62626a)}
+@keyframes gfade{from{opacity:0}}
 .lw{animation:lw .4s ease}
 @keyframes lw{from{opacity:0;transform:translateY(4px)}}
 

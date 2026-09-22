@@ -249,6 +249,11 @@ export function meetingDone(tabId: number): void {
 }
 
 /** From a viewer: back to the meeting tab the session is being captured from. */
+/** the sign-in the card asked for has landed: the worker takes the person back to the call */
+export function signedInForCard(): void {
+  void send({ type: 'sitca:signedin' })
+}
+
 export function focusMeeting(): void {
   void send({ type: 'sitca:focus-meeting' })
 }

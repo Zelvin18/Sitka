@@ -83,6 +83,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // ---------- the card ----------
 
+/** a capture asked for before anyone was signed in: picked up the moment they are */
+let signinFor = null
+
 function cardOf(tabId) {
   return cards.get(tabId) || { state: 'idle' }
 }
@@ -286,10 +289,13 @@ async function startWithEngine(tab, mode, spaceId) {
     return { ok: false }
   }
   if (!e.signedIn) {
-    // nobody is signed in on this browser yet: Sitca opens in a tab to sign
-    // in; the card says so, and the next press starts the session
+    // Nobody is signed in on this browser yet: Sitca opens in a tab to sign
+    // in. What was asked is remembered; the moment the sign-in lands, the
+    // person is brought back to the call and it starts by itself.
+    signinFor = { tabId, mode, spaceId: spaceId || '', at: Date.now() }
     setCard(tabId, { state: 'signin' })
-    await chrome.tabs.create({ url: APP, active: true })
+    const t = await chrome.tabs.create({ url: APP + '#signin', active: true })
+    signinFor.appTab = t.id
     await closeEngineIfIdle()
     return { ok: false, signin: true }
   }
@@ -432,6 +438,54 @@ function handle(msg, sender, reply) {
     return undefined
   }
   // ----- from the viewer: back to the call -----
+  // ----- the person signed in, in the tab the card opened -----
+  if (msg.type === 'sitca:signedin') {
+    engine.signedIn = true
+    const want = signinFor
+    signinFor = null
+    const appTab = sender.tab ? sender.tab.id : want && want.appTab
+    ;(async () => {
+      if (want && Date.now() - want.at < 30 * 60000) {
+        let tab = null
+        try {
+          tab = await chrome.tabs.get(want.tabId)
+        } catch {
+          tab = null
+        }
+        if (tab) {
+          await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined)
+          if (tab.windowId !== undefined) chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined)
+          setCard(tab.id, { state: 'starting', mode: want.mode })
+          // the press on the icon that began this still stands for the tab;
+          // should Chrome want a fresh one, the card asks for it
+          startCapture(tab, want.mode, want.spaceId).catch(() => setCard(tab.id, { state: 'needIcon' }))
+        }
+      }
+      // the sign-in tab has done its work
+      if (typeof appTab === 'number') setTimeout(() => chrome.tabs.remove(appTab).catch(() => undefined), 1200)
+    })()
+    reply({ ok: true })
+    return undefined
+  }
+  // the card's own "Sign in" press: the sign-in tab, brought forward or opened
+  if (msg.type === 'sitca:card:signin') {
+    ;(async () => {
+      if (signinFor && typeof signinFor.appTab === 'number') {
+        try {
+          await chrome.tabs.update(signinFor.appTab, { active: true })
+          reply({ ok: true })
+          return
+        } catch {
+          /* closed: opened again below */
+        }
+      }
+      const t = await chrome.tabs.create({ url: APP + '#signin', active: true })
+      if (signinFor) signinFor.appTab = t.id
+      else if (tab) signinFor = { tabId: tab.id, mode: 'record', spaceId: '', at: Date.now(), appTab: t.id }
+      reply({ ok: true })
+    })()
+    return true
+  }
   if (msg.type === 'sitca:focus-meeting') {
     const t = recordingTab()
     if (t !== null) {

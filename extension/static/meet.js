@@ -414,9 +414,9 @@
         <p class="sc-p">${card.key ? `Press <kbd class="sc-key">${esc(card.key)}</kbd>, or the ` : 'Press the '}<b>Sitca icon</b> in Chrome’s toolbar, top right. Chrome asks for that once per tab; then this card does the rest.</p>
         <div class="sc-arrow" aria-hidden="true">↗</div>`
       } else if (st === 'signin') {
-        html += `<div class="sc-title">Sign in first</div>
-        <p class="sc-p">Sitca opened in a new tab. Sign in there, come back, and press the button again.</p>
-        <button type="button" class="sc-btn" data-act="choose">Try again</button>`
+        html += `<div class="sc-title">Sign in to start</div>
+        <p class="sc-p">Sitca is free. Sign in (or make an account) in the tab that opened — you will be brought straight back here, and the capture starts by itself.</p>
+        <button type="button" class="sc-btn" data-act="signin">Open the sign-in tab</button>`
       } else if (st === 'busy') {
         html += `<div class="sc-title">Already capturing</div>
         <p class="sc-p">Sitca is recording another tab. Stop it there first.</p>`
@@ -541,6 +541,10 @@
       return
     }
     if (act === 'dest') return
+    if (act === 'signin') {
+      void ask({ type: 'sitca:card:signin' })
+      return
+    }
     if (act === 'choose') {
       void ask({ type: 'sitca:card:courses' }).then((r) => {
         courses = Array.isArray(r && r.courses) ? r.courses : []

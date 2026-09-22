@@ -21,7 +21,8 @@ import {
   listenForMeetings,
   meetingDone,
   pointApiAtServer,
-  type MeetRequest
+  type MeetRequest,
+  signedInForCard
 } from './extShell'
 
 // Inside the Chrome extension: the server is the website's, and the meeting
@@ -166,6 +167,15 @@ function showOpenProblem(stage: string, detail: string): void {
   b.onclick = () => location.reload()
   p.append(t, d, b)
   box.appendChild(p)
+}
+
+/** a word on the way out: the tab the card opened closes itself a moment later */
+function backToTheCall(): void {
+  const n = document.createElement('div')
+  n.className = 'gback'
+  n.innerHTML = '<svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><b>You are in.</b><span>Taking you back to your call…</span>'
+  document.body.appendChild(n)
+  signedInForCard()
 }
 
 async function launch(): Promise<void> {
@@ -343,6 +353,8 @@ async function boot(): Promise<void> {
     await launch()
     // the engine is up: the worker may now hand it the meeting
     if (IN_ENGINE) engineReady(true)
+    // opened by the card for a sign-in that has now landed: back to the call
+    if (IN_EXTENSION && !IN_ENGINE && location.hash === '#signin') backToTheCall()
     // the courses this person teaches, for the card's "Save to" — kept by
     // the worker, so the card can offer them without waking the engine
     void (window as unknown as { sitka?: { listMyCourses?: () => Promise<{ id: string; name: string; org: string; role: string; hidden: boolean }[]> } }).sitka
