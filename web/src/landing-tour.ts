@@ -1,16 +1,33 @@
 /**
- * Landing page: the product plays inside the laptop in the hero, and sections
- * reveal as they scroll into view.
+ * Landing page: the film plays in the hero (its sound on request), and the
+ * sections reveal as they scroll into view.
  */
-import { mountTour } from '../../src/shared/tour'
 // A refreshed page starts at its top. Browsers put a reloaded page back
 // where it was scrolled, which lands people mid-section with no bearings.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
 window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
-const root = document.getElementById('tour')
-if (root) {
-  mountTour(root, { autoplay: true, loop: true })
+// the advert plays quietly on its own; one press brings the sound (and starts over)
+const vid = document.getElementById('herovid') as HTMLVideoElement | null
+const sound = document.getElementById('herosound') as HTMLButtonElement | null
+if (vid && sound) {
+  sound.addEventListener('click', () => {
+    if (vid.muted) {
+      vid.muted = false
+      vid.currentTime = 0
+      void vid.play().catch(() => undefined)
+      sound.classList.add('playing')
+      ;(sound.lastElementChild as HTMLElement).textContent = 'Mute'
+    } else {
+      vid.muted = true
+      sound.classList.remove('playing')
+      ;(sound.lastElementChild as HTMLElement).textContent = 'Sound'
+    }
+  })
+  vid.addEventListener('click', () => {
+    if (vid.paused) void vid.play().catch(() => undefined)
+    else vid.pause()
+  })
 }
 
 const revealed = document.querySelectorAll<HTMLElement>('.rv')

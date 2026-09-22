@@ -409,17 +409,6 @@ footer{border-top:1px solid var(--border);background:var(--soft);padding:64px 0 
   </div>
 </div></footer>
 
-<script>
-  // the advert plays quietly on its own; one press brings the sound (and starts over)
-  (function () {
-    var v = document.getElementById('herovid'), b = document.getElementById('herosound')
-    if (!v || !b) return
-    b.addEventListener('click', function () {
-      if (v.muted) { v.muted = false; v.currentTime = 0; v.play().catch(function () {}); b.classList.add('playing'); b.lastChild.textContent = 'Mute' }
-      else { v.muted = true; b.classList.remove('playing'); b.lastChild.textContent = 'Sound' }
-    })
-    v.addEventListener('click', function () { if (v.paused) v.play().catch(function () {}); else v.pause() })
-  })()
-</script>
+<script type="module" src="/src/landing-tour.ts"></script>
 </body>
 </html>

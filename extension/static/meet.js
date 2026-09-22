@@ -734,7 +734,31 @@
   }
 
   function captionsRegion() {
-    return document.querySelector('[role="region"][aria-label*="aption" i], [aria-label="Captions"]')
+    // Meet names the block differently from account to account and week to
+    // week: several names are tried, and its own inner marks as well
+    return document.querySelector(
+      '[role="region"][aria-label*="aption" i], [role="region"][aria-label*="ubtitle" i], [aria-label="Captions"], [aria-label="Live captions"], [jsname="dsyhDe"], [jsname="tgaKEf"], .a4cQT'
+    )
+  }
+  /**
+   * The bar Meet draws above the captions (the language chip, the font
+   * controls, the settings cog): small, sits just above the words, and is
+   * nothing the call needs. Found by what it holds, folded with the rest.
+   */
+  function captionToolbars(region) {
+    const out = []
+    const looks = (el) =>
+      Boolean(
+        el.querySelector('[aria-label*="caption" i], [aria-label*="Caption" i], [aria-label*="font" i], [aria-label*="Font" i], [role="combobox"], select, [aria-label*="settings" i]')
+      ) && el.getBoundingClientRect().height < 90 && !el.querySelector('video, [data-participant-id], [aria-label*="microphone" i], [aria-label*="camera" i]')
+    let el = region
+    for (let depth = 0; depth < 4 && el && el.parentElement && el.parentElement !== document.body; depth++) {
+      const parent = el.parentElement
+      for (const sib of parent.children) if (sib !== el && looks(sib)) out.push(sib)
+      if (out.length) break
+      el = parent
+    }
+    return out
   }
 
   // Meet's captions stay switched on for Sitca to read, but are kept off the
@@ -772,7 +796,13 @@
   }
   function foldCaptions() {
     const block = captionBlock()
-    if (!block || block.getAttribute(FOLDED) === '1') return
+    if (!block) return
+    // the toolbar above the words goes too, when it stands on its own
+    for (const bar of captionToolbars(block)) foldOne(bar)
+    foldOne(block)
+  }
+  function foldOne(block) {
+    if (block.getAttribute(FOLDED) === '1') return
     block.setAttribute(FOLDED, '1')
     block.style.setProperty('height', '0', 'important')
     block.style.setProperty('min-height', '0', 'important')
@@ -800,7 +830,8 @@
       st = document.createElement('style')
       st.id = HIDE_ID
       // the words themselves, in case the block is drawn again before the next fold
-      st.textContent = '[role="region"][aria-label*="aption" i],[aria-label="Captions"]{opacity:0!important;pointer-events:none!important}'
+      st.textContent =
+        '[role="region"][aria-label*="aption" i],[role="region"][aria-label*="ubtitle" i],[aria-label="Captions"],[aria-label="Live captions"],[jsname="dsyhDe"],[jsname="tgaKEf"],.a4cQT{opacity:0!important;pointer-events:none!important;max-height:0!important;min-height:0!important;overflow:hidden!important;margin:0!important;padding:0!important}'
       document.documentElement.appendChild(st)
     }
     foldCaptions()

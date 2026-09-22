@@ -11,6 +11,10 @@ export default async function handler(req, res) {
   }
   try {
     const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = req.body || {}
+    // The language the session is in, once known. Left to guess on every
+    // piece, the model hears a mumbled second of English as Japanese or
+    // Korean and writes that; told the language, it stays in it.
+    const language = /^[a-z]{2}$/i.test(String((req.body || {}).language || '')) ? String(req.body.language).toLowerCase() : ''
     // a session sends a piece every few seconds; a flood from one address is something else
     if (!(keys.openaiApiKey || keys.groqApiKey) && overLimit(req, 60, 1500)) {
       res.status(429).json({ error: 'Slow down a little.' })
@@ -61,6 +65,7 @@ export default async function handler(req, res) {
       form.append('file', new Blob([buf], { type: mime }), `chunk.${ext}`)
       form.append('model', t.model)
       form.append('response_format', 'verbose_json')
+      if (language) form.append('language', language)
       let r
       try {
         // a stalled provider is given up on well inside the function's own limit
@@ -120,7 +125,9 @@ export default async function handler(req, res) {
       const t = String(j.text).trim()
       if (/[\p{L}\p{N}]/u.test(t) && !INVENTED.test(t)) segments.push({ start: offsetSec, end: offsetSec + 5, text: t })
     }
-    res.status(200).json({ segments })
+    // what language the model heard, for the session to hold on to
+    const heard = typeof j.language === 'string' ? j.language.toLowerCase().slice(0, 12) : ''
+    res.status(200).json({ segments, language: heard })
   } catch (err) {
     res.status(500).json({ error: String((err && err.message) || err) })
   }

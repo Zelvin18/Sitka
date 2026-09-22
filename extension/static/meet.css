@@ -868,4 +868,11 @@
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
+  /* the list the browser drops down follows the card's dark scheme, and
+     each course is written so it can be read whatever the browser draws */
+  color-scheme: dark;
+}
+.sc-dest-sel option {
+  color: #f3f3f5;
+  background: #1a1a1d;
 }

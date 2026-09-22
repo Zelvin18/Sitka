@@ -711,6 +711,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  // ---------- the language a session is spoken in ----------
+  // Whisper names what it heard ("english", "japanese"); held per session
+  // once the early pieces agree, and sent back with every later piece.
+  const sttLang = new Map<string, { code: string }>()
+  const sttVotes = new Map<string, Map<string, number>>()
+  const LANG_CODE: Record<string, string> = {
+    english: 'en', french: 'fr', spanish: 'es', portuguese: 'pt', german: 'de', italian: 'it', swahili: 'sw', arabic: 'ar',
+    chinese: 'zh', hindi: 'hi', japanese: 'ja', korean: 'ko', russian: 'ru', dutch: 'nl', turkish: 'tr', polish: 'pl',
+    indonesian: 'id', vietnamese: 'vi', thai: 'th', luganda: 'lg', shona: 'sn', zulu: 'zu', afrikaans: 'af', amharic: 'am', somali: 'so'
+  }
+
   // ---------- the voices, told apart ----------
   // The whole recording is listened to again by a service that hears which
   // stretches share a voice. The session's own transcript lines are then
@@ -3958,6 +3969,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     transcribeChunk: async (id, chunk, offsetSec, mime = 'audio/webm') => {
       if (!hasSttKey()) return { error: 'missing-key' }
       try {
+        // the session's language, once the first clear pieces have said which
+        const held = sttLang.get(id)
         const bytes = new Uint8Array(chunk)
         let bin = ''
         const step = 0x8000
@@ -3969,7 +3982,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           keys: { openaiApiKey: k.openaiApiKey, groqApiKey: k.groqApiKey },
           audioB64: btoa(bin),
           mime: (mime || 'audio/webm').split(';')[0],
-          offsetSec
+          offsetSec,
+          language: held?.code || undefined
         })
         // a dropped request is tried again before it counts as a problem
         let r: Response | null = null
@@ -3998,6 +4012,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           return { error: j.error || 'Transcription failed.' }
         }
         const segments: TranscriptSegment[] = j.segments || []
+        // The language is held after a few pieces agree on it. From then on
+        // every piece is heard in that language, and a stray word the model
+        // "hears" in another is never written down.
+        if (!held && segments.length > 0 && typeof j.language === 'string') {
+          const code = LANG_CODE[j.language] || (j.language.length === 2 ? j.language : '')
+          if (code) {
+            const votes = sttVotes.get(id) ?? new Map<string, number>()
+            votes.set(code, (votes.get(code) ?? 0) + segments.reduce((n, s) => n + s.text.length, 0))
+            sttVotes.set(id, votes)
+            const total = [...votes.values()].reduce((a, b) => a + b, 0)
+            const [top, n] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]
+            if (total >= 120 && n / total >= 0.7) sttLang.set(id, { code: top })
+          }
+        }
         if (segments.length > 0) {
           const d = await loadSession(id)
           if (d) {
