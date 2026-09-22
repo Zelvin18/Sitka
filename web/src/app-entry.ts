@@ -341,7 +341,34 @@ async function noteCourseLink(): Promise<void> {
   }
 }
 
+/**
+ * Back from Google with a complaint rather than a session: the address
+ * carries `error=…`. Said plainly on the card, and taken off the address so
+ * a reload is a fresh start.
+ */
+function noteAuthTrouble(): void {
+  const from = new URLSearchParams(location.search.slice(1) + '&' + location.hash.slice(1))
+  const code = from.get('error') || from.get('error_code')
+  if (!code) return
+  const why = from.get('error_description') || ''
+  const said = /exchange external code/i.test(why)
+    ? 'Google let you in, but this site could not finish the sign-in: its Google settings are incomplete. Use your email and password for now — this is being fixed.'
+    : /access_denied|cancel/i.test(code + why)
+      ? 'The sign-in was cancelled.'
+      : /expired|invalid_grant/i.test(code + why)
+        ? 'That sign-in took too long and expired. Try again.'
+        : why.replace(/\+/g, ' ') || 'Google sign-in did not finish. Try again, or use your email and password.'
+  try {
+    const box = document.getElementById('gerr')
+    if (box) box.textContent = said
+  } catch {
+    /* the card is not up yet */
+  }
+  history.replaceState(null, '', location.pathname)
+}
+
 async function boot(): Promise<void> {
+  noteAuthTrouble()
   await noteCourseLink()
   const isRecovery = location.hash.includes('type=recovery')
   let { data } = await sb.auth.getSession()
