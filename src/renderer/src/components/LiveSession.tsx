@@ -96,8 +96,11 @@ interface EngineStatus {
   talkingMuted?: boolean
   /** the card is asked "still there?" ('quiet' | 'gone'), or told the question is over ('no') */
   stillAsk?: 'quiet' | 'gone' | 'no'
+  /** the recorder has died mid-session: the card says so, in these words */
+  fault?: string
   error?: string
 }
+const RECORDER_FAULT = 'The picture stopped recording — a fault in Chrome’s video encoder. The words are still being captured. Stop and capture again for the picture.'
 const tellEngine = (s: EngineStatus): void => {
   if (!extShell()?.engine) return
   window.dispatchEvent(new CustomEvent('sitka:engine:status', { detail: s }))
@@ -1618,13 +1621,20 @@ export default function LiveSession({
         const report = (window as unknown as { sitkaReportError?: (p: string, m: string) => void }).sitkaReportError
         report?.(location.pathname, what)
       }
+      // ... and said on the meeting page's card, where the person is looking
+      const faulted = (): void => {
+        setSttError((cur) => cur ?? 'The recording stopped unexpectedly. The captions carry on; stop and start again for the picture.')
+        if (meetTab) tellEngine({ state: 'recording', tabId: meetTab.tabId, sessionId: meta.id, startedAt: sessionStartRef.current, fault: RECORDER_FAULT })
+      }
       recorder.onerror = (e) => {
         const err = (e as Event & { error?: { name?: string; message?: string } }).error
         say(`recorder error: ${err?.name ?? ''} ${err?.message ?? ''}`.trim())
-        setSttError((cur) => cur ?? 'The recording stopped unexpectedly. The captions carry on; stop and start again for the picture.')
+        faulted()
       }
       recorder.onstop = () => {
-        if (!stoppingRef.current) say(`recorder stopped on its own after ${Math.round((Date.now() - sessionStartRef.current) / 1000)} s`)
+        if (stoppingRef.current) return
+        say(`recorder stopped on its own after ${Math.round((Date.now() - sessionStartRef.current) / 1000)} s`)
+        faulted()
       }
       // the shared window or screen closed: the picture is gone, the session may be over
       for (const t of desktopStream?.getVideoTracks() ?? []) {

@@ -3557,6 +3557,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     retryUploads: async (sessionId: string) => {
+      // the parts may be on another page of this computer (the extension's
+      // engine recorded it) or another device: this page can only speak for
+      // what it holds, and leaves the row's word alone otherwise
+      const held = (await localParts(sessionId)).length > 0 || [...memParts.keys()].some((k) => k.startsWith(sessionId + ':'))
+      if (!held) {
+        const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+        return { pending: d?.meta.recordingPending ? 1 : 0 }
+      }
       const left = await retryPendingUploads(sessionId)
       const pending = left < 0 ? (await localParts(sessionId)).length : left
       // nothing left on this device: the flag comes off the row too, so the
@@ -3906,10 +3914,35 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       )
       if (d.meta.hosted && d.meta.eventId) d.meta.replayUrl = replayUrlFor(d.meta.eventId)
 
-      // Flush the tail of the recording and wait for every part to land.
+      // The session is over the moment the devices are released, and its row
+      // says so now: the true length, "complete", and "the recording is still
+      // on its way" while the last parts go up. On a slow connection that
+      // upload can take many minutes; nobody looking at the session (this
+      // page, the library, a phone) should see it as still live meanwhile.
       const b = recBuf.get(id)
       if (b) {
         flushPart(id, true)
+        d.meta.recordingPending = true
+      }
+      await patchSession(id, { meta: d.meta })
+      backupSession(id) // belt-and-braces: text survives even if the row write above failed
+      emitSession(d.meta)
+      tellOthers(id, d.meta)
+      // a recap shared before the end (the extension's card does, so the link
+      // is ready at once) now gets the whole transcript and the true length
+      if (d.meta.recapUrl) {
+        void sb
+          .from('recaps')
+          .update({ transcript: d.segments, duration_ms: d.meta.durationMs, notes: d.notes?.markdown ?? '', updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .then(() => undefined, () => undefined)
+      }
+      // the title, summary and notes need only the words: written while the
+      // recording is still going up, so they are there when it lands
+      if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)
+
+      // Then the tail of the recording, and every part landing.
+      if (b) {
         await b.chain
         recBuf.delete(id)
         // Anything the cloud refused stays on this device and keeps retrying;
@@ -3944,26 +3977,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             reportError(location.pathname, `recording too small: ${total} bytes for ${Math.round(durationMs / 1000)} s (${id}) · ${navigator.userAgent.slice(0, 60)}`)
           }
         }
+        // the recording's state, now settled: up, or still partly here
+        await patchSession(id, { meta: d.meta })
+        emitSession(d.meta)
+        tellOthers(id, d.meta)
         // every part is up: join them into the one whole file players start
         // fastest from; then, with the whole recording to hand, tell its voices apart
         if (left === 0) void consolidateRecording(id).then(() => speakersQuietly(id))
       }
-      await patchSession(id, { meta: d.meta })
-      backupSession(id) // belt-and-braces: text survives even if the row write above failed
-      emitSession(d.meta)
-      tellOthers(id, d.meta)
-      // a recap shared before the end (the extension's card does, so the link
-      // is ready at once) now gets the whole transcript and the true length
-      if (d.meta.recapUrl) {
-        void sb
-          .from('recaps')
-          .update({ transcript: d.segments, duration_ms: d.meta.durationMs, notes: d.notes?.markdown ?? '', updated_at: new Date().toISOString() })
-          .eq('id', id)
-          .then(() => undefined, () => undefined)
-      }
-
-      // analysis in the background
-      if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)
       return d.meta
     },
 

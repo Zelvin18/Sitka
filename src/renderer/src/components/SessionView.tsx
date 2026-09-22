@@ -1087,7 +1087,7 @@ export default function SessionView({
             <span>
               {uploading
                 ? 'Uploading the rest of this recording…'
-                : 'Part of this recording is still on this device. It uploads on its own when the connection allows.'}
+                : 'Part of this recording is still on the device that recorded it. It uploads on its own when the connection allows.'}
             </span>
             {!uploading && (
               <button
@@ -1303,8 +1303,8 @@ export default function SessionView({
                   <Loading compact onDark words={LOADING_WORDS.recording} delay={0} />
                   {meta.recordingPending && (
                     <div className="video-waiting-note">
-                      The last parts are still uploading from this device. Keep this tab open
-                      until the recording appears.
+                      The last parts are still uploading from the device that recorded it. Keep
+                      that page open until the recording appears.
                     </div>
                   )}
                 </div>

@@ -178,6 +178,13 @@
         last.title = card.lastLine || ''
       }
     }
+    const foot = root.querySelector('.sc-foot')
+    if (foot && card.fault && !root.querySelector('.sc-fault')) {
+      const f = (root.ownerDocument || document).createElement('div')
+      f.className = 'sc-fault'
+      f.textContent = card.fault
+      foot.parentElement.insertBefore(f, foot)
+    }
     const mic = root.querySelector('.sc-mic')
     if (mic && card.mic !== undefined) {
       const off = !card.mic
@@ -475,6 +482,7 @@
       })
       if (asking) html += `<div class="sc-msg sc-sitca sc-thinking"><span class="sc-dots"><span></span><span></span><span></span></span></div>`
       html += `</div>
+        ${card.fault ? `<div class="sc-fault">${esc(card.fault)}</div>` : ''}
         <div class="sc-foot">
           <div class="sc-last" title="${esc(card.lastLine || '')}">${esc(card.lastLine || 'Listening…')}</div>
           ${IS_MEET ? `<button type="button" class="sc-cc" data-act="cc" title="Meet's captions on the screen. Sitca reads them either way.">Captions on screen <b>${showCc ? 'on' : 'off'}</b></button>` : ''}
@@ -490,7 +498,7 @@
         <div class="sc-head">${MARK}<b>Sitca</b>${saved ? '<button type="button" class="sc-x" data-act="close" aria-label="Close">×</button>' : ''}</div>
         <div class="sc-row">
           ${saved ? '<span class="sc-ok">✓</span>' : '<span class="sc-spin"></span>'}
-          <span class="sc-title sc-title-inline">${saved ? 'Saved to your library' : 'Saving…'}</span>
+          <span class="sc-title sc-title-inline">${saved ? 'Saved to your library' : card.recapUrl ? 'Uploading the recording…' : 'Saving…'}</span>
         </div>`
       if (card.recapUrl) {
         // the link leads: a lecturer pastes it to the class and is done

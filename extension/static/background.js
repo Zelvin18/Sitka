@@ -612,6 +612,7 @@ function handle(msg, sender, reply) {
       if (msg.qr) patch.qr = msg.qr
       if (msg.lastLine) patch.lastLine = msg.lastLine
       if (typeof msg.mic === 'boolean') patch.mic = msg.mic
+      if (msg.fault) patch.fault = msg.fault
       if (msg.talkingMuted) {
         // a moment, not a state: told to the card once and not remembered
         chrome.tabs.sendMessage(t, { type: 'sitca:nudge', what: 'mic' }).catch(() => undefined)
