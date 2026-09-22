@@ -115,6 +115,9 @@ section{padding:72px 0}
 .sec-head p{color:var(--t2);font-size:17px}
 .alt{background:var(--soft);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 
+.film{max-width:920px;margin:0 auto 28px}
+.film video{display:block;width:100%;aspect-ratio:16/9;border-radius:18px;background:#0b0b0d;border:1px solid var(--border);box-shadow:0 30px 80px var(--shadow)}
+.film-note{margin-top:12px;font-size:13px;color:var(--t3);text-align:center}
 .how{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .how-card{padding:26px 24px;border:1px solid var(--border);border-radius:20px;background:var(--bg)}
 .how-card .n{font-size:13px;font-weight:700;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
@@ -234,6 +237,7 @@ footer{border-top:1px solid var(--border);background:var(--soft);padding:36px 0 
 
 <section id="how"><div class="wrap">
   <div class="sec-head"><h2>Three presses, start to finish.</h2><p>No bot in the participant list, no second app to open. The card lives on the page you are already looking at.</p></div>
+  <div class="film"><video src="/sitca-extension.mp4" poster="/sitca-extension.jpg" controls playsinline preload="metadata" aria-label="Sitca in your browser, in about a minute"></video><div class="film-note">A minute, start to finish: add it, pin it, and what it does on a call.</div></div>
   <div class="how">
     <div class="how-card"><div class="n">Before</div><h3>Press the card</h3><p>Open a meeting and press <b>Capture with Sitca</b>. Choose <b>Just record</b> for yourself, or <b>Host on Sitca</b> to get a link others can watch along with and ask questions on.</p></div>
     <div class="how-card"><div class="n">During</div><h3>Talk to Sitca privately</h3><p>A small floating window carries your conversation with Sitca: what did she just say, summarise the last ten minutes, what was the deadline. The recording never sees it.</p></div>

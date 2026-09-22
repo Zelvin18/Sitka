@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browser</title>
+<link rel="stylesheet" href="meet-card.css">
+<style>
+  /* A browser window, drawn: a tab strip, an address bar, a toolbar with the
+     puzzle piece where extensions live. Inside it, the call. The recorder
+     walks it through the steps with window.go(step). A stage set. */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#0b0b0d;font-family:'Segoe UI',Inter,system-ui,sans-serif;overflow:hidden}
+  .win{position:absolute;inset:0;display:flex;flex-direction:column;background:#202124;color:#e8eaed}
+  .tabs{height:44px;background:#202124;display:flex;align-items:flex-end;padding:8px 10px 0;gap:6px}
+  .tab{height:36px;padding:0 14px;border-radius:10px 10px 0 0;background:#35363a;display:flex;align-items:center;gap:9px;font-size:13px;min-width:230px}
+  .tab .fav{width:14px;height:14px;border-radius:50%;background:#8ab4f8}
+  .tab .x{margin-left:auto;color:#9aa0a6}
+  .newtab{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#9aa0a6;font-size:18px;margin-bottom:4px}
+  .bar{height:48px;background:#35363a;display:flex;align-items:center;gap:8px;padding:0 10px}
+  .nav{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#9aa0a6;font-size:16px}
+  .addr{flex:1;height:34px;border-radius:17px;background:#202124;display:flex;align-items:center;padding:0 14px;gap:10px;font-size:13.5px;color:#e8eaed}
+  .addr .lock{width:11px;height:11px;border-radius:2px;border:1.5px solid #9aa0a6;border-top-width:3px}
+  .tools{display:flex;align-items:center;gap:4px}
+  .tool{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#e8eaed;position:relative}
+  .tool svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tool.sitca{display:none}
+  .tool.sitca.on{display:grid}
+  .tool.sitca svg{fill:currentColor;stroke:none}
+  .tool.sitca.pressed{background:#3c4043}
+  .avatar{width:26px;height:26px;border-radius:50%;background:#1e88e5;display:grid;place-items:center;font-size:12px;font-weight:600;margin-left:6px}
+  .content{flex:1;position:relative;overflow:hidden;background:#202124}
+  .content iframe{width:100%;height:100%;border:0;display:block}
+  /* the extensions menu, under the puzzle piece */
+  .menu{position:absolute;right:112px;top:88px;width:320px;background:#292a2d;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);padding:8px 0;z-index:5;display:none;font-size:13.5px}
+  .menu.on{display:block}
+  .menu .h{padding:8px 16px 6px;font-size:12px;color:#9aa0a6;font-weight:600}
+  .menu .it{display:flex;align-items:center;gap:12px;padding:9px 16px}
+  .menu .it svg{width:18px;height:18px;fill:#e8eaed}
+  .menu .pin{margin-left:auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#9aa0a6}
+  .menu .pin.on{color:#8ab4f8}
+  .menu .pin svg{width:16px;height:16px;fill:currentColor}
+  /* the install dialog, over the page */
+  .dlg{position:absolute;right:60px;top:62px;width:380px;background:#292a2d;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);padding:20px 20px 16px;z-index:6;display:none}
+  .dlg.on{display:block}
+  .dlg .t{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:600;margin-bottom:10px}
+  .dlg .t svg{width:28px;height:28px;fill:#e8eaed}
+  .dlg .d{font-size:13px;color:#bdc1c6;margin-bottom:6px}
+  .dlg ul{margin:6px 0 16px 18px;font-size:13px;color:#bdc1c6}
+  .dlg .btns{display:flex;justify-content:flex-end;gap:8px}
+  .dlg button{border:0;border-radius:18px;padding:8px 16px;font:600 13px 'Segoe UI',system-ui,sans-serif;cursor:pointer}
+  .dlg .no{background:transparent;color:#8ab4f8}
+  .dlg .yes{background:#8ab4f8;color:#202124}
+  .toast{position:absolute;right:60px;top:62px;width:380px;background:#292a2d;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);padding:16px 18px;z-index:6;display:none;font-size:13.5px}
+  .toast.on{display:block}
+  .toast b{display:block;font-size:15px;margin-bottom:4px}
+  .toast .d{color:#bdc1c6}
+  /* a page inside the window: the extension page, or the call */
+  .page{position:absolute;inset:0;display:none}
+  .page.on{display:block}
+  .extlite{position:absolute;inset:0;background:#fff;color:#141416;font-family:Inter,'Segoe UI',system-ui,sans-serif}
+  .extlite-nav{height:60px;display:flex;align-items:center;gap:10px;padding:0 48px;border-bottom:1px solid #ececef;font-size:15px}
+  .extlite-nav .mk{width:20px;height:20px}
+  .extlite-nav span{color:#8a8a92;margin-left:4px}
+  .extlite-hero{max-width:760px;margin:110px auto 0;text-align:center}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8a8a92;margin-bottom:16px}
+  .extlite h1{font-size:56px;line-height:1.08;letter-spacing:-.03em;font-weight:750;margin-bottom:18px}
+  .extlite p{font-size:19px;color:#5c5c66;line-height:1.5;max-width:600px;margin:0 auto 30px}
+  .btnrow{display:flex;justify-content:center;gap:12px}
+  .btn1,.btn2{display:inline-flex;align-items:center;height:50px;padding:0 24px;border-radius:14px;font-weight:650;font-size:16px}
+  .btn1{background:#141416;color:#fff}
+  .btn2{border:1px solid #e0e0e4;color:#141416}
+  /* the highlight ring that says "here" */
+  .ring{position:absolute;width:44px;height:44px;border-radius:50%;border:2px solid #8ab4f8;box-shadow:0 0 0 6px rgba(138,180,248,.25);pointer-events:none;opacity:0;transition:opacity .2s;z-index:7}
+  .ring.on{opacity:1;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 12px rgba(138,180,248,.12)}}
+  /* the Sitca card, exactly as the extension draws it, over the call */
+  /* a little larger than life, so it reads on a film */
+  #sitca-card{display:none;transform:scale(1.3);transform-origin:left bottom}
+  #sitca-card.on{display:block}
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="tabs">
+    <div class="tab"><span class="fav"></span><span id="tabname">Video call – wkr-qzbm-dfe</span><span class="x">×</span></div>
+    <div class="newtab">+</div>
+  </div>
+  <div class="bar">
+    <div class="nav">‹</div><div class="nav">›</div><div class="nav">↻</div>
+    <div class="addr"><span class="lock"></span><span id="addr">meet.example.com/wkr-qzbm-dfe</span></div>
+    <div class="tools">
+      <div class="tool sitca" id="sitcaicon" title="Sitca"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg></div>
+      <div class="tool" id="puzzle" title="Extensions"><svg viewBox="0 0 24 24"><path d="M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg></div>
+      <div class="tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></div>
+      <div class="avatar">D</div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="page on" id="callpage"><iframe src="meet.html#talk" title="call"></iframe></div>
+    <div class="page" id="extpage">
+      <div class="extlite">
+        <div class="extlite-nav"><svg class="mk" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><b>Sitca</b><span>Extension</span></div>
+        <div class="extlite-hero">
+          <div class="eyebrow">For your browser</div>
+          <h1>Capture any call.<br>One press.</h1>
+          <p>On Google Meet, Zoom or Teams: a recording, live captions, private answers and a recap — without leaving the call.</p>
+          <div class="btnrow"><span class="btn1">Add to Chrome — it’s free</span><span class="btn2">See how it works</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="menu" id="menu">
+      <div class="h">Extensions</div>
+      <div class="it"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><span>Sitca</span><span class="pin" id="pin"><svg viewBox="0 0 24 24"><path d="M16 3v6l2 3v2h-5v7l-1 1-1-1v-7H6v-2l2-3V3h8z"/></svg></span></div>
+      <div class="h">Manage extensions</div>
+    </div>
+    <div class="dlg" id="dlg">
+      <div class="t"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Add “Sitca”?</div>
+      <div class="d">It can:</div>
+      <ul><li>Capture the tab of a call you choose</li><li>Read and change data on sitcaai.vercel.app</li></ul>
+      <div class="btns"><button class="no">Cancel</button><button class="yes" id="addyes">Add extension</button></div>
+    </div>
+    <div class="toast" id="toast"><b>Sitca has been added</b><div class="d">Press the puzzle piece and pin it, so it is one press away on every call.</div></div>
+    <div id="sitca-card" data-state="idle"></div>
+    <div class="ring" id="ring"></div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id)
+  const MARK = '<svg class="sc-mark" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>'
+  const card = $('sitca-card')
+  const ring = (el) => {
+    const r = $('ring')
+    if (!el) { r.classList.remove('on'); return }
+    const b = el.getBoundingClientRect()
+    r.style.left = b.left + b.width / 2 - 22 + 'px'
+    r.style.top = b.top + b.height / 2 - 22 + 'px'
+    r.classList.add('on')
+  }
+  const CAPS = [
+    'Thanks for joining, Daniel. I know Grace and Kev could not make it.',
+    'First, the Q3 numbers. We closed the quarter at four hundred and twelve thousand.',
+    'That is a shortfall of about sixty-eight thousand, roughly fourteen percent under plan.',
+    'The important part is why. It is not demand — sign-ups were up twenty-two percent.',
+    'Three enterprise contracts slipped into October; two are already signed this week.'
+  ]
+  let started = 0
+  let clockT = null
+  const clock = () => { const s = Math.floor((Date.now() - started) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+  const state = {}
+  function renderLive() {
+    let chat = ''
+    for (const m of state.chat || []) chat += m.role === 'you' ? `<div class="sc-msg sc-you">${m.text}</div>` : `<div class="sc-msg sc-sitca sc-rich">${m.text}</div>`
+    if (state.thinking) chat += '<div class="sc-msg sc-sitca sc-thinking"><span class="sc-dots"><span></span><span></span><span></span></span></div>'
+    if (!chat) chat = '<div class="sc-hello"><div class="sc-hello-t">Sitca is listening.</div><div class="sc-hello-d">Ask anything about what has been said, privately. Nobody in the call sees this.</div></div>'
+    card.innerHTML = `<div class="sc-panel">
+      <div class="sc-row sc-top sc-anchor"><span class="sc-dot"></span><span class="sc-time">${clock()}</span><span class="sc-label">Recording</span><button type="button" class="sc-mini">Open</button><button type="button" class="sc-mini sc-stop" id="stopbtn">Stop</button></div>
+      <div class="sc-chat">${chat}</div>
+      <div class="sc-foot"><div class="sc-last">${state.last || 'Listening…'}</div></div>
+      <form class="sc-ask" onsubmit="return false"><input type="text" class="sc-in" id="askin" placeholder="Ask about what was said…"><button type="submit" class="sc-go" id="askgo">↑</button></form>
+    </div>`
+    const chatEl = card.querySelector('.sc-chat')
+    chatEl.scrollTop = chatEl.scrollHeight
+    if (state.typed !== undefined) { const i = $('askin'); i.value = state.typed; i.focus() }
+  }
+  window.go = {
+    // the extension page inside the window
+    extpage() { $('callpage').classList.remove('on'); $('extpage').classList.add('on'); $('tabname').textContent = 'Sitca for your browser'; $('addr').textContent = 'sitcaai.vercel.app/extension' },
+    dialog() { $('dlg').classList.add('on') },
+    added() { $('dlg').classList.remove('on'); $('toast').classList.add('on'); setTimeout(() => $('toast').classList.remove('on'), 4200) },
+    menu(on) { $('menu').classList.toggle('on', on); if (on) ring($('puzzle')); else ring(null) },
+    pin() { $('pin').classList.add('on'); setTimeout(() => { $('sitcaicon').classList.add('on'); $('menu').classList.remove('on'); ring($('sitcaicon')); setTimeout(() => ring(null), 1800) }, 500) },
+    call() { $('extpage').classList.remove('on'); $('callpage').classList.add('on'); $('tabname').textContent = 'Video call – wkr-qzbm-dfe'; $('addr').textContent = 'meet.example.com/wkr-qzbm-dfe'; $('toast').classList.remove('on') },
+    press() { ring($('sitcaicon')); $('sitcaicon').classList.add('pressed'); setTimeout(() => { ring(null); $('sitcaicon').classList.remove('pressed') }, 900) },
+    choose() {
+      card.setAttribute('data-state', 'choose'); card.classList.add('on')
+      card.innerHTML = `<div class="sc-box"><div class="sc-head">${MARK}<b>Sitca</b><button type="button" class="sc-x">×</button></div>
+        <div class="sc-title">Capture this call</div>
+        <button type="button" class="sc-opt" id="optrecord"><span class="sc-opt-t">Just record</span><span class="sc-opt-d">Recording, live captions, notes and a recap, for you.</span></button>
+        <button type="button" class="sc-opt"><span class="sc-opt-t">Host on Sitca</span><span class="sc-opt-d">The same, plus a link so others watch along and ask.</span></button></div>`
+    },
+    start() {
+      card.setAttribute('data-state', 'recording'); started = Date.now(); state.chat = []; state.last = ''
+      renderLive()
+      clockT = setInterval(() => { const t = card.querySelector('.sc-time'); if (t) t.textContent = clock() }, 1000)
+      // the captions arrive, one line every few seconds
+      let i = 0
+      state.capT = setInterval(() => { if (i < CAPS.length) { state.last = CAPS[i++]; const l = card.querySelector('.sc-last'); if (l) l.textContent = state.last } }, 3200)
+    },
+    typed(text) { state.typed = text; const i = $('askin'); if (i) { i.value = text; i.focus() } },
+    ask(text) { state.typed = undefined; state.chat.push({ role: 'you', text }); state.thinking = true; renderLive() },
+    answer(html) { state.thinking = false; state.chat.push({ role: 'sitca', text: html }); renderLive() },
+    stop() {
+      clearInterval(clockT); clearInterval(state.capT)
+      card.setAttribute('data-state', 'ending')
+      card.innerHTML = `<div class="sc-box sc-done"><div class="sc-head">${MARK}<b>Sitca</b></div><div class="sc-row"><span class="sc-spin"></span><span class="sc-title sc-title-inline">Saving…</span></div></div>`
+      setTimeout(() => {
+        card.setAttribute('data-state', 'ended')
+        card.innerHTML = `<div class="sc-box sc-done"><div class="sc-head">${MARK}<b>Sitca</b><button type="button" class="sc-x">×</button></div>
+          <div class="sc-row"><span class="sc-ok">✓</span><span class="sc-title sc-title-inline">Saved to your library</span></div>
+          <div class="sc-share"><div class="sc-share-t">Share the recap</div><div class="sc-share-url">sitcaai.vercel.app/r/89ef…f50ed</div><button type="button" class="sc-btn sc-btn-wide">Copy the link</button></div></div>`
+      }, 1800)
+    }
+  }
+</script>
+</body>
+</html>
