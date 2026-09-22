@@ -1,26 +1,15 @@
 import React, { useEffect, useRef } from 'react'
-import { mountTour } from '@shared/tour'
 
 interface Props {
   onClose: () => void
 }
 
-/** The guided "How Sitca works" walkthrough, in a modal over the app. */
+/** "How Sitca works": the film, under a minute, in a modal over the app. */
 export default function Tour({ onClose }: Props): React.JSX.Element {
-  const ref = useRef<HTMLDivElement>(null)
-  // The player is mounted exactly once. The parent may re-render (and hand
-  // over a new onClose) while it plays; that must never restart the tour.
+  // The parent may re-render (and hand over a new onClose) while the film
+  // plays; that must never restart it.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return undefined
-    return mountTour(node, {
-      onDone: () => onCloseRef.current(),
-      doneLabel: 'Start using Sitca',
-      showSkip: false
-    })
-  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onCloseRef.current()
@@ -33,7 +22,7 @@ export default function Tour({ onClose }: Props): React.JSX.Element {
       <div className="tour-modal" onClick={(e) => e.stopPropagation()}>
         <div className="tour-modal-head">
           <span className="tour-modal-title">How Sitca works</span>
-          <span className="tour-modal-time">about a minute and a half</span>
+          <span className="tour-modal-time">under a minute</span>
           <button className="tour-modal-skip" onClick={() => onCloseRef.current()}>
             Skip
           </button>
@@ -48,7 +37,15 @@ export default function Tour({ onClose }: Props): React.JSX.Element {
             </svg>
           </button>
         </div>
-        <div ref={ref} />
+        <video
+          className="tour-film"
+          src="/sitca-hero.mp4"
+          poster="/sitca-hero.jpg"
+          controls
+          autoPlay
+          playsInline
+          onEnded={() => onCloseRef.current()}
+        />
       </div>
     </div>
   )

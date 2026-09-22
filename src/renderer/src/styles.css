@@ -365,6 +365,14 @@ body {
   animation: fadeIn 0.15s ease;
 }
 
+.tour-film {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  background: #0b0b0d;
+}
+
 .tour-modal-head {
   display: flex;
   align-items: center;

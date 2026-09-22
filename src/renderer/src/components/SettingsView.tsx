@@ -668,12 +668,12 @@ export default function SettingsView({ settings, onSaved }: Props): React.JSX.El
           <div className="start-body">
             <div className="start-title">How Sitca works</div>
             <div className="field-hint" style={{ marginTop: 2 }}>
-              A minute and a half, start to finish: a lecture captured, read, questioned and remembered. Watch it again any time.
+              Under a minute: a meeting captured, asked, caught up on and shared. Watch it again any time.
             </div>
             <div className="start-actions">
               <button className="btn btn-sm" onClick={() => setShowTour(true)}>
                 <IconPlay size={12} strokeWidth={2.2} />
-                Watch the walkthrough
+                Watch the film
               </button>
             </div>
           </div>
