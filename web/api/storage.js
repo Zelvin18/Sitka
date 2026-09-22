@@ -57,6 +57,12 @@ export default async function handler(req, res) {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const owner = token ? await userOf(token) : null
   askerToken = token
+  // A token that could not be checked at all (the account service was
+  // unreachable for a moment) must not read as "not your file": that turned
+  // a blip into a refused recording upload. The page is told to try again.
+  if (token && owner === UNCHECKED) {
+    return res.status(503).json({ error: 'Could not check who you are just now. Try again in a moment.' })
+  }
 
   try {
     if (op === 'put') return await putLinks(res, cfg, owner, body)
@@ -75,17 +81,30 @@ export default async function handler(req, res) {
 
 // ---------- who is asking ----------
 
+/** the answer when the account service itself could not be asked */
+const UNCHECKED = Symbol('unchecked')
 async function userOf(token) {
-  try {
-    const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON }
-    })
-    if (!r.ok) return null
-    const j = await r.json()
-    return typeof j?.id === 'string' ? j.id : null
-  } catch {
-    return null
+  let reached = false
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON }
+      })
+      reached = true
+      // 401/403: the token is no good, and saying so is the answer.
+      // 5xx: the service is unwell; asked once more, then reported as such.
+      if (r.status >= 500) {
+        reached = false
+        continue
+      }
+      if (!r.ok) return null
+      const j = await r.json()
+      return typeof j?.id === 'string' ? j.id : null
+    } catch {
+      /* could not be reached: once more */
+    }
   }
+  return reached ? null : UNCHECKED
 }
 
 /**

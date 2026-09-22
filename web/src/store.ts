@@ -96,24 +96,41 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
   }
 
   async function post<T>(op: string, body: Record<string, unknown>): Promise<T | null> {
-    try {
-      const t = await token()
-      const r = await fetch('/api/storage', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(t ? { Authorization: `Bearer ${t}` } : {})
-        },
-        body: JSON.stringify({ op, session: session?.() ?? undefined, ...body })
-      })
-      // 501 means R2 is not set up and 4xx means not allowed: both are
-      // answers. A 5xx is the server failing, and the caller may try again.
-      if (r.status >= 500) throw new Error(`storage ${r.status}`)
-      if (!r.ok) return null
-      return (await r.json()) as T
-    } catch (err) {
-      if (err instanceof Error && /^storage \d+$/.test(err.message)) throw err
-      return null
+    // Asking for a link is only asking: a request that never arrived, or a
+    // server having a bad moment, is asked again rather than reported as a
+    // refusal. Three goes, a breath apart; a real "no" comes back at once.
+    const waits = [500, 1500]
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const t = await token()
+        const r = await fetch('/api/storage', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(t ? { Authorization: `Bearer ${t}` } : {})
+          },
+          body: JSON.stringify({ op, session: session?.() ?? undefined, ...body })
+        })
+        // 501 means R2 is not set up and 4xx means not allowed: both are
+        // answers. A 5xx is the server failing, and it is asked again.
+        if (r.status >= 500) {
+          if (attempt < waits.length) {
+            await sleep(waits[attempt])
+            continue
+          }
+          throw new Error(`storage ${r.status}`)
+        }
+        if (!r.ok) return null
+        return (await r.json()) as T
+      } catch (err) {
+        if (err instanceof Error && /^storage \d+$/.test(err.message)) throw err
+        // never arrived: the network, not the server's word
+        if (attempt < waits.length) {
+          await sleep(waits[attempt])
+          continue
+        }
+        return null
+      }
     }
   }
   /** One retry after a short pause, for the server's bad moment. */
@@ -274,7 +291,10 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
             await sleep(500)
             continue
           }
-          return { error: 'Storage refused the upload.' }
+          // truthful: we asked and got no link. Which of the two it was —
+          // no answer at all, or a refusal — the page cannot tell apart, so
+          // it says the thing that is true of both and keeps the piece.
+          return { error: navigator.onLine ? 'Storage did not hand out an upload link. It will be tried again.' : 'No connection: the recording waits on this device.' }
         }
         try {
           const r = await fetch(link, {
