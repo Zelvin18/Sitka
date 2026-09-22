@@ -59,10 +59,10 @@ function tokenOf(mod: AuthMod, result: import('firebase/auth').UserCredential | 
 
 /**
  * Show Google's account chooser and return Google's ID token for the person
- * who chose. A pop-up first (it works everywhere, including Safari); when a
- * browser refuses the pop-up, the page itself goes to Google and comes back,
- * in which case this returns null and `finishGoogleRedirect` is answered on
- * the way back.
+ * who chose. This is the pop-up way, which suits a computer. A browser that
+ * refuses the pop-up, or keeps the pop-up's storage apart from the page's
+ * (every phone does), raises `popup-no-good`: the caller then sends the page
+ * itself to Google, the plain way round.
  */
 export async function googleIdToken(): Promise<string | null> {
   warmGoogle()
@@ -76,15 +76,7 @@ export async function googleIdToken(): Promise<string | null> {
   } catch (e) {
     const code = (e as { code?: string })?.code || ''
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-      try {
-        sessionStorage.setItem(REDIRECT_MARK, '1')
-        // a recap being kept survives the round trip
-        if (location.hash.startsWith('#keep=')) sessionStorage.setItem('sitka.afterAuth', location.hash)
-      } catch {
-        /* ignore */
-      }
-      await mod.signInWithRedirect(auth, provider(mod))
-      return null
+      throw new Error('popup-no-good')
     }
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
       throw new Error('The Google window was closed before you chose an account.')

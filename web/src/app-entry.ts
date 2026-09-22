@@ -465,6 +465,28 @@ async function boot(): Promise<void> {
   // Google: one tap, and Google vouches for who they are; their name comes
   // with them, so nothing is typed. The page leaves for Google and returns
   // signed in; a recap being kept survives the round trip.
+  // A phone's browser keeps each window's storage apart, so Google's answer
+  // to a pop-up never reaches the page that opened it: the button would wait
+  // for ever. There the page itself goes to Google, through the account
+  // service's own door, and comes back signed in.
+  const ON_PHONE =
+    (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ||
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  /** Leave for Google; the page comes back signed in. Never returns true. */
+  const googleTheLongWay = async (): Promise<boolean> => {
+    try {
+      // a recap or an event being kept survives the round trip
+      if (/^#keep(event)?=/.test(location.hash)) sessionStorage.setItem('sitka.afterAuth', location.hash)
+    } catch {
+      /* ignore */
+    }
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: location.origin + '/app' }
+    })
+    if (error) throw new Error(error.message)
+    return false // the page is on its way to Google
+  }
   const google = el('ggoogle') as HTMLButtonElement | null
   if (google) {
     // fetch the Google library now, quietly, so the tap answers at once.
@@ -480,12 +502,23 @@ async function boot(): Promise<void> {
           const got = await googleIdTokenViaChrome(GOOGLE_CLIENT_ID)
           return await supabaseFromGoogle(got.token, got.nonce)
         }
+        if (ON_PHONE) return await googleTheLongWay()
         const { googleIdToken } = await googleModule
-        const token = await googleIdToken()
+        let token: string | null = null
+        try {
+          token = await googleIdToken()
+        } catch (e) {
+          const why = e instanceof Error ? e.message : String(e)
+          // closed on purpose: say so. Anything else (a refused pop-up, a
+          // browser that will not carry Google's answer back) is not the
+          // person's problem: the plain way round is taken instead.
+          if (/closed before you chose/i.test(why)) throw e
+          return await googleTheLongWay()
+        }
         // null: the page is on its way to Google and will come back signed in
         if (!token) return false
         return await supabaseFromGoogle(token)
-      }, 10 * 60000) // choosing an account can take as long as it takes
+      }, 4 * 60000) // choosing an account takes as long as it takes, within reason
   }
   // The quiet way in: when the browser already knows them, Google hands over
   // their proof without a tap and the workspace opens; otherwise Google's
