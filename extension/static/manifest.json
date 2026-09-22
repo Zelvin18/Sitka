@@ -17,7 +17,17 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["sidePanel", "tabCapture", "activeTab", "storage", "identity", "contextMenus", "tabs", "offscreen", "alarms"],
+  "permissions": [
+    "sidePanel",
+    "tabCapture",
+    "activeTab",
+    "storage",
+    "identity",
+    "contextMenus",
+    "tabs",
+    "offscreen",
+    "alarms"
+  ],
   "minimum_chrome_version": "116",
   "host_permissions": [
     "https://sitcaai.vercel.app/*",
@@ -45,14 +55,20 @@
         "https://*.webex.com/*",
         "https://*.whereby.com/*"
       ],
-      "js": ["meet.js"],
-      "css": ["meet.css"],
+      "js": [
+        "meet.js"
+      ],
+      "css": [
+        "meet.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["meet.css"],
+      "resources": [
+        "meet.css"
+      ],
       "matches": [
         "https://meet.google.com/*",
         "https://*.zoom.us/*",
@@ -67,8 +83,11 @@
   ],
   "commands": {
     "capture": {
-      "suggested_key": { "default": "Alt+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
       "description": "Sitca: capture this meeting"
     }
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo1jRVF5RqZLwt6cRBtBLWPCE+KNuXOjdZJqvSiR7FluN+uZGmEw36QvyVo54v4lvdfRDbN7q8vzWhpWo9FPO03GTIBeBww2KzxxucJApl9KMnflJG/b+0w0vCyw2QwDZUaa0zuoPjmqJiuzmgDo8C7dp5A/Tp9pTvU+6rgly+wG1e4oFmq7lnyo5RUs4S//2aszcDCY8g2eXFiLLIV2hYVd17n2cpPcO0fMGnrY5/QJlCvmYamexNcYmD3bkQjvOfRzgfBo7yBC+AdaJabbbhG/2jehH0kHJ2lzeFkD+hmTxnQuxA5FSJJcNLQKorf8+uj6/dYIo/nC6gmQmPcZJ3wIDAQAB"
 }

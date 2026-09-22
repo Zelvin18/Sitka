@@ -13,3 +13,6 @@ web/dist/
 # local build settings (the extension build reads web/.env.local)
 .env.local
 .env*.local
+
+# the extension's private key (pins its ID), never committed
+extension/key.pem
