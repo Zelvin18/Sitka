@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
+import { patientFetch } from './patientFetch'
 import { downloadBytes, fileName, notesPdf, withoutTimes } from './notesFile'
 import './style.css'
 import { installFocusGuard } from '../../src/shared/focusGuard'
@@ -9,10 +10,10 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
+const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false }, global: { fetch: patientFetch } })
 // The person's own account, when they have one on this browser: the app keeps
 // its session here too. Used only to say who they are and to keep the event.
-const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } })
+const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, global: { fetch: patientFetch } })
 let me: { id: string; name: string } | null = null
 async function whoAmI(): Promise<void> {
   try {

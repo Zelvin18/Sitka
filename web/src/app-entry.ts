@@ -8,6 +8,7 @@
  */
 import './gate'
 import { createClient } from '@supabase/supabase-js'
+import { patientFetch } from './patientFetch'
 import {
   IN_ENGINE,
   IN_EXTENSION,
@@ -40,7 +41,7 @@ if (IN_EXTENSION) {
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-const sb = createClient(SUPA_URL, SUPA_KEY)
+const sb = createClient(SUPA_URL, SUPA_KEY, { global: { fetch: patientFetch } })
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 // A refreshed page starts at its top. Browsers put a reloaded page back

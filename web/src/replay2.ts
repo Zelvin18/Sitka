@@ -4,6 +4,7 @@
  * the words as paragraphs lit while they are spoken, and Sitca in a dock.
  */
 import { createClient } from '@supabase/supabase-js'
+import { patientFetch } from './patientFetch'
 import { md, parseTs as parseChipTs } from './mdlite'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { installFocusGuard } from '../../src/shared/focusGuard'
@@ -50,7 +51,7 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
+const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false }, global: { fetch: patientFetch } })
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 // every recap link opens here: /r/<id> as shared everywhere, and /r2/<id>
