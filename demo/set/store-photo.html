@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitca — store pictures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* The store listing's pictures: a photograph (extension/store/photos, 1536×1024)
+     cropped to the store's size, with the headline and one line under it in
+     our own type, and the wordmark in a corner. ?s=1..5 | tile | marquee */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#141416;color:#fff;font-family:Inter,'Segoe UI',system-ui,sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+  .photo{position:absolute;display:block}
+  .shade{position:absolute;left:0;right:0;height:58%;pointer-events:none}
+  .shade.bottom{bottom:0;background:linear-gradient(to top,rgba(8,8,10,.82) 0%,rgba(8,8,10,.55) 38%,rgba(8,8,10,0) 100%)}
+  .shade.one{height:44%}
+  .shade.top{top:0;background:linear-gradient(to bottom,rgba(8,8,10,.82) 0%,rgba(8,8,10,.55) 38%,rgba(8,8,10,0) 100%)}
+  .words{position:absolute;left:60px;max-width:740px}
+  .words.bottom{bottom:58px}
+  .words.top{top:56px}
+  .words.one{max-width:none}
+  .words.one h1{white-space:nowrap}
+  .words.one p{max-width:none;white-space:nowrap}
+  h1{font-size:54px;line-height:1.08;letter-spacing:-.035em;font-weight:750;text-shadow:0 2px 18px rgba(0,0,0,.35)}
+  p{font-size:22px;line-height:1.42;color:#d9d9de;margin-top:14px;max-width:600px;text-shadow:0 1px 12px rgba(0,0,0,.45)}
+  .brand{position:absolute;right:52px;bottom:48px;display:flex;align-items:center;gap:9px;font-size:21px;font-weight:700;letter-spacing:-.02em;text-shadow:0 1px 12px rgba(0,0,0,.5)}
+  .brand svg{width:24px;height:24px;filter:drop-shadow(0 1px 8px rgba(0,0,0,.5))}
+  /* the marquee: the picture already carries its headline; one line under it */
+  .marquee-sub{position:absolute;left:52px;top:266px;font-size:20px;line-height:1.4;color:#e4e4e8;max-width:330px;text-shadow:0 1px 12px rgba(0,0,0,.45)}
+  .marquee-sub b{display:block;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:#bdbdc6;margin-bottom:8px;font-weight:700}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  const MARK = '<svg viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>'
+  const q = new URLSearchParams(location.search)
+  const s = q.get('s') || '1'
+  const W = innerWidth, H = innerHeight
+  // the pictures are 1536×1024. A screenshot takes the 1400×875 rectangle at
+  // the top middle (the bottom band held the AI's own caption); the marquee a
+  // wide strip a little down; the tile the middle.
+  const SHOT = { srcW: 1400, srcX: 68, srcY: 0 }
+  const CROP = { marquee: { srcW: 1536, srcX: 0, srcY: 200 }, tile: { srcW: 1536, srcX: 0, srcY: 22 } }[s] || SHOT
+  const scale = W / CROP.srcW
+  const img = `<img class="photo" src="/photo/${s}" style="width:${1536 * scale}px;left:${-CROP.srcX * scale}px;top:${-CROP.srcY * scale}px">`
+  const brand = `<div class="brand">${MARK}Sitca</div>`
+  const COPY = {
+    1: ['One click. Any call.', 'Press the Sitca button on any video call. It records, listens and writes notes while you talk.', 'bottom'],
+    2: ['Ask anything, while it’s happening.', 'Missed a name, a number, a decision? Ask mid-call, get the answer.', 'bottom one'],
+    3: ['Notes that write themselves.', 'Clean notes and key moments, with the time each one happened. Nothing to type.', 'bottom'],
+    4: ['Late? Catch up in ten seconds.', 'Join late and Sitca tells you what you missed, so you can jump straight in.', 'bottom one'],
+    5: ['Share the recap.', 'One link: the recording, the notes, and an assistant that answers questions.', 'top one']
+  }
+  let html = img
+  if (COPY[s]) {
+    const [h, p, pos] = COPY[s]
+    html += `<div class="shade ${pos.replace('one', 'one')}"></div><div class="words ${pos}"><h1>${h}</h1><p>${p}</p></div>${brand}`
+  } else if (s === 'marquee') {
+    html += `<div class="marquee-sub"><b>Chrome extension</b>Sitca records, listens and remembers — so you can be in the conversation.</div>${brand}`
+  }
+  document.getElementById('root').innerHTML = html
+</script>
+</body>
+</html>

@@ -1,14 +1,16 @@
 # Sitca — Chrome Web Store listing
 
 Everything the Developer Dashboard asks for, in the order it asks. Pictures
-are beside this file (made by `demo/store.mjs`; re-run it after a design change).
+are beside this file: the photographs in `photos/` (1–5, marquee, tile; 1536×1024)
+typeset by `demo/store-photos.mjs` — re-run it after a
+change to the words or the photographs.
 
 ## Store listing
 
 **Name:** Sitca
 
 **Summary** (132 characters max):
-The AI that sits in on your meeting: live captions, private answers and a recap link — from a small card on Meet, Zoom or Teams.
+Never take notes in a call again. One click records, answers your questions mid-call, writes the notes and shares a recap.
 
 **Category:** Productivity → Communication (or "Productivity / Tools")
 
@@ -16,15 +18,22 @@ The AI that sits in on your meeting: live captions, private answers and a recap 
 
 **Description:**
 
-Sitca sits in on your meetings, lectures and talks — without a bot joining the call.
+Sitca sits in on your calls so you can be in the conversation — no bot joins, nothing to set up.
 
-Open a call on Google Meet, Zoom, Microsoft Teams, Webex, Whereby or a YouTube lecture, press the Sitca icon once, and a small card in the corner of the page does the rest:
+ONE CLICK. ANY CALL.
+Open Google Meet, Zoom, Microsoft Teams, Webex, Whereby or a YouTube lecture, press the Sitca icon once, and a small card in the corner records, listens and writes while you talk.
 
-• Records the call, with your microphone only if you switch it on
-• Captions every word as it is said — in your language
-• Answers your questions privately, from what has actually been said ("What did she just say?", "Summarise the last ten minutes", "What was the deadline?"). Nobody in the call sees this.
-• Writes notes and picks out the key moments as it goes
-• Hands you a recap link the moment the call ends: recording, transcript with the speakers named, notes and highlights. Send it to everyone who missed it — they can ask it questions too.
+ASK ANYTHING, WHILE IT'S HAPPENING.
+Missed a name, a number, a decision? Ask Sitca mid-call — "What did Priya say about the deadline?" — and get the answer from what was actually said. Nobody else in the call sees it.
+
+NOTES THAT WRITE THEMSELVES.
+Clean notes and the key moments, with the time each one happened. Nothing to type, nothing to tidy up afterwards.
+
+LATE? CATCH UP IN TEN SECONDS.
+Join late and Sitca tells you what you missed, so you can jump straight in.
+
+SHARE THE RECAP.
+The moment the call ends you get one link: the recording, the transcript with speakers named, the notes — and an assistant that answers questions about the call. Send it to everyone who missed it.
 
 Hosting a lecture or a meeting? Choose "Host on Sitca" and you get a link and a QR code: people in the room follow along with captions in their own language and ask Sitca privately.
 
@@ -42,7 +51,7 @@ Sitca is free to start. Sign in with Google or an email.
 | Marquee promo tile | `promo-marquee-1400x560.png` | 1400×560 |
 | Promo video | the extension film on the site: https://sitcaai.vercel.app/sitca-extension.mp4 (upload to YouTube and paste the link) | |
 
-Screenshot captions, in order: one press to capture · live captions · ask privately · a recap link when it ends · nothing is recorded until you press.
+Screenshot captions, in order: One click. Any call. · Ask anything, while it's happening. · Notes that write themselves. · Late? Catch up in ten seconds. · Share the recap.
 
 ## Privacy practices (the Privacy tab)
 

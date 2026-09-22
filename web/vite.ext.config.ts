@@ -13,18 +13,22 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { cpSync, existsSync, mkdirSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, copyFileSync } from 'fs'
 
 const OUT = resolve(__dirname, '../extension/dist')
 const STATIC = resolve(__dirname, '../extension/static')
+const PUBLIC = resolve(__dirname, 'public')
+/** the pictures the app page needs; the site's films, posters and PNG originals stay on the site */
+const KEEP = (f: string): boolean => f.endsWith('.webp') || ['favicon.svg', 'apple-touch-icon.png', 'welcome-hero.png', 'sitca-hero.jpg'].includes(f)
 
-/** manifest, worker, page script and styles: copied in whole once the app is built */
+/** manifest, worker, page script and styles, and the few pictures: copied once the app is built */
 function extensionFiles(): Plugin {
   return {
     name: 'sitca-extension-files',
     closeBundle() {
       if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
       cpSync(STATIC, OUT, { recursive: true })
+      for (const f of readdirSync(PUBLIC)) if (KEEP(f)) copyFileSync(resolve(PUBLIC, f), resolve(OUT, f))
     }
   }
 }
@@ -45,6 +49,7 @@ export default defineConfig({
     'import.meta.env.VITE_SITCA_EXTENSION': JSON.stringify('1'),
     'import.meta.env.VITE_API_ORIGIN': JSON.stringify('https://sitcaai.vercel.app')
   },
+  publicDir: false,
   build: {
     outDir: OUT,
     emptyOutDir: true,

@@ -1,5 +1,8 @@
 import React, { useEffect, useRef } from 'react'
 
+// the film lives on the site; the extension package does not carry it
+const FILM = location.protocol === 'chrome-extension:' ? 'https://sitcaai.vercel.app/sitca-hero.mp4' : '/sitca-hero.mp4'
+
 interface Props {
   onClose: () => void
 }
@@ -39,7 +42,7 @@ export default function Tour({ onClose }: Props): React.JSX.Element {
         </div>
         <video
           className="tour-film"
-          src="/sitca-hero.mp4"
+          src={FILM}
           poster="/sitca-hero.jpg"
           controls
           autoPlay
