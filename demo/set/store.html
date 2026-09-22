@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sitca — store</title>
+<link rel="stylesheet" href="meet-card.css">
+<style>
+  /* The store listing's pictures: one idea each, big words on the left, the
+     card doing that thing over a call on the right. ?s=1..5 | tile | marquee | icon */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#0f0f11;color:#fff;font-family:Inter,'Segoe UI',system-ui,sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+  .bg{position:absolute;inset:-10%;background:radial-gradient(ellipse at 18% 25%,rgba(120,120,140,.24),transparent 55%),radial-gradient(ellipse at 85% 80%,rgba(90,90,110,.2),transparent 50%)}
+  .slide{position:absolute;inset:0;display:grid;grid-template-columns:0.9fr 1.1fr;align-items:center;padding:0 64px;gap:44px}
+  .words{position:relative}
+  .k{display:inline-flex;align-items:center;gap:10px;font-size:15px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#9a9aa3;margin-bottom:26px}
+  .k .mark{width:22px;height:22px}
+  h1{font-size:58px;line-height:1.06;letter-spacing:-.035em;font-weight:750;margin-bottom:22px}
+  h1 em{font-style:normal;color:#9a9aa3}
+  p{font-size:22px;line-height:1.45;color:#b8b8c0;max-width:24ch}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{padding:9px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);font-size:17px;font-weight:600}
+  .ticks{margin-top:26px;display:flex;flex-direction:column;gap:12px;font-size:21px;color:#d6d6dc}
+  .ticks div{display:flex;gap:12px;align-items:center}
+  .ticks i{width:24px;height:24px;border-radius:50%;background:#fff;color:#111;display:grid;place-items:center;font-style:normal;font-size:14px;font-weight:800;flex:none}
+  /* the call: a window with two tiles and a bar, the card over it */
+  .call{position:relative;width:100%;aspect-ratio:16/10.8;border-radius:22px;background:#202124;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
+  .tiles{position:absolute;inset:14px 14px 68px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tile{position:relative;border-radius:14px;background:radial-gradient(ellipse at 30% 20%,#2c3038,#1b1d21 70%);display:grid;place-items:center}
+  .tile.sp{outline:2.5px solid #8ab4f8;outline-offset:-2.5px}
+  .av{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:40px;font-weight:600;color:#fff}
+  .nm{position:absolute;left:12px;bottom:12px;font-size:13px;background:rgba(0,0,0,.4);padding:4px 9px;border-radius:6px}
+  .cbar{position:absolute;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .cb{width:38px;height:38px;border-radius:50%;background:#3c4043}
+  .cb.red{background:#ea4335}.cb.wide{width:60px;border-radius:19px}
+  #sitca-card{position:absolute;left:18px;bottom:66px;max-width:none}
+  #sitca-card .sc-box{width:300px}
+  #sitca-card .sc-panel{width:300px}
+  .tiles{grid-template-columns:1fr 1fr}
+  .av{width:80px;height:80px;font-size:34px}
+  /* the small tile and the marquee */
+  .tile-art{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:22px}
+  .tile-art .mark{width:74px;height:74px}
+  .tile-art .t{font-size:54px;font-weight:750;letter-spacing:-.035em}
+  .tile-art .s{font-size:19px;color:#b8b8c0;margin-top:4px}
+  .marquee{padding:0 90px;gap:60px}
+  .marquee h1{font-size:60px}
+  .marquee p{font-size:22px}
+  /* the icon: the mark on a dark rounded square */
+  .icon{position:absolute;inset:0;background:#141416;border-radius:22%;display:grid;place-items:center}
+  .icon .mark{width:64%;height:64%}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div id="root"></div>
+<script>
+  const MARK = '<svg class="mark" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>'
+  const SC = '<svg class="sc-mark" viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>'
+  const call = (card) => `<div class="call">
+    <div class="tiles">
+      <div class="tile sp"><div class="av" style="background:#8e24aa">P</div><div class="nm">Priya Sharma</div></div>
+      <div class="tile"><div class="av" style="background:#1e88e5">D</div><div class="nm">You</div></div>
+    </div>
+    <div class="cbar"><span class="cb"></span><span class="cb red"></span><span class="cb"></span><span class="cb"></span><span class="cb"></span><span class="cb red wide"></span></div>
+    <div id="sitca-card" data-state="recording">${card}</div>
+  </div>`
+  const head = `<div class="sc-head">${SC}<b>Sitca</b><button type="button" class="sc-x">×</button></div>`
+  const TOP = `<div class="sc-row sc-top"><span class="sc-dot"></span><span class="sc-time">12:41</span><span class="sc-label">Recording</span><button type="button" class="sc-mini">Open</button><button type="button" class="sc-mini sc-stop">Stop</button></div>`
+  const ask = `<form class="sc-ask"><input type="text" class="sc-in" placeholder="Ask about what was said…"><button type="submit" class="sc-go">↑</button></form>`
+  const CHOOSE = `<div class="sc-box">${head}<div class="sc-title">Capture this meeting</div>
+    <button type="button" class="sc-opt"><span class="sc-opt-t">Just record</span><span class="sc-opt-d">Recording, live captions, notes and a recap, for you.</span></button>
+    <button type="button" class="sc-opt"><span class="sc-opt-t">Host on Sitca</span><span class="sc-opt-d">The same, plus a link so others follow along and ask.</span></button></div>`
+  const LIVE = `<div class="sc-panel">${TOP}<div class="sc-chat"><div class="sc-hello"><div class="sc-hello-t">Sitca is listening.</div><div class="sc-hello-d">Ask anything about what has been said, privately. Nobody in the call sees this.</div></div></div>
+    <div class="sc-foot"><div class="sc-last">Priya: Three enterprise contracts slipped into October; two are already signed.</div></div>${ask}</div>`
+  const CHAT = `<div class="sc-panel">${TOP}<div class="sc-chat">
+    <div class="sc-msg sc-you">what did she say about the shortfall?</div>
+    <div class="sc-msg sc-sitca sc-rich">Q3 closed at <b>$412k</b> against a <b>$480k</b> target — about <b>$68k</b> short, <b>14%</b> under plan. Timing, not demand: three deals slipped into October, two are already signed. Want the action items?</div></div>
+    <div class="sc-foot"><div class="sc-last">Priya: So the decision is November twelfth, and it is firm.</div></div>${ask}</div>`
+  const DONE = `<div class="sc-box sc-done">${head}<div class="sc-row"><span class="sc-ok">✓</span><span class="sc-title sc-title-inline">Saved to your library</span></div>
+    <div class="sc-share"><div class="sc-share-t">Share the recap</div><div class="sc-share-url">sitcaai.vercel.app/r/89ef…f50ed</div><button type="button" class="sc-btn sc-btn-wide">Copy the link</button></div></div>`
+  const PILL = `<button type="button" class="sc-pill">${SC}<span>Capture with Sitca</span></button>`
+  const words = (k, h, p, extra = '') => `<div class="words"><div class="k">${MARK}${k}</div><h1>${h}</h1><p>${p}</p>${extra}</div>`
+  const S = {
+    1: () => `<div class="slide">${words('Sitca for Chrome', 'The AI that <em>sits in</em> on your meeting.', 'One press on Google Meet, Zoom, Teams, Webex or YouTube. No bot joins the call.')}${call(CHOOSE)}</div>`,
+    2: () => `<div class="slide">${words('Live captions', 'Every word, <em>as it is said.</em>', 'Captions in your language, and a recording that keeps running while you stay present.', '<div class="chips"><span class="chip">English</span><span class="chip">Swahili</span><span class="chip">French</span><span class="chip">Arabic</span><span class="chip">Chinese</span><span class="chip">+ more</span></div>')}${call(LIVE)}</div>`,
+    3: () => `<div class="slide">${words('Ask privately', 'Ask anything. <em>Nobody else sees it.</em>', '“What did she just say?” “Summarise the last ten minutes.” Answers from the call itself, for you alone.')}${call(CHAT)}</div>`,
+    4: () => `<div class="slide">${words('When it ends', 'A recap link, <em>the moment it ends.</em>', 'Recording, transcript, notes and moments — send one link to everyone who missed it, and they can ask it questions too.')}${call(DONE)}</div>`,
+    5: () => `<div class="slide">${words('Your call, your rules', 'Nothing is recorded <em>until you press.</em>', 'A small card in the corner of the page you are already looking at.', '<div class="ticks"><div><i>✓</i>No bot in the participant list</div><div><i>✓</i>Your microphone only if you switch it on</div><div><i>✓</i>Saved to your account, shared only by your link</div></div>')}${call(PILL)}</div>`,
+    tile: () => `<div class="tile-art">${MARK}<div><div class="t">Sitca</div><div class="s">The AI that sits in on your meeting.</div></div></div>`,
+    marquee: () => `<div class="slide marquee">${words('Sitca for Chrome', 'The AI that <em>sits in</em> on your meeting.', 'Captions, private answers and a recap link — from a card on the call.')}${call(CHAT)}</div>`,
+    icon: () => `<div class="icon">${MARK}</div>`
+  }
+  const s = new URLSearchParams(location.search).get('s') || '1'
+  document.getElementById('root').innerHTML = (S[s] || S[1])()
+  if (s === 'icon') document.querySelector('.bg').remove()
+</script>
+</body>
+</html>

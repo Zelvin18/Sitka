@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "description": "Sitca sits beside your Google Meet, Zoom, Teams or YouTube session: live captions, private answers, notes, and a recap to share.",
   "icons": {
-    "16": "icon-192.png",
-    "48": "icon-192.png",
-    "128": "icon-192.png"
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
   },
   "action": {
     "default_title": "Sitca"
