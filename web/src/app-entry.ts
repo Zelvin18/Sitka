@@ -58,12 +58,26 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 // (Done here, not inline in the page: an extension page allows no inline
 // script, and a preload the engine never uses is reported as a fault.)
 {
+  // the type, asked for without blocking the page, is turned on when it comes
+  for (const l of Array.from(document.querySelectorAll('link[data-font]')) as HTMLLinkElement[]) {
+    if (l.sheet) l.media = 'all'
+    else l.addEventListener('load', () => (l.media = 'all'), { once: true })
+  }
   const photo = document.querySelector('.gphoto') as HTMLImageElement | null
   if (photo) {
     if (photo.complete && photo.naturalWidth > 0) photo.classList.add('in')
     else photo.addEventListener('load', () => photo.classList.add('in'), { once: true })
   }
-  if (!IN_ENGINE) {
+  // Only when there is nobody signed in on this browser: someone who is
+  // signed in never sees the picture, and the browser rightly complains
+  // about a preload it never used.
+  let signedInHere = false
+  try {
+    signedInHere = Object.keys(localStorage).some((k) => /^sb-.*-auth-token$/.test(k))
+  } catch {
+    signedInHere = false
+  }
+  if (!IN_ENGINE && !signedInHere) {
     const l = document.createElement('link')
     l.rel = 'preload'
     l.as = 'image'
@@ -253,8 +267,10 @@ async function launch(): Promise<void> {
     const took = Date.now() - began
     if (took > 8000) report(`open took ${Math.round(took / 1000)}s`)
     say('Putting everything in place')
-    // the invisible engine has nobody to read to: it opens at once
-    if (!IN_ENGINE) await new Promise<void>((r) => setTimeout(r, Math.max(0, 3000 - (Date.now() - began))))
+    // A moment so the last words can be read — no more. The opening used to
+    // be held to three seconds however fast the work was, which on a good
+    // connection was three seconds of nothing.
+    if (!IN_ENGINE) await new Promise<void>((r) => setTimeout(r, Math.max(0, 900 - (Date.now() - began))))
     // The sign-in form leaves the page entirely. Left in the document, hidden,
     // it still counts as a login form: an iPhone would offer to fill the
     // password into it at odd moments, keyboard and all.

@@ -201,7 +201,10 @@ export async function quietGoogle(onToken: (token: string, nonce: string) => voi
     callback: (r: GsiCredential) => {
       if (r?.credential) onToken(r.credential, nonce)
     },
+    // Chrome wants it inside `params` now; the older field is kept for
+    // browsers that have not caught up.
     nonce: stamped,
+    params: { nonce: stamped },
     auto_select: !signedOut,
     cancel_on_tap_outside: false,
     itp_support: true,
