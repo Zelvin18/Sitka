@@ -38,11 +38,14 @@ let coursesAsked = false
 // on the next event, with its memory gone. What the cards show, and a choice
 // waiting for the icon press, are kept in session storage so nothing is
 // asked twice.
+/** a capture asked for before anyone was signed in: picked up the moment they are */
+let signinFor = null
 const remembered = (async () => {
   try {
-    const s = await chrome.storage.session.get(['cards', 'wanted'])
+    const s = await chrome.storage.session.get(['cards', 'wanted', 'signinFor'])
     for (const [k, v] of Object.entries(s.cards || {})) cards.set(Number(k), v)
     for (const [k, v] of Object.entries(s.wanted || {})) wanted.set(Number(k), v)
+    if (s.signinFor && typeof s.signinFor.tabId === 'number') signinFor = s.signinFor
   } catch {
     /* nothing kept */
   }
@@ -52,7 +55,7 @@ function remember() {
   for (const [k, v] of cards) c[k] = v
   const w = {}
   for (const [k, v] of wanted) w[k] = v
-  chrome.storage.session.set({ cards: c, wanted: w }).catch(() => undefined)
+  chrome.storage.session.set({ cards: c, wanted: w, signinFor }).catch(() => undefined)
 }
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined)
@@ -82,9 +85,6 @@ chrome.runtime.onInstalled.addListener((details) => {
 })
 
 // ---------- the card ----------
-
-/** a capture asked for before anyone was signed in: picked up the moment they are */
-let signinFor = null
 
 function cardOf(tabId) {
   return cards.get(tabId) || { state: 'idle' }
@@ -296,6 +296,7 @@ async function startWithEngine(tab, mode, spaceId) {
     setCard(tabId, { state: 'signin' })
     const t = await chrome.tabs.create({ url: APP + '#signin', active: true })
     signinFor.appTab = t.id
+    remember()
     await closeEngineIfIdle()
     return { ok: false, signin: true }
   }
@@ -443,6 +444,7 @@ function handle(msg, sender, reply) {
     engine.signedIn = true
     const want = signinFor
     signinFor = null
+    remember()
     const appTab = sender.tab ? sender.tab.id : want && want.appTab
     ;(async () => {
       if (want && Date.now() - want.at < 30 * 60000) {

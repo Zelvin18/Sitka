@@ -169,8 +169,15 @@ function showOpenProblem(stage: string, detail: string): void {
   box.appendChild(p)
 }
 
+// Opened by the card, for a sign-in: known from the first moment (the app
+// rewrites its address as it opens) and kept across a reload on the way.
+const FOR_CARD = 'sitka.signin-for-card'
+const OPENED_FOR_CARD = IN_EXTENSION && !IN_ENGINE && (location.hash === '#signin' || sessionStorage.getItem(FOR_CARD) === '1')
+if (OPENED_FOR_CARD) sessionStorage.setItem(FOR_CARD, '1')
+
 /** a word on the way out: the tab the card opened closes itself a moment later */
 function backToTheCall(): void {
+  sessionStorage.removeItem(FOR_CARD)
   const n = document.createElement('div')
   n.className = 'gback'
   n.innerHTML = '<svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg><b>You are in.</b><span>Taking you back to your call…</span>'
@@ -234,6 +241,8 @@ async function launch(): Promise<void> {
     gate.classList.add('gone')
     await new Promise<void>((r) => setTimeout(r, 380))
     gate.remove()
+    // the card is waiting: the worker takes the person back to the call
+    if (OPENED_FOR_CARD) backToTheCall()
   } catch (err) {
     window.clearTimeout(slow)
     const msg = err instanceof Error ? err.message : String(err)
@@ -353,8 +362,6 @@ async function boot(): Promise<void> {
     await launch()
     // the engine is up: the worker may now hand it the meeting
     if (IN_ENGINE) engineReady(true)
-    // opened by the card for a sign-in that has now landed: back to the call
-    if (IN_EXTENSION && !IN_ENGINE && location.hash === '#signin') backToTheCall()
     // the courses this person teaches, for the card's "Save to" — kept by
     // the worker, so the card can offer them without waking the engine
     void (window as unknown as { sitka?: { listMyCourses?: () => Promise<{ id: string; name: string; org: string; role: string; hidden: boolean }[]> } }).sitka
