@@ -10,10 +10,99 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
+// The person's own account, when they have one on this browser: the app keeps
+// its session here too. Used only to say who they are and to keep the event.
+const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } })
+let me: { id: string; name: string } | null = null
+async function whoAmI(): Promise<void> {
+  try {
+    const { data } = await sbMe.auth.getSession()
+    const u = data.session?.user
+    const meta = (u?.user_metadata ?? {}) as { full_name?: string; name?: string }
+    me = u ? { id: u.id, name: (meta.full_name || meta.name || (u.email || '').split('@')[0] || 'you').trim() } : null
+  } catch {
+    me = null
+  }
+  const chip = document.getElementById('acctme')
+  if (!chip) return
+  chip.classList.toggle('hidden', !me)
+  document.querySelectorAll('.acct.signin, .acct.create').forEach((a) => a.classList.toggle('hidden', Boolean(me)))
+  if (me) {
+    ;(document.getElementById('acctav') as HTMLElement).textContent = me.name.slice(0, 1).toUpperCase()
+    ;(document.getElementById('acctname') as HTMLElement).textContent = me.name.split(' ')[0]
+  }
+}
+void whoAmI()
 
 // ---------- event id from /e/<id> or ?e=<id> ----------
 const pathMatch = /\/e\/([^/?#]+)/.exec(location.pathname)
 const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(location.search).get('e') || ''
+// ---------- keeping the event, for someone with an account ----------
+const keptKey = () => 'sitca-kept-' + eventId
+const askedKey = () => 'sitca-keep-asked-' + eventId
+let kept = false
+try {
+  kept = localStorage.getItem(keptKey()) === '1'
+} catch {
+  kept = false
+}
+/** once, while it is live: keep it? */
+function offerKeep(): void {
+  if (!me || !attId || kept) return
+  try {
+    if (localStorage.getItem(askedKey()) === '1') return
+    localStorage.setItem(askedKey(), '1')
+  } catch {
+    /* asked each time, then */
+  }
+  ;(document.getElementById('keepname') as HTMLElement).textContent = me.name
+  document.getElementById('keepwrap')?.classList.remove('hidden')
+}
+async function keepNow(): Promise<void> {
+  if (!me || !attId) return
+  const { error } = await sbMe.rpc('sitka_attend_keep', { p_attendee: attId, p_keep: true })
+  if (error) {
+    alert(/does not exist|function/i.test(error.message) ? 'Keeping is not switched on yet on this server.' : error.message)
+    return
+  }
+  kept = true
+  try {
+    localStorage.setItem(keptKey(), '1')
+  } catch {
+    /* remembered on the server anyway */
+  }
+  document.getElementById('keepwrap')?.classList.add('hidden')
+  refreshEndCard()
+}
+/** at the end: into the library now (the host's recap may need a moment) */
+async function keepEnded(tries = 0): Promise<void> {
+  if (!me) return
+  const box = document.getElementById('endkeep') as HTMLElement
+  box.textContent = 'Keeping it…'
+  const { data, error } = await sbMe.rpc('sitka_keep_event', { p_event: eventId })
+  const r = (data ?? {}) as { ok?: boolean }
+  if (!error && r.ok) {
+    kept = true
+    try {
+      localStorage.setItem(keptKey(), '1')
+    } catch {
+      /* fine */
+    }
+    refreshEndCard()
+    return
+  }
+  if (error) {
+    box.textContent = error.message
+    return
+  }
+  if (tries < 15) window.setTimeout(() => void keepEnded(tries + 1), 4000)
+  else box.textContent = 'The recap is still being written. Open it later and press “Keep in my library”.'
+}
+document.getElementById('keepyes')?.addEventListener('click', () => void keepNow())
+document.getElementById('keepno')?.addEventListener('click', () => document.getElementById('keepwrap')?.classList.add('hidden'))
+document.getElementById('keepwrap')?.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('keepwrap')) document.getElementById('keepwrap')?.classList.add('hidden')
+})
 
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 
@@ -1380,6 +1469,8 @@ document.addEventListener('visibilitychange', () => {
 function goLiveView(): void {
   el('wait').classList.add('hidden')
   el('main').classList.remove('hidden')
+  // someone with an account is asked, once, whether to keep this
+  window.setTimeout(() => void whoAmI().then(offerKeep), 2500)
   el('prenotice').classList.add('hidden')
   el('livenotice').classList.remove('hidden')
   el('catchup').classList.remove('hidden')
@@ -1420,6 +1511,20 @@ function refreshEndCard(): void {
   el('endsub').textContent = on
     ? 'Your recap is ready: what was said, the key moments, and the recording. Ask it anything, any time.'
     : 'Thanks for being here. Your take-home pack is in the last tab.'
+  // keeping it: done, one press, or a sign-in away
+  const box = el('endkeep')
+  if (!on) box.innerHTML = ''
+  else if (kept) box.innerHTML = 'It is in your Sitca library. <a href="/app">Open Sitca</a>'
+  else if (me) {
+    if (!box.querySelector('button')) {
+      box.innerHTML = ''
+      const b = document.createElement('button')
+      b.className = 'btn btn2'
+      b.textContent = 'Keep in my library'
+      b.onclick = () => void keepEnded()
+      box.appendChild(b)
+    }
+  } else box.innerHTML = `Have a Sitca account? <a href="/app#keepevent=${eventId}">Sign in to keep this recap in your library</a>.`
 }
 let endedShown = false
 function onEnded(): void {

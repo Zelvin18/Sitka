@@ -2494,6 +2494,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (d) {
       d.meta.replayUrl = replayUrlFor(c.eventId)
       await openReplay(d.meta).catch(() => undefined)
+      // and the people who asked to keep it get it in their libraries: the
+      // session's recap row first (what a kept recap reads), then the rows
+      if (d.segments.length > 0) {
+        await api.publishRecap(sessionId, true).catch(() => undefined)
+        await sb.rpc('sitka_event_keep_all', { p_event: c.eventId, p_session: sessionId }).then(() => undefined, () => undefined)
+      }
     }
     void generateProxyBriefs(c.eventId, d?.segments ?? [], c.sessionId)
     conf = null
@@ -5057,6 +5063,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     deleteEvent: async (id: string) => {
       await sb.from('events').delete().eq('id', id)
       if (armedId === id) armedId = null
+    },
+    keepEvent: async (eventId: string) => {
+      const { data, error } = await sb.rpc('sitka_keep_event', { p_event: eventId })
+      if (error) return { error: /does not exist|function/i.test(error.message) ? 'Keeping events is not switched on yet — run supabase/keeplive.sql.' : error.message }
+      const r = (data ?? {}) as { ok?: boolean; sessionId?: string }
+      return r.ok ? { ok: true, sessionId: r.sessionId } : { error: 'The recap is still being written. Try again in a moment.' }
+    },
+    listMyLive: async () => {
+      const { data, error } = await sb.rpc('sitka_my_live')
+      if (error || !Array.isArray(data)) return []
+      return (data as { id: string; title: string }[]).map((e) => ({ id: e.id, title: e.title || 'Live event', url: `${siteOrigin()}/e/${e.id}` }))
     },
     keepRecap: async (id: string) => {
       // one of the person's own sessions needs no keeping

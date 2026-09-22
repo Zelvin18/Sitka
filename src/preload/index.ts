@@ -191,6 +191,10 @@ const api = {
   unfileSpaceSession: (id: string): Promise<void> => ipcRenderer.invoke('space:unfile', id),
   /** a recap someone shared, kept in this library (an online feature; the desktop's local workspace has no shared recaps) */
   keepRecap: (id: string): Promise<{ ok?: boolean; error?: string }> => ipcRenderer.invoke('recap:keep', id),
+  /** an event attended: its recap into the library once the host has written it */
+  keepEvent: (eventId: string): Promise<{ ok?: boolean; sessionId?: string; error?: string }> => ipcRenderer.invoke('event:keep', eventId),
+  /** the live events this person is in right now, kept to their library */
+  listMyLive: (): Promise<{ id: string; title: string; url: string }[]> => ipcRenderer.invoke('event:myLive'),
   setSessionBanner: (id: string, banner: string | null): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:banner', id, banner),
   exportSession: (

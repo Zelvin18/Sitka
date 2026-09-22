@@ -523,3 +523,16 @@ html.stage-full{overflow:hidden}
   #askrow textarea:focus,#roomrow textarea:focus{outline:none;border-color:var(--t3)}
   #askrow .send,#roomrow .send{width:44px;height:44px}
 }
+
+/* ---- signed in on the event page: who, and keeping the event ---- */
+.acct.me{gap:8px;padding-left:6px}
+.acct.me i{width:22px;height:22px;border-radius:50%;background:var(--text);color:var(--bg);display:grid;place-items:center;font-size:11px;font-weight:700;font-style:normal}
+@media(max-width:599px){.acct.me span{display:none}.acct.me{padding:0 5px}}
+.keepsheet{text-align:left}
+.keep-t{font-size:19px;font-weight:750;letter-spacing:-.02em;margin-bottom:8px}
+.keep-d{font-size:14px;color:var(--t2);line-height:1.5}
+.keep-d b{color:var(--text)}
+.endkeep{margin-top:14px;font-size:13.5px;color:var(--t2)}
+.endkeep .btn{margin:6px auto 0;width:auto;display:inline-flex;padding:11px 18px}
+.endkeep a{color:var(--text);font-weight:650}
+@media(min-width:900px){.sheetwrap{align-items:center;justify-content:center}.sheet{width:min(440px,calc(100% - 40px));border-radius:20px}}

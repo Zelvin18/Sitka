@@ -525,10 +525,12 @@ export default function LiveSession({
         // does: the tab of a call carries its picture AND its sound. A single
         // window of a call often comes through with its presented picture black
         // and no sound at all; the whole screen also works.
+        // Full HD, so slides and text read sharp; fifteen frames a second is
+        // plenty for a screen and keeps the file within a plan's room
         video: {
-          width: { max: 1280 },
-          height: { max: 720 },
-          frameRate: { max: 12 },
+          width: { max: 1920 },
+          height: { max: 1080 },
+          frameRate: { max: 15 },
           displaySurface: 'browser'
         } as MediaTrackConstraints,
         audio: systemAudioOn,
@@ -1437,7 +1439,7 @@ export default function LiveSession({
           setWebStream(null)
         } else {
           desktopStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 12 } },
+            video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 15 } },
             audio: systemAudioOn
           })
         }
@@ -1594,14 +1596,16 @@ export default function LiveSession({
       sttPendingRef.current = Promise.resolve()
       sttStatsRef.current = { pieces: 0, bytes: 0, segments: 0, errors: 0, dropped: 0, rotatedByTimer: 0, heard: 0, container: '' }
 
-      // On the website recordings live in cloud storage: record at a compact
-      // bitrate (screens and slides compress very well) so space lasts.
+      // On the website recordings live in cloud storage. The bitrate is the
+      // balance between a picture whose text reads (1.2 Mbps carries Full HD
+      // slides well) and a plan's room: an hour is about half a gigabyte, so
+      // the free plan's five hours fit its three.
       const recorder = new MediaRecorder(recordStream, {
         mimeType: captureMode === 'audio' ? pickAudioMimeType() : pickMimeType(),
         ...(captureMode === 'audio'
-          ? { audioBitsPerSecond: 64_000 }
+          ? { audioBitsPerSecond: 96_000 }
           : IS_WEB
-            ? { videoBitsPerSecond: captureMode === 'camera' ? 900_000 : 450_000, audioBitsPerSecond: 64_000 }
+            ? { videoBitsPerSecond: captureMode === 'camera' ? 1_100_000 : 1_200_000, audioBitsPerSecond: 96_000 }
             : {})
       })
       recorder.ondataavailable = (e) => {

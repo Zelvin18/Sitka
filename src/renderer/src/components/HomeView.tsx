@@ -81,6 +81,25 @@ export default function HomeView({
   // that card offers the walkthrough itself. After that it lives in Settings,
   // where it can be watched again.
   const [showTour, setShowTour] = useState(false)
+  // the live events this person is in and keeping: a way back in, while they are on
+  const [live, setLive] = useState<{ id: string; title: string; url: string }[]>([])
+  useEffect(() => {
+    let gone = false
+    const look = (): void => {
+      void window.sitka
+        .listMyLive()
+        .then((l) => {
+          if (!gone) setLive(l)
+        })
+        .catch(() => undefined)
+    }
+    look()
+    const t = window.setInterval(look, 30000)
+    return () => {
+      gone = true
+      window.clearInterval(t)
+    }
+  }, [])
   useEffect(() => {
     if (!holdTour && firstRun && !tourSeen()) setShowTour(true)
   }, [holdTour, firstRun])
@@ -137,6 +156,17 @@ export default function HomeView({
           </p>
         </div>
         {showTour && <Tour onClose={closeTour} />}
+
+        {live.map((e) => (
+          <a key={e.id} className="home-live" href={e.url} target="_blank" rel="noreferrer">
+            <span className="live-badge">● LIVE</span>
+            <span className="home-live-text">
+              <b>{e.title}</b>
+              <span>You are in this event. It stays in your library when it ends.</span>
+            </span>
+            <span className="btn btn-primary btn-sm">Rejoin</span>
+          </a>
+        ))}
 
         <div className="home-actions">
           <button className="home-action" onClick={onNewSession}>

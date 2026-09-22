@@ -143,9 +143,9 @@ export async function captureTab(tabId?: number): Promise<MediaStream> {
       mandatory: {
         chromeMediaSource: 'tab',
         chromeMediaSourceId: streamId,
-        maxWidth: 1280,
-        maxHeight: 720,
-        maxFrameRate: 12
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxFrameRate: 15
       }
     }
   })

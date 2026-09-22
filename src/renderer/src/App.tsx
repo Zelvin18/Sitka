@@ -319,6 +319,21 @@ export default function App(): React.JSX.Element {
   const keepChecked = useRef(false)
   useEffect(() => {
     if (!sessionsLoaded || keepChecked.current) return
+    const ev = /^#keepevent=([\w-]+)/.exec(location.hash)
+    if (ev) {
+      // an event attended, kept from its end card after signing in
+      keepChecked.current = true
+      history.replaceState(null, '', location.pathname)
+      void window.sitka.keepEvent(ev[1]).then(async (r) => {
+        if (r.error || !r.sessionId) {
+          window.alert(r.error || 'The recap is not ready yet.')
+          return
+        }
+        await refreshSessions()
+        openSession(r.sessionId)
+      })
+      return
+    }
     const m = /^#keep=([\w-]+)/.exec(location.hash)
     if (!m) return
     keepChecked.current = true

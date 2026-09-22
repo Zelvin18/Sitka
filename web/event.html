@@ -24,6 +24,7 @@
     <button class="leave hidden" id="leavebtn" title="Leave this event">Leave</button>
     <a class="acct signin" href="/app">Sign in</a>
     <a class="acct create" href="/app#create">Create account</a>
+    <a class="acct me hidden" id="acctme" href="/app" title="Open Sitca"><i id="acctav"></i><span id="acctname"></span></a>
   </div>
 </div></header>
 
@@ -117,6 +118,7 @@
       <h2>The host has ended the event</h2>
       <p id="endsub">Your recap is ready: what was said, the key moments, and the recording. Ask it anything, any time.</p>
       <a class="btn endlink" id="endlink" href="#">Open the recap</a>
+      <div class="endkeep" id="endkeep"></div>
     </div>
     <div class="livehead">
       <div class="stagewait hidden" id="stagewait"><span>The host&apos;s screen appears here the moment they share it.</span></div>
@@ -209,6 +211,13 @@
   <img id="stagefullimg" alt="Live stage">
   <button class="xbtn" id="stageclose" aria-label="Close"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
 </div>
+
+<div id="keepwrap" class="sheetwrap hidden"><div class="sheet keepsheet">
+  <div class="keep-t">Keep this in your library?</div>
+  <div class="keep-d" id="keepd">You are here as <b id="keepname"></b>. Keep it, and this event shows on your Home while it is live — and the recap lands in your library the moment it ends, without another tap.</div>
+  <button class="btn" id="keepyes" style="margin-top:14px">Keep it in my library</button>
+  <button class="linklike" id="keepno">Not now</button>
+</div></div>
 
 <div id="sheetwrap" class="sheetwrap hidden"><div class="sheet">
   <div class="sheet-quote" id="sheetquote"></div>

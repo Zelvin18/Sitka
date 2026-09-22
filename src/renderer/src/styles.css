@@ -14118,3 +14118,31 @@ button.org-tr:hover {
     text-align: left;
   }
 }
+
+/* a live event the person is in, on their Home */
+.home-live {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  text-decoration: none;
+  color: inherit;
+}
+.home-live-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.home-live-text b {
+  font-size: 14px;
+}
+.home-live-text span {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
