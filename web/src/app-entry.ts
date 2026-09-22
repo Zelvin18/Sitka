@@ -52,6 +52,26 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 // any of them arrive: this is the web build, wherever the code came from.
 ;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
 
+// The door's photograph fades in once it has arrived, and is fetched ahead on
+// every page but the extension's invisible engine, which never shows the door.
+// (Done here, not inline in the page: an extension page allows no inline
+// script, and a preload the engine never uses is reported as a fault.)
+{
+  const photo = document.querySelector('.gphoto') as HTMLImageElement | null
+  if (photo) {
+    if (photo.complete && photo.naturalWidth > 0) photo.classList.add('in')
+    else photo.addEventListener('load', () => photo.classList.add('in'), { once: true })
+  }
+  if (!IN_ENGINE) {
+    const l = document.createElement('link')
+    l.rel = 'preload'
+    l.as = 'image'
+    l.href = '/signin.webp'
+    l.setAttribute('fetchpriority', 'high')
+    document.head.appendChild(l)
+  }
+}
+
 // start fetching the code now; it is used a moment later
 const webApiModule = import('./webApi')
 let resolveReady: () => void = () => undefined
