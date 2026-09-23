@@ -936,7 +936,11 @@ export default function App(): React.JSX.Element {
       <QuickRecord
         recording={recordingSessionId !== undefined}
         startedAt={recordingStartedAt}
-        hidden={view.name === 'live'}
+        // Idle, it belongs on Home only: over a session it landed on top of
+        // Ask Sitca and the player's own controls, and had to be dodged.
+        // While something is recording it stays everywhere but the live page
+        // — that pill is the way back into the session.
+        hidden={view.name === 'live' || (recordingSessionId === undefined && view.name !== 'home')}
         onStart={quickRecord}
         onOpen={() => setView({ name: 'live' })}
       />
