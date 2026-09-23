@@ -106,6 +106,37 @@ function formatTime(totalSeconds: number): string {
 const EXCERPT_STOP = new Set(
   'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only onto over under after before earlier later show shown showed said say tell explain please hello thanks thank lecturer lecture speaker session talk mean means meant'.split(' ')
 )
+/**
+ * A session laid out for one pass of the AI. A short session goes whole. An
+ * hour-long one is thinned evenly — the opening and the close in full, the
+ * middle sampled — so the shape of the whole session is there and the reply
+ * arrives inside the server's minute. Sending an untrimmed hour was how the
+ * summary came back as "not ready yet".
+ */
+function digestFor(segments: TranscriptSegment[], speakers?: Speaker[], maxChars = 42000): string {
+  const whole = transcriptBlock(segments, speakers)
+  if (whole.length <= maxChars) return whole
+  const edge = Math.min(40, Math.floor(segments.length / 6))
+  const keep = new Set<number>()
+  for (let i = 0; i < edge; i++) keep.add(i)
+  for (let i = Math.max(0, segments.length - edge); i < segments.length; i++) keep.add(i)
+  // the middle, evenly: enough lines to fill what is left of the budget
+  const per = Math.max(1, Math.round(whole.length / Math.max(1, segments.length)))
+  const room = Math.max(0, maxChars - keep.size * per)
+  const middle = segments.length - keep.size
+  const step = Math.max(1, Math.ceil(middle / Math.max(1, Math.floor(room / per))))
+  for (let i = edge; i < segments.length - edge; i += step) keep.add(i)
+  const lines: string[] = []
+  let size = 0
+  for (const i of [...keep].sort((a, b) => a - b)) {
+    const line = transcriptBlock([segments[i]], speakers) + '\n'
+    if (size + line.length > maxChars) break
+    lines.push(line)
+    size += line.length
+  }
+  return lines.join('')
+}
+
 function excerptFor(segments: TranscriptSegment[], question: string, live: boolean, speakers?: Speaker[]): string {
   const whole = transcriptBlock(segments, speakers)
   if (whole.length <= 16000) return whole
@@ -1714,7 +1745,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Maths must be readable by a beginner. Put each equation on its own line. Write powers with superscript characters (x², x³, eⁿ) or x^n, roots as √x, fractions as (top)/(bottom) or with \\frac{top}{bottom}, derivatives as dy/dx, multiplication as 3x or 2·x. Never use LaTeX delimiters like \\( \\) \\[ \\] or $ $. The first time a symbol appears, say what it stands for in words.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
       '- Never draw with characters: no boxes, lines or arrows made of +, -, | or v, no ASCII art, no diagrams typed out. For a process or a structure use a ```flow block (one connection per line, "A -> B"); for numbers a ```chart block; for a comparison a markdown table. Never wrap an ordinary answer, notes or a list in ``` fences: fences are only for chart, flow and document blocks, and for code when the user asked for code. Headings are ## or ###, never a numbered line in bold.',
-      '- End each answer with ONE short follow-up question on its own last line, offering a concrete next step that fits what was just asked — a detailed summary of that point, an example, the counter-argument, where it was said, how it compares — like "Want a detailed summary of the safety points?" or "Shall I explain how the benchmark works?". Specific, never the generic "let me know if you want more". Skip it only after a document block.',
+      '- A follow-up question is an offer, not a habit. When there is an obvious concrete next step, end with ONE short question on its own last line ("Want the detailed version of that point?", "Shall I explain how the benchmark works?"). Leave it out after a document block, after small talk, and whenever the answer is complete in itself — most short answers are. Never the generic "let me know if you want more".',
       '- Talking to the user, call it "the session", never "the transcript": say "earlier in the session" or "the speaker said", not "the transcript shows" or "according to the transcript". The word transcript is for you, not for them.',
       '- Use judgement about when a moment citation helps. In conversation, cite when the user would want to jump to that moment: a specific claim, a figure, a decision, "when was X said". Do NOT cite inside anything the user will keep or share — a ```document block, a summary, notes, the main topics, a study guide, an outline — unless they ask for the moments. A summary reads as prose, not as a list of timestamps.',
       '- When the user asks you to write, draft, design or develop a document — a report, letter, plan, memo, proposal, agenda, study notes, one-pager, a set of slides in outline — produce the whole document inside one fenced block that starts with ```document, whose first line is "Title: <the title>" and whose body is markdown (headings, paragraphs, lists, tables). The app shows it as a document the user can open, copy and download. Keep any words outside the block to one short sentence.',
@@ -1744,7 +1775,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       '- Match the length of your answer to the question: short and direct by default; structure only for catch-ups and summaries.',
       '- Formatting: **bold** for key terms, "-" bullets for genuine lists, "## " headings only in long answers, tables only for comparisons. This renders on a phone — keep it tight.',
       '- The user is not a programmer. Never answer with programming code (Python, matplotlib, JavaScript, HTML) unless they explicitly ask for code. To show a chart use a ```chart block, for a diagram a ```flow block, for a table a markdown table — never a script that would draw one.',
-      '- End each answer with ONE short follow-up question on its own last line, offering a concrete next step that fits what was just asked — a detailed summary of that point, an example, the counter-argument, where it was said, how it compares — like "Want a detailed summary of the safety points?" or "Shall I explain how the benchmark works?". Specific, never the generic "let me know if you want more". Skip it only after a document block.',
+      '- A follow-up question is an offer, not a habit. When there is an obvious concrete next step, end with ONE short question on its own last line ("Want the detailed version of that point?", "Shall I explain how the benchmark works?"). Leave it out after a document block, after small talk, and whenever the answer is complete in itself — most short answers are. Never the generic "let me know if you want more".',
       materials ? `\nEvent materials shared by the host:\n${materials.slice(0, 14000)}` : '',
       preEvent ? '' : `\nTranscript so far:\n${transcriptBlock(segments)}`
     ]
@@ -1867,13 +1898,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         summary?: string
         highlights?: { time: string; label: string }[]
       } | null> => {
+        const body = digestFor(d.segments, d.meta.speakers)
         const out = await aiChat(system, [
-          {
-            role: 'user',
-            content: materials
-              ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
-              : transcriptBlock(d.segments, d.meta.speakers)
-          }
+          { role: 'user', content: materials ? `${materials}\n\nTranscript:\n${body}` : body }
         ])
         return extractJson(out)
       }
@@ -1924,13 +1951,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const { data } = await sb.from('sessions').select('materials').eq('id', sessionId).single()
     return ((data?.materials as StoredMaterial[] | null) ?? []).filter(Boolean)
   }
+  /**
+   * Every question was costing a trip to the database before it even reached
+   * the AI. What a session's materials are does not change while someone is
+   * asking, so the block is kept for a few minutes, and thrown away the
+   * moment materials are added or removed.
+   */
+  const materialsBlockCache = new Map<string, { block: string; until: number }>()
+  const forgetMaterials = (sessionId: string): void => {
+    materialsBlockCache.delete(sessionId)
+  }
   const stripText = (all: StoredMaterial[]): SessionMaterial[] =>
     all.map(({ id, name, chars, addedAt }) => ({ id, name, chars, addedAt }))
   /** The prompt section for a session's materials, or '' when there are none. */
   async function sessionMaterialsBlock(sessionId: string | null | undefined): Promise<string> {
     if (!sessionId) return ''
+    const hit = materialsBlockCache.get(sessionId)
+    if (hit && hit.until > Date.now()) return hit.block
     try {
-      return materialsBlock(await readMaterials(sessionId))
+      const block = materialsBlock(await readMaterials(sessionId))
+      materialsBlockCache.set(sessionId, { block, until: Date.now() + 180000 })
+      return block
     } catch {
       return ''
     }
@@ -3230,6 +3271,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             : error.message
         )
       }
+      forgetMaterials(sessionId)
       return stripText(all)
     },
     removeSessionMaterial: async (sessionId: string, materialId: string) => {
@@ -3238,6 +3280,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         .from('sessions')
         .update({ materials: all, updated_at: new Date().toISOString() })
         .eq('id', sessionId)
+      forgetMaterials(sessionId)
       return stripText(all)
     },
     extractMaterial: async (name: string, bytes: ArrayBuffer) => {
@@ -4133,12 +4176,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     askAi: async (req: AskRequest) => {
-      const u = await myUsage().catch(() => null)
-      if (u && overPlanLimit(u, 'asks')) {
-        emitAi({ requestId: req.requestId, type: 'error', error: `plan:asks:${JSON.stringify(u)}` })
-        return
-      }
-      if (usageCache) usageCache.usage.asks += 1
+      // The meter is read while the question is being put together, not
+      // before it: two waits become one. A full plan still stops the
+      // question — the answer is not asked for until this has come back.
+      const meter = myUsage().catch(() => null)
       track('ask', {
         live: req.live,
         host: Boolean(req.host),
@@ -4146,11 +4187,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         files: req.attachments?.length ?? 0
       })
       try {
+        // Small talk needs no transcript: a greeting or a thank-you is
+        // answered from nothing but the session's name, which is the
+        // difference between one second and five.
+        const plain = req.question.trim()
+        const smallTalk =
+          !req.frame &&
+          (req.attachments?.length ?? 0) === 0 &&
+          plain.length <= 40 &&
+          /^(hi|hey|hello|yo|hiya|thanks?|thank you|thank u|thx|ok|okay|cool|nice|great|lovely|perfect|got it|good (morning|afternoon|evening|night)|how are you|sup|cheers)\b[\s!.,]*$/i.test(plain)
         // a kept recap answers from its recorder's transcript, like any session
         const d = (await loadSession(req.sessionId)) ?? (await loadSavedRecap(req.sessionId))
         const segments = d?.segments ?? []
         let system: string
-        if (req.host) {
+        if (smallTalk) {
+          system = [
+            person(),
+            `You are Sitca, sitting in on "${d?.meta.title || 'this session'}" with the user.`,
+            'They said something friendly, not a question about the session.',
+            'Answer in ONE short, warm line — under fifteen words. No lists, no headings, no timestamps, no follow-up question.'
+          ].join('\n')
+        } else if (req.host) {
           system = [
             'You are the host co-pilot for a live event — the speaker glances at you mid-talk.',
             'Be extremely terse: 1-3 short sentences, no headings, no fluff. Reference moments as [[M:SS]] when useful.',
@@ -4186,6 +4243,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         // being presented — graphs, slides, diagrams — not only what is said.
         // Anything the user attached with + comes too: documents as text ahead
         // of the question, pictures as images after the screen.
+        // the plan, now that everything else is ready
+        const u = await meter
+        if (u && overPlanLimit(u, 'asks')) {
+          emitAi({ requestId: req.requestId, type: 'error', error: `plan:asks:${JSON.stringify(u)}` })
+          return
+        }
+        if (usageCache) usageCache.usage.asks += 1
         const folded = foldAttachments(req.question, req.attachments)
         const parts: ({ type: 'image'; dataUrl: string } | { type: 'text'; text: string })[] = []
         const notes: string[] = []
@@ -4207,7 +4271,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         // no picture to read: the quick models answer first; the words
         // reach the chat as they are written
         let streamed = 0
-        const out = await aiChatFull(system, [...history, last], 2000, false, parts.length === 0, 'ask', (piece) => {
+        const out = await aiChatFull(system, [...history, last], smallTalk ? 120 : 2000, false, parts.length === 0, 'ask', (piece) => {
           streamed += piece.length
           emitAi({ requestId: req.requestId, type: 'delta', text: piece })
         })
@@ -5231,7 +5295,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const out = await aiChat(system, [
           {
             role: 'user',
-            content: `${materials ? materials + '\n\n' : ''}${speakersNote(d.meta.speakers) ? speakersNote(d.meta.speakers) + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
+            content: `${materials ? materials + '\n\n' : ''}${speakersNote(d.meta.speakers) ? speakersNote(d.meta.speakers) + '\n\n' : ''}Previous notes:\n${d.notes?.markdown ?? '(none)'}\n\nTranscript:\n${digestFor(d.segments, d.meta.speakers, 60000)}`
           }
         ], 6000)
         const parsed = parseNotesAnswer(out)
@@ -5273,8 +5337,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             {
               role: 'user',
               content: materials
-                ? `${materials}\n\nTranscript:\n${transcriptBlock(d.segments, d.meta.speakers)}`
-                : transcriptBlock(d.segments, d.meta.speakers)
+                ? `${materials}\n\nTranscript:\n${digestFor(d.segments, d.meta.speakers, 60000)}`
+                : digestFor(d.segments, d.meta.speakers, 60000)
             }
           ],
           5000

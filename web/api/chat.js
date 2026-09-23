@@ -122,6 +122,13 @@ const FAST_FIRST = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/g
 /** Chat-capable models for this key, best first. Never a speech or guard model. */
 async function chatCandidates(key, fast = false) {
   const order = fast ? [...FAST_FIRST, ...KNOWN_CHAT.filter((id) => !FAST_FIRST.includes(id))] : KNOWN_CHAT
+  // A quick answer should not wait on a catalogue. When the list is not
+  // already to hand, the known-good fast models are tried straight away; a
+  // model that has gone is caught by the chain, which then asks properly.
+  if (fast && !listCache.has(key.slice(-8))) {
+    void listGroqModels(key).catch(() => undefined) // warmed for next time
+    return order.slice(0, 4)
+  }
   let ids
   try {
     ids = await listGroqModels(key)
