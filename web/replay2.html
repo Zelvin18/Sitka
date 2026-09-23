@@ -235,6 +235,27 @@ html[data-theme=light] .stage.expanded .sheet{background:rgba(19,19,21,.66);colo
 .stage.expanded .dock{display:none;left:auto;right:12px;bottom:12px;transform:none;width:min(376px,calc(100vw - 24px))}
 .stage.expanded.chat .dock{display:flex}
 .stage.expanded .dock .open{display:none}
+/* The top bar on a phone. Everything wanted its full width — the brand, the
+   mini player, "Read in", the language, "Keep in my library" and the light
+   switch — so they were squeezed into each other and the switch fell off the
+   edge. Here each one is given only what it needs, and what is already on
+   the page below (the title, the label "Read in") steps out of the way. */
+@media(max-width:560px){
+  .hdr{padding:0 12px;gap:8px}
+  .hdr .tag{display:none}
+  .brand{font-size:14px;flex:none}
+  .hdr-right{gap:7px;min-width:0}
+  .lang{min-width:0}
+  .lang span{display:none}
+  .lang select{max-width:112px;font-size:12.5px;padding:5px 7px;text-overflow:ellipsis}
+  .acct{height:31px;padding:0 11px;font-size:12.5px}
+  .acct.signin{display:none}
+  .theme{width:31px;height:31px;flex:none}
+  /* scrolled, with the little player showing: its title is the page's title,
+     already right there, and the language can wait until they scroll back */
+  .mini .mt{display:none}
+  .mini.on + .hdr-right .lang{display:none}
+}
 @media(max-width:640px){
   .stage.expanded.chat video{right:0;width:100%;bottom:46vh;height:auto}
   .stage.expanded.chat .bar{right:18px;bottom:calc(46vh + 12px)}
