@@ -1136,6 +1136,30 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const k = storedSettings()
     return Boolean(k.anthropicApiKey || k.groqApiKey) || platform.chat
   }
+  /**
+   * The same, but patient: when the site's own keys were not known at start
+   * (the health check timed out on a slow network) it is asked once more
+   * rather than quietly deciding there is no AI — which is how a session
+   * could end up with no summary and nothing said about why.
+   */
+  let healthAsked: Promise<void> | null = null
+  async function chatKeyReady(): Promise<boolean> {
+    if (hasChatKey()) return true
+    if (!healthAsked) {
+      healthAsked = (async () => {
+        try {
+          const r = await fetch('/api/health', { signal: AbortSignal.timeout(8000) })
+          if (r.ok) platform = { ...platform, ...((await r.json()) as { chat?: boolean; stt?: boolean }) }
+        } catch {
+          /* still unknown: asked again next time */
+        }
+      })().finally(() => {
+        healthAsked = null
+      })
+    }
+    await healthAsked
+    return hasChatKey()
+  }
   function hasSttKey(): boolean {
     const k = storedSettings()
     return Boolean(k.openaiApiKey || k.groqApiKey) || platform.stt
@@ -1826,7 +1850,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   function analyzeWebSession(id: string): Promise<void> {
     const running = analysisRuns.get(id)
     if (running) return running
-    const run = analyzeWebSessionNow(id).finally(() => analysisRuns.delete(id))
+    // Three goes, further apart each time: a model that was busy, a network
+    // that blinked, a key check that had not landed yet — none of those
+    // should cost a session its summary.
+    const run = (async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await sleep(attempt === 1 ? 8000 : 30000)
+        await analyzeWebSessionNow(id)
+        if (cache.get(id)?.meta.analyzed) return
+      }
+    })().finally(() => analysisRuns.delete(id))
     analysisRuns.set(id, run)
     return run
   }
@@ -1837,6 +1870,52 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // end may still choose a better one.
   const earlyNamed = new Set<string>()
   const isDefaultTitle = (t: string): boolean => /^Session — |^Untitled session$|^Session \d/.test(t || '')
+  /**
+   * A summary while the session is still running.
+   *
+   * Waiting for the end meant waiting for one big pass over an hour of
+   * words, in a page that may be closing. Instead a short summary is drafted
+   * every few minutes from what has been said so far, and kept as the
+   * session's summary until the final pass replaces it — so there is always
+   * something to read, and the end has little left to do.
+   */
+  const draftedAt = new Map<string, number>()
+  const DRAFT_EVERY = 6 * 60000
+  async function draftSummary(id: string): Promise<void> {
+    const d = cache.get(id)
+    if (!d || d.meta.analyzed || d.meta.status !== 'recording') return
+    const words = d.segments.reduce((n, s) => n + s.text.split(/\s+/).length, 0)
+    if (words < 400) return // too early to say anything true
+    const last = draftedAt.get(id) ?? 0
+    if (Date.now() - last < DRAFT_EVERY) return
+    draftedAt.set(id, Date.now())
+    if (!(await chatKeyReady())) return
+    try {
+      const out = await aiChatFull(
+        [
+          'You are summarising a session that is still going on, from its transcript so far.',
+          'Return ONLY a JSON object, no prose and no code fences:',
+          '{"summary": string, "highlights": [{"time": "M:SS", "label": string}]}',
+          '- "summary": 2-4 sentences on what the session has covered so far.',
+          '- "highlights": up to 6 moments worth revisiting, each "time" copied exactly from a timestamp in the transcript.'
+        ].join('\n'),
+        [{ role: 'user', content: digestFor(d.segments, d.meta.speakers, 30000) }],
+        700,
+        false,
+        true
+      )
+      const parsed = extractJson<{ summary?: string; highlights?: { time: string; label: string }[] }>(out.text)
+      const now = cache.get(id)
+      if (!parsed?.summary || !now || now.meta.analyzed) return
+      now.meta.summary = parsed.summary
+      if (parsed.highlights?.length) now.meta.highlights = parsed.highlights.slice(0, 10)
+      delete now.meta.analysisError
+      await patchSession(id, { meta: now.meta })
+      emitSession(now.meta)
+    } catch {
+      draftedAt.set(id, Date.now() - DRAFT_EVERY + 60000) // another go in a minute
+    }
+  }
   async function nameEarly(id: string): Promise<void> {
     if (earlyNamed.has(id)) return
     const d = cache.get(id)
@@ -1876,6 +1955,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   async function analyzeWebSessionNow(id: string): Promise<void> {
     const d = await loadSession(id)
     if (!d) return
+    if (!(await chatKeyReady())) {
+      d.meta.analysisError = 'Sitca could not reach its AI to write the summary.'
+      await patchSession(id, { meta: d.meta })
+      emitSession(d.meta)
+      return
+    }
     try {
       const kindFocus =
         d.meta.kind === 'meeting'
@@ -3982,7 +4067,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       // the title, summary and notes need only the words: written while the
       // recording is still going up, so they are there when it lands
-      if (hasChatKey() && d.segments.length > 2) void analyzeWebSession(id)
+      if (d.segments.length > 2) void analyzeWebSession(id)
 
       // Then the tail of the recording, and every part landing.
       if (b) {
@@ -4032,7 +4117,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     reanalyzeSession: async (id: string) => {
-      if (!hasChatKey()) return null
+      if (!(await chatKeyReady())) return null
       await analyzeWebSession(id)
       return (await loadSession(id))?.meta ?? null
     },
@@ -4084,6 +4169,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       tellOthers(id, d.meta)
       if (conf?.sessionId === id) void confPushSegments(added, d.segments.length - added.length)
       void nameEarly(id)
+      void draftSummary(id)
       return { speakers, segments: d.segments }
     },
     nameSpeaker: async (id: string, speaker: number, name: string) => {
@@ -5607,8 +5693,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   ;(window as unknown as { sitkaWeb: boolean }).sitkaWeb = true
   // Work still in hand: a recording, parts on their way up, a whole file
   // being made. The extension's worker asks before it closes the engine.
+  // What must not be interrupted. The summary belongs here: the engine used
+  // to be closed a minute after a session ended, in the middle of writing it.
   ;(window as unknown as { sitkaBusy?: () => Promise<boolean> }).sitkaBusy = async () =>
-    recBuf.size > 0 || memParts.size > 0 || consolidating.size > 0 || pendingBusy || (await allLocalParts()).length > 0
+    recBuf.size > 0 ||
+    memParts.size > 0 ||
+    consolidating.size > 0 ||
+    analysisRuns.size > 0 ||
+    pendingBusy ||
+    (await allLocalParts()).length > 0
 
   // Close out anything a crash left open, and finish uploads the cloud is missing.
   // Once soon after opening, and once more two minutes on, for a session whose
