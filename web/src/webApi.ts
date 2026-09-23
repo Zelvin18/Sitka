@@ -1659,6 +1659,33 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * row says complete, so the loop above never looks; the film is still
    * here. It goes up as one more part, and the whole file is made again.
    */
+  /**
+   * Sessions that finished but never got their summary: the newest few are
+   * written up quietly in the background. A page that was closed before the
+   * analysis could run no longer costs a session its summary for ever.
+   */
+  async function sweepUnsummarised(): Promise<void> {
+    try {
+      if (!(await chatKeyReady())) return
+      const rows = await allSessions()
+      const wanting = rows
+        .filter((r) => {
+          const m = r.meta
+          if (m.status !== 'complete' || m.analyzed || m.readOnly || m.saved || m.sample) return false
+          if ((r.transcript?.length ?? 0) < 3) return false
+          // just ended: the page that recorded it is writing it now
+          return Date.now() - (m.createdAt + (m.durationMs || 0)) > 120000
+        })
+        .slice(0, 3)
+      for (const r of wanting) {
+        await analyzeWebSession(r.id)
+        await sleep(1500)
+      }
+    } catch {
+      /* another go next time the app opens */
+    }
+  }
+
   async function sweepLooseChunks(): Promise<void> {
     const all = (await idb<LocalChunk[]>('chunks', 'readonly', (s) => s.getAll())) ?? []
     const bySession = new Map<string, LocalChunk[]>()
@@ -5715,6 +5742,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     // an event whose host went silent long ago is ended, so no phone waits on it
     setTimeout(() => void sb.rpc('sweep_stale_events').then(() => undefined, () => undefined), 4000)
     setTimeout(() => void recoverInterrupted(), 120000)
+    // sessions that ended without a summary — a tab closed too soon, a
+    // connection that failed at the wrong moment — are written up here,
+    // without anyone having to open them
+    setTimeout(() => void sweepUnsummarised(), 15000)
   }
 
   // ---------- recordings made before the move ----------
