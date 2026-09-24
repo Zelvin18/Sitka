@@ -139,6 +139,11 @@ export default function Sidebar({
       ) : (
         <>
           <span className="side-item-title">{s.title}</span>
+          {s.space && (
+            <span className="side-item-tag" title={s.space === 'education' ? 'Filed under Education' : 'Filed under Business'}>
+              {s.space === 'education' ? 'Edu' : 'Biz'}
+            </span>
+          )}
           {s.status === 'complete' && (
             <span className="side-item-time">{formatDuration(s.durationMs)}</span>
           )}

@@ -603,12 +603,11 @@ export default function App(): React.JSX.Element {
   const activeSessionId =
     view.name === 'session' ? view.id : view.name === 'live' ? recordingSessionId : undefined
 
-  // Sessions are scoped: general shows only general ones, an ecosystem only its own.
-  const inSpace = (s: SessionMeta): boolean => (space ? s.space === space : !s.space)
-  // The sidebar: every hosted event on top, wherever it was filed, and then
-  // the sessions of the ecosystem the person is in. A plain Business or
-  // Education session stays in the library until they step into that space.
-  const sidebarSessions = sessions.filter((s) => s.hosted || inSpace(s))
+  // The sidebar lists everything, wherever it was filed: hosted events on
+  // top, then every session, each marked with its ecosystem when it has one.
+  // Hiding the Education sessions while "Sitca for you" was chosen read as
+  // "my sessions are gone" — one library, in one place, with a tag, instead.
+  const sidebarSessions = sessions
 
   return (
     <div className="app">
@@ -764,7 +763,7 @@ export default function App(): React.JSX.Element {
         </div>
         {view.name === 'homepage' && (
           <HomeView
-            sessions={sessions.filter((s) => !s.space)}
+            sessions={sessions}
             allSessions={sessions}
             onNewSession={() => setView({ name: 'live' })}
             onGoEvents={() => setView({ name: 'livehub' })}

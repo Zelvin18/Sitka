@@ -95,11 +95,14 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     }
   }
 
+  /** the storage server's last word, for a message that says what actually happened */
+  let lastAnswer = ''
   async function post<T>(op: string, body: Record<string, unknown>): Promise<T | null> {
     // Asking for a link is only asking: a request that never arrived, or a
     // server having a bad moment, is asked again rather than reported as a
     // refusal. Three goes, a breath apart; a real "no" comes back at once.
     const waits = [500, 1500]
+    let refreshed = false
     for (let attempt = 0; ; attempt++) {
       try {
         const t = await token()
@@ -114,17 +117,31 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
         // 501 means R2 is not set up and 4xx means not allowed: both are
         // answers. A 5xx is the server failing, and it is asked again.
         if (r.status >= 500) {
+          lastAnswer = `the server answered ${r.status}`
           if (attempt < waits.length) {
             await sleep(waits[attempt])
             continue
           }
           throw new Error(`storage ${r.status}`)
         }
-        if (!r.ok) return null
+        if (!r.ok) {
+          const j = (await r.json().catch(() => ({}))) as { error?: string }
+          lastAnswer = `the server said ${r.status}${j.error ? `: ${j.error}` : ''}`
+          // "Not allowed" for one's own file means the proof of who we are
+          // has gone stale: a fresh one, and the same request once more
+          if ((r.status === 401 || r.status === 403) && !refreshed) {
+            refreshed = true
+            await sb.auth.refreshSession().catch(() => undefined)
+            continue
+          }
+          return null
+        }
+        lastAnswer = ''
         return (await r.json()) as T
       } catch (err) {
         if (err instanceof Error && /^storage \d+$/.test(err.message)) throw err
         // never arrived: the network, not the server's word
+        lastAnswer = 'the request never reached the server'
         if (attempt < waits.length) {
           await sleep(waits[attempt])
           continue
@@ -291,10 +308,13 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
             await sleep(500)
             continue
           }
-          // truthful: we asked and got no link. Which of the two it was —
-          // no answer at all, or a refusal — the page cannot tell apart, so
-          // it says the thing that is true of both and keeps the piece.
-          return { error: navigator.onLine ? 'Storage did not hand out an upload link. It will be tried again.' : 'No connection: the recording waits on this device.' }
+          // truthful: we asked and got no link, and the server's last word
+          // says which kind of no it was. The piece stays here either way.
+          return {
+            error: !navigator.onLine
+              ? 'No connection: the recording waits on this device.'
+              : `Storage did not hand out an upload link (${lastAnswer || 'no answer'}). It will be tried again.`
+          }
         }
         try {
           const r = await fetch(link, {

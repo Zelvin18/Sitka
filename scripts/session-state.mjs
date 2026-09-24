@@ -34,6 +34,7 @@ for (const r of rows) {
   console.log(r.id.slice(0, 8), '·', (m.title || '(untitled)').slice(0, 44))
   console.log('  status', m.status, '· length', Math.round((m.durationMs || 0) / 1000) + 's', '· ended', new Date(r.created_at).toLocaleString())
   console.log('  transcript', lines, 'lines /', words, 'words · analysed', Boolean(m.analyzed), '· summary', m.summary ? `${String(m.summary).length} chars` : 'NONE', '· moments', (m.highlights || []).length)
+  console.log('  filed under', m.space || 'you', m.spaceId ? `· space ${String(m.spaceId).slice(0, 8)}` : '', '· whole file', Boolean(m.whole), m.recordingPending ? '· UPLOAD PENDING' : '', m.uploadError ? `· ${String(m.uploadError).slice(0, 120)}` : '')
   if (m.analysisError) console.log('  LAST ERROR:', String(m.analysisError).slice(0, 220))
   if (want && m.summary) console.log('\n  ' + String(m.summary).slice(0, 600))
 }
