@@ -114,6 +114,8 @@ export interface SessionMeta {
   analysisError?: string
   /** the organisation space (course, team, project) this session is filed in */
   spaceId?: string
+  /** where the recording was made, in words a person recognises ("Chrome on Windows", "the Chrome extension") */
+  recordedOn?: string
   /** part of the recording is still on this device, waiting to upload */
   recordingPending?: boolean
   /** why the last upload from this device failed, in the cloud's words, so the page can say */

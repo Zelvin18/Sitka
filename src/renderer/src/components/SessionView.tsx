@@ -332,6 +332,9 @@ export default function SessionView({
   const [showMaterials, setShowMaterials] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // whether this browser holds the part of the recording the cloud lacks:
+  // asked once on opening, which also sends it up when it is here
+  const [pendingHere, setPendingHere] = useState<boolean | null>(null)
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
   // Phone: the chat is a tab beside Transcript, open by default, so the screen
   // shows one thing at a time. On a desktop the chat is always the right column.
@@ -629,6 +632,37 @@ export default function SessionView({
   // still being recorded (by the extension's engine, or another tab): there
   // is no file to play yet; the words arrive as they are said instead
   const stillRecording = data?.meta.status === 'recording'
+  // A recording the cloud is still missing: on opening, this browser is asked
+  // whether it holds the rest. If it does, it goes up now, without a press;
+  // if not, the page says where it is instead of offering a button that
+  // has nothing to send.
+  const pendingId = data?.meta.recordingPending ? data.meta.id : null
+  useEffect(() => {
+    if (!pendingId) return
+    let gone = false
+    setUploading(true)
+    void window.sitka
+      .retryUploads(pendingId)
+      .then((r) => {
+        if (gone) return
+        if (r.here !== undefined) setPendingHere(r.here)
+        if (r.pending === 0) {
+          setData((d) => {
+            if (!d || d.meta.id !== pendingId) return d
+            const next = { ...d.meta }
+            delete next.recordingPending
+            return { ...d, meta: next }
+          })
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!gone) setUploading(false)
+      })
+    return () => {
+      gone = true
+    }
+  }, [pendingId])
   // Just ended: the last pieces may still be on their way up. The player
   // holds for those few seconds only (or while an upload is known to be
   // pending), then plays the parts as a stream; the whole file is joined
@@ -1086,16 +1120,19 @@ export default function SessionView({
             <Mark size={14} live={uploading} />
             <span>
               {uploading
-                ? 'Uploading the rest of this recording…'
-                : 'Part of this recording is still on the device that recorded it. It uploads on its own when the connection allows.'}
+                ? 'Sending the rest of this recording to the cloud…'
+                : pendingHere === false
+                  ? `The recording is on ${meta.recordedOn ?? 'the browser that recorded it'}, not this one. Open Sitca there — it sends it up by itself. The transcript, notes and answers work here already.`
+                  : 'Part of this recording is still on this device. It goes up on its own as soon as the connection allows.'}
             </span>
-            {!uploading && (
+            {!uploading && pendingHere !== false && (
               <button
                 className="btn btn-sm"
                 onClick={() => {
                   setUploading(true)
                   void window.sitka.retryUploads(meta.id).then((r) => {
                     setUploading(false)
+                    if (r.here !== undefined) setPendingHere(r.here)
                     if (r.pending === 0) {
                       setData((d) => {
                         if (!d) return d
@@ -1506,7 +1543,11 @@ export default function SessionView({
                 <div className="video-failed">
                   <div>{meta.recordingPending ? 'This recording has not reached the cloud yet.' : 'The recording is taking longer than usual to open.'}</div>
                   {meta.recordingPending ? (
-                    <div className="video-failed-why">It is still on the device that recorded it. Open Sitca there and press Upload now.</div>
+                    <div className="video-failed-why">
+                      {pendingHere === false
+                        ? `It is on ${meta.recordedOn ?? 'the browser that recorded it'}, not this one. Open Sitca there and it sends it up by itself.`
+                        : 'It is on this device and is being sent up now.'}
+                    </div>
                   ) : (
                     <div className="video-failed-why">Try again in a moment, or download the file to watch it on your device.</div>
                   )}

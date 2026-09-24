@@ -268,6 +268,17 @@ function mendJson(raw: string): string {
 function uid(): string {
   return crypto.randomUUID()
 }
+/**
+ * Where this page is, in words a person recognises: which browser, on
+ * which kind of computer, and whether it is the Chrome extension. Kept with
+ * a session so a recording that has not reached the cloud can be found.
+ */
+function whereThisIs(): string {
+  const ua = navigator.userAgent
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'a browser'
+  const device = /iPhone/.test(ua) ? 'an iPhone' : /iPad/.test(ua) ? 'an iPad' : /Android/.test(ua) ? 'an Android phone' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'a Mac' : /Linux/.test(ua) ? 'Linux' : 'this device'
+  return location.protocol === 'chrome-extension:' ? `the Chrome extension on ${device}` : `${browser} on ${device}`
+}
 function downloadText(name: string, text: string): void {
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }))
@@ -1431,7 +1442,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     kind?: string
   }
   const recBuf = new Map<string, RecBuf>()
-  const PART_BYTES = 8 * 1024 * 1024
+  // A piece goes up about every twenty seconds of video: at most that much is
+  // ever only on the device, and a slow connection sends small things well.
+  const PART_BYTES = 3 * 1024 * 1024
   let recordingState: { id: string; startedAt: number } | null = null
   /** parts whose data lives only in memory because IndexedDB was unavailable */
   const memParts = new Map<string, ArrayBuffer[]>()
@@ -3189,7 +3202,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         eventId,
         space,
         audioOnly: audioOnly || undefined,
-        spaceId: spaceId || undefined
+        spaceId: spaceId || undefined,
+        recordedOn: whereThisIs()
       }
       const { error } = await sb.from('sessions').insert({
         id: meta.id,
@@ -3714,12 +3728,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     retryUploads: async (sessionId: string) => {
       // the parts may be on another page of this computer (the extension's
       // engine recorded it) or another device: this page can only speak for
-      // what it holds, and leaves the row's word alone otherwise
-      const held = (await localParts(sessionId)).length > 0 || [...memParts.keys()].some((k) => k.startsWith(sessionId + ':'))
+      // what it holds, and says so, so the page never offers a button that
+      // has nothing to send
+      const held =
+        (await localParts(sessionId)).length > 0 ||
+        (await localChunks(sessionId)).length > 0 ||
+        [...memParts.keys()].some((k) => k.startsWith(sessionId + ':'))
       if (!held) {
         const d = cache.get(sessionId) ?? (await loadSession(sessionId))
-        return { pending: d?.meta.recordingPending ? 1 : 0 }
+        return { pending: d?.meta.recordingPending ? 1 : 0, here: false }
       }
+      // loose pieces that never became a part are made into one first
+      await sweepLooseChunks().catch(() => undefined)
       const left = await retryPendingUploads(sessionId)
       const pending = left < 0 ? (await localParts(sessionId)).length : left
       // nothing left on this device: the flag comes off the row too, so the
@@ -3733,7 +3753,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           if (!d.meta.whole) void consolidateRecording(sessionId)
         }
       }
-      return { pending }
+      return { pending, here: true }
     },
 
     // The whole recording as one file, played natively over range requests:

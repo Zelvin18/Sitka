@@ -209,7 +209,8 @@ const api = {
   createSampleSession: (): Promise<SessionMeta | null> =>
     ipcRenderer.invoke('session:sample'),
   /** Push any recording parts still on this device to the cloud (web). */
-  retryUploads: (sessionId: string): Promise<{ pending: number }> =>
+  /** `here`: whether this device holds the pieces at all (false: another browser recorded it) */
+  retryUploads: (sessionId: string): Promise<{ pending: number; here?: boolean }> =>
     ipcRenderer.invoke('session:retryUploads', sessionId),
   /** Re-run the title/summary/highlights analysis (after a failure). */
   reanalyzeSession: (id: string): Promise<SessionMeta | null> =>
