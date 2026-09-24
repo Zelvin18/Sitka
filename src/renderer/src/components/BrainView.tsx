@@ -138,10 +138,10 @@ export default function BrainView({
   return (
     <div className="brain-view">
       <div className="brain-hero">
-        <h1 className="page-title">Overview</h1>
+        <h1 className="page-title">Insights</h1>
         <p className="page-subtitle" style={{ marginBottom: 16 }}>
-          Everything Sitca has ever attended with you. Ask it, search it, or see what it
-          remembers.
+          Everything Sitca has attended with you, as one memory. Ask it, search it, or see what it
+          remembers &mdash; decisions, promises, people and ideas.
         </p>
         <div className="brain-modes">
           <div className="seg">

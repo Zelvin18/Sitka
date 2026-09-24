@@ -12,6 +12,8 @@ import { IconBroadcast, IconCalendar, IconNotes, IconPlus } from '../lib/icons'
 interface Props {
   /** open this event's dashboard directly (deep link) */
   initialEventId?: string
+  /** inside the Live hub: no hero of its own, a plain heading and the list */
+  compact?: boolean
   onStartEvent: (eventId: string) => void
   onOpenSession: (sessionId: string) => void
 }
@@ -53,6 +55,7 @@ function relativeWhen(startsAt?: number): string | null {
 
 export default function EventsView({
   initialEventId,
+  compact = false,
   onStartEvent,
   onOpenSession
 }: Props): React.JSX.Element {
@@ -665,9 +668,29 @@ export default function EventsView({
   }
 
   // ============ list view ============
-  return (
-    <div className="content">
-      <div className="content-inner" style={{ maxWidth: 860 }}>
+  // Inside the Live hub the page around it already says what this is: a
+  // heading and the button are enough, and the list sits in the hub's flow.
+  const body = (
+    <>
+        {compact && (
+          <div className="ev-compact-head">
+            <div>
+              <div className="section-title" style={{ marginTop: 0 }}>Events you host</div>
+              <div className="ev-compact-sub">Brief Sitca with your documents, share the QR ahead, go live on the day.</div>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setError(null)
+                setCreateOpen(true)
+              }}
+            >
+              <IconPlus size={15} strokeWidth={2.2} />
+              Create an event
+            </button>
+          </div>
+        )}
+        {!compact && (
         <div className="ev-hero photo">
             <Photo name="events-hero" position="68% center" />
           <div className="ev-hero-veil" aria-hidden="true" />
@@ -714,6 +737,7 @@ export default function EventsView({
             </div>
           </div>
         </div>
+        )}
 
         {error && (
           <div className="notice notice-error" style={{ marginTop: 18 }}>
@@ -879,6 +903,14 @@ export default function EventsView({
             </div>
           </div>
         )}
+    </>
+  )
+  return compact ? (
+    <div className="ev-compact">{body}</div>
+  ) : (
+    <div className="content">
+      <div className="content-inner" style={{ maxWidth: 860 }}>
+        {body}
       </div>
     </div>
   )

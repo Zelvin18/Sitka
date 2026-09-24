@@ -56,7 +56,7 @@ export default function CommandPalette({
       {
         key: 'a-brain',
         icon: <IconSparkle size={14} />,
-        label: 'Open Overview',
+        label: 'Open Insights',
         run: () => onAction('brain')
       },
       {

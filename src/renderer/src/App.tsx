@@ -26,6 +26,8 @@ import CreateView from './components/CreateView'
 import ProfileMenu from './components/ProfileMenu'
 import NamePrompt from './components/NamePrompt'
 import Welcome from './components/Welcome'
+import LiveHub from './components/LiveHub'
+import StudioView from './components/StudioView'
 
 type View =
   | { name: 'homepage' }
@@ -55,6 +57,10 @@ type View =
       host?: boolean
     }
   | { name: 'brain' }
+  /** Live: join, host, send Sitca; the events list lives inside it */
+  | { name: 'livehub'; eventId?: string }
+  /** Studio: practise, make from a session */
+  | { name: 'studio' }
   | { name: 'session'; id: string; seekTo?: number; seekNonce?: number }
 
 const VIEW_KEY = 'sitka.view'
@@ -538,6 +544,14 @@ export default function App(): React.JSX.Element {
 
   // Organisations: a university or a company the user belongs to.
   const [orgs, setOrgs] = useState<Organization[]>([])
+  // whether the plan is a paid one: what Live offers as "yours" or "with Plus"
+  const [paidPlan, setPaidPlan] = useState(false)
+  useEffect(() => {
+    void window.sitka
+      .getUsage()
+      .then((u) => setPaidPlan(Boolean(u && u.plan && u.plan !== 'free')))
+      .catch(() => undefined)
+  }, [])
   const refreshOrgs = useCallback(async (): Promise<void> => {
     setOrgs(await window.sitka.listOrgs())
   }, [])
@@ -623,22 +637,27 @@ export default function App(): React.JSX.Element {
             setView({ name: 'homepage' })
             closeDrawer()
           }}
-          onEvents={() => {
-            setView({ name: 'events' })
+          onLive={() => {
+            setView({ name: 'livehub' })
             closeDrawer()
           }}
-          onCoach={() => {
-            setView({ name: 'coach' })
+          onStudio={() => {
+            setView({ name: 'studio' })
             closeDrawer()
           }}
-          onCreate={() => {
-            setView({ name: 'create' })
-            closeDrawer()
-          }}
-          onJoin={() => {
-            setView({ name: 'join' })
-            closeDrawer()
-          }}
+          onWorkspace={
+            orgs.length > 0
+              ? () => {
+                  // one organisation opens; several open the one being
+                  // visited, or the first, and the doors inside lead on
+                  const current = view.name === 'org' ? orgs.find((o) => o.id === view.id) : undefined
+                  const org = current ?? orgs[0]
+                  setSpace(org.kind)
+                  setView({ name: 'org', id: org.id })
+                  closeDrawer()
+                }
+              : undefined
+          }
           onHome={() => {
             setView({ name: 'home' })
             closeDrawer()
@@ -748,7 +767,7 @@ export default function App(): React.JSX.Element {
             sessions={sessions.filter((s) => !s.space)}
             allSessions={sessions}
             onNewSession={() => setView({ name: 'live' })}
-            onGoEvents={() => setView({ name: 'events' })}
+            onGoEvents={() => setView({ name: 'livehub' })}
             onGoOverview={() => setView({ name: 'brain' })}
             onGoLibrary={() => setView({ name: 'home' })}
             onOpenSession={openSession}
@@ -815,6 +834,18 @@ export default function App(): React.JSX.Element {
           />
         )}
         {view.name === 'join' && <JoinView onBack={goBack} />}
+        {view.name === 'livehub' && (
+          <LiveHub
+            initialEventId={view.eventId}
+            paid={paidPlan}
+            onJoin={() => setView({ name: 'join' })}
+            onStartEvent={(eventId) => setView({ name: 'live', eventId })}
+            onOpenSession={openSession}
+          />
+        )}
+        {view.name === 'studio' && (
+          <StudioView onPractise={() => setView({ name: 'coach' })} onMake={() => setView({ name: 'create' })} />
+        )}
         {view.name === 'create' && (
           <CreateView
             sessions={sessions}
@@ -940,7 +971,7 @@ export default function App(): React.JSX.Element {
         // Ask Sitca and the player's own controls, and had to be dodged.
         // While something is recording it stays everywhere but the live page
         // — that pill is the way back into the session.
-        hidden={view.name === 'live' || (recordingSessionId === undefined && view.name !== 'home')}
+        hidden={view.name === 'live' || (recordingSessionId === undefined && view.name !== 'homepage')}
         onStart={quickRecord}
         onOpen={() => setView({ name: 'live' })}
       />

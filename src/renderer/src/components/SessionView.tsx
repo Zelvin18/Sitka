@@ -1626,12 +1626,6 @@ export default function SessionView({
             Ask
           </button>
           <button
-            className={`btn btn-sm ${tab === 'transcript' ? '' : 'btn-ghost'}`}
-            onClick={() => setTab('transcript')}
-          >
-            Transcript
-          </button>
-          <button
             className={`btn btn-sm ${tab === 'overview' ? '' : 'btn-ghost'}`}
             onClick={() => setTab('overview')}
           >
@@ -1643,6 +1637,12 @@ export default function SessionView({
           >
             Notes
           </button>
+          <button
+            className={`btn btn-sm ${tab === 'transcript' ? '' : 'btn-ghost'}`}
+            onClick={() => setTab('transcript')}
+          >
+            Transcript
+          </button>
           {meta.hosted ? (
             <button
               className={`btn btn-sm ${tab === 'report' ? '' : 'btn-ghost'}`}
@@ -1651,12 +1651,17 @@ export default function SessionView({
               Event report
             </button>
           ) : (
-            <button
-              className={`btn btn-sm ${tab === 'study' ? '' : 'btn-ghost'}`}
-              onClick={() => setTab('study')}
-            >
-              Study
-            </button>
+            // flashcards and a quiz are for something that was taught: a
+            // lecture, or anything filed under education. A meeting's page
+            // does not offer to quiz the person on it.
+            (meta.kind === 'lecture' || meta.space === 'education' || tab === 'study') && (
+              <button
+                className={`btn btn-sm ${tab === 'study' ? '' : 'btn-ghost'}`}
+                onClick={() => setTab('study')}
+              >
+                Study
+              </button>
+            )
           )}
           <button
             className="btn btn-ghost btn-sm"

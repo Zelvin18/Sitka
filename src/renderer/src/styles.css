@@ -14146,3 +14146,64 @@ button.org-tr:hover {
   font-size: 12.5px;
   color: var(--text-2);
 }
+
+/* ---- the hubs: Live and Studio ---- */
+.hub-head {
+  margin-bottom: 22px;
+}
+.hub-head .page-subtitle {
+  margin-top: 4px;
+}
+.hub-actions {
+  margin-bottom: 34px;
+}
+.hub-two {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 640px;
+}
+.hub-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+.hub-sheet {
+  max-width: 460px;
+}
+.hub-sheet-p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin: 0 0 12px;
+}
+/* the events list inside Live: a heading and the list, no hero of its own */
+.ev-compact-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.ev-compact-sub {
+  font-size: 13.5px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+@media (max-width: 859px) {
+  .hub-actions,
+  .hub-two {
+    grid-template-columns: 1fr;
+  }
+  .ev-compact-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

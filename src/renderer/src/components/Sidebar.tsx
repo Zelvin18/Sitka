@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import type { SessionMeta } from '@shared/types'
 import {
+  IconBriefcase,
   IconBroadcast,
-  IconChevron,
   IconDots,
   IconFolder,
   IconHome,
   IconMenu,
-  IconMic,
   IconPlus,
-  IconQr,
   IconSettings,
   IconSparkle,
   IconWand,
@@ -24,16 +22,18 @@ interface Props {
   activeSessionId?: string
   recordingSessionId?: string
   onHomePage: () => void
-  onEvents: () => void
-  onCoach: () => void
-  onCreate: () => void
+  /** Live: join, host, or send Sitca */
+  onLive: () => void
+  /** Studio: practise a talk, make something from a session */
+  onStudio: () => void
+  /** the person's organisation, when they belong to one */
+  onWorkspace?: () => void
   onHome: () => void
   onNewSession: () => void
   onBrain: () => void
   onOpenSession: (id: string) => void
   onSettings: () => void
   onCollapse: () => void
-  onJoin: () => void
   onRenameSession: (id: string, title: string) => void
   onDeleteSession: (id: string) => void
 }
@@ -45,7 +45,6 @@ interface MenuState {
 }
 
 const PHONE_QUERY = '(max-width: 859px)'
-const EXPLORE_KEY = 'sitka.sideExplore'
 
 export default function Sidebar({
   sessions,
@@ -53,16 +52,15 @@ export default function Sidebar({
   activeSessionId,
   recordingSessionId,
   onHomePage,
-  onEvents,
-  onCoach,
-  onCreate,
+  onLive,
+  onStudio,
+  onWorkspace,
   onHome,
   onNewSession,
   onBrain,
   onOpenSession,
   onSettings,
   onCollapse,
-  onJoin,
   onRenameSession,
   onDeleteSession
 }: Props): React.JSX.Element {
@@ -71,9 +69,9 @@ export default function Sidebar({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
 
-  // On a phone the sidebar is a drawer with little height: the main places
-  // stay in view, the rest fold under "Explore", the sessions get the room,
-  // and the way to a new session sits at the foot with Settings beside it.
+  // On a phone the sidebar is a drawer with little height: the places stay
+  // in view, the sessions get the room, and the way to a new session sits at
+  // the foot with Settings beside it.
   const [phone, setPhone] = useState(() => window.matchMedia(PHONE_QUERY).matches)
   useEffect(() => {
     const mq = window.matchMedia(PHONE_QUERY)
@@ -81,24 +79,17 @@ export default function Sidebar({
     mq.addEventListener('change', on)
     return () => mq.removeEventListener('change', on)
   }, [])
-  const [explore, setExplore] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(EXPLORE_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
-  const toggleExplore = (): void => {
-    setExplore((v) => {
-      try {
-        localStorage.setItem(EXPLORE_KEY, v ? '0' : '1')
-      } catch {
-        /* ignore */
-      }
-      return !v
-    })
-  }
-  const inExplore = activeView === 'coach' || activeView === 'create' || activeView === 'join'
+  // Each place in the sidebar answers for the pages that live under it, so
+  // the highlight follows the person into an event, a rehearsal, a space.
+  const place = (v: string): string =>
+    v === 'livehub' || v === 'events' || v === 'join'
+      ? 'live'
+      : v === 'studio' || v === 'coach' || v === 'create'
+        ? 'studio'
+        : v === 'org' || v === 'business' || v === 'education'
+          ? 'workspace'
+          : v
+  const here = place(activeView)
 
   const menuSession = menu ? sessions.find((s) => s.id === menu.id) : undefined
 
@@ -164,10 +155,20 @@ export default function Sidebar({
   )
 
   const item = (view: string, label: string, icon: React.ReactNode, go: () => void, extra = ''): React.JSX.Element => (
-    <button className={`side-item${activeView === view ? ' active' : ''}${extra}`} onClick={go}>
+    <button className={`side-item${here === view ? ' active' : ''}${extra}`} onClick={go}>
       {icon}
       {label}
     </button>
+  )
+  const places = (size: number): React.JSX.Element => (
+    <>
+      {item('homepage', 'Home', <IconHome size={size} />, onHomePage)}
+      {item('home', 'Library', <IconFolder size={size} />, onHome)}
+      {item('live', 'Live', <IconBroadcast size={size} />, onLive)}
+      {item('brain', 'Insights', <IconSparkle size={size} />, onBrain)}
+      {item('studio', 'Studio', <IconWand size={size} />, onStudio)}
+      {onWorkspace && item('workspace', 'Workspace', <IconBriefcase size={size} />, onWorkspace)}
+    </>
   )
 
   const sessionsBlock = (
@@ -264,28 +265,7 @@ export default function Sidebar({
     return (
       <aside className="sidebar sidebar-phone">
         {head}
-        <div className="side-section">
-          {item('homepage', 'Home', <IconHome size={16} />, onHomePage)}
-          {item('brain', 'Overview', <IconSparkle size={16} />, onBrain)}
-          {item('home', 'Library', <IconFolder size={16} />, onHome)}
-          {item('events', 'Events', <IconBroadcast size={16} />, onEvents)}
-          <button
-            className={`side-item side-explore${explore ? ' open' : ''}${inExplore && !explore ? ' active' : ''}`}
-            onClick={toggleExplore}
-            aria-expanded={explore}
-          >
-            <IconChevron size={16} strokeWidth={2.2} />
-            Explore
-            <span className="side-explore-hint">{explore ? 'Less' : 'Coach, Create, Join'}</span>
-          </button>
-          {explore && (
-            <div className="side-sub">
-              {item('coach', 'Coach', <IconMic size={15} />, onCoach)}
-              {item('create', 'Create', <IconWand size={15} />, onCreate)}
-              {item('join', 'Join', <IconQr size={15} />, onJoin)}
-            </div>
-          )}
-        </div>
+        <div className="side-section">{places(16)}</div>
         {sessionsBlock}
         <div className="side-bottom">
           <button className="side-new-bottom" onClick={onNewSession} title="Start a new session">
@@ -322,15 +302,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="side-section">
-        {item('homepage', 'Home', <IconHome size={15} />, onHomePage)}
-        {item('brain', 'Overview', <IconSparkle size={15} />, onBrain)}
-        {item('join', 'Join', <IconQr size={15} />, onJoin)}
-        {item('events', 'Events', <IconBroadcast size={15} />, onEvents)}
-        {item('coach', 'Coach', <IconMic size={15} />, onCoach)}
-        {item('create', 'Create', <IconWand size={15} />, onCreate)}
-        {item('home', 'Library', <IconFolder size={15} />, onHome)}
-      </div>
+      <div className="side-section">{places(15)}</div>
 
       {sessionsBlock}
 

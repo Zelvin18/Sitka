@@ -102,7 +102,7 @@ export default function ProfileMenu({
                 }}
               >
                 <IconSparkle size={14} />
-                Overview
+                Insights
               </button>
               <button
                 className="menu-item profile-link"
