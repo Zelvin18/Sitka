@@ -255,6 +255,11 @@ export default function OrgView({
   // Getting started, for the person who set things up. Each step is real:
   // it ticks itself off from what actually exists.
   const [inviting, setInviting] = useState(false)
+  // The organisation's page in four parts, one at a time: what the month
+  // looks like, the spaces, the people, the settings. A member sees the
+  // spaces and the people; the rest is the administration's.
+  type OrgTab = 'overview' | 'spaces' | 'people' | 'settings'
+  const [orgTab, setOrgTab] = useState<OrgTab>(lead ? 'overview' : 'spaces')
   const hasMaterials = spaces.some((s) => s.materials > 0)
   const hasSessions = spaces.some((s) => s.sessions > 0)
   const firstSpace = spaces[0] ?? null
@@ -321,15 +326,52 @@ export default function OrgView({
                 <span>{org.role === 'owner' ? 'You own this' : org.role === 'lead' ? (education ? 'Lecturer' : 'Lead') : education ? 'Student' : 'Member'}</span>
               </div>
             </div>
-            {lead && org.code && (
-              <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={() => setInviting(true)}>
-                <IconPlus size={13} strokeWidth={2.2} />
-                Invite people
-              </button>
+            {lead && (
+              <div className="org-actions">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setOrgTab('spaces')
+                    setCreating(true)
+                  }}
+                >
+                  <IconPlus size={13} strokeWidth={2.2} />
+                  {education ? 'New course' : 'New space'}
+                </button>
+                {org.code && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setInviting(true)}>
+                    Invite people
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
-          {lead && (
+          <div className="org-tabs">
+            <div className="seg">
+              {(
+                (lead
+                  ? [
+                      ['overview', 'Overview'],
+                      ['spaces', education ? 'Courses' : 'Spaces'],
+                      ['people', 'People'],
+                      ['settings', 'Settings']
+                    ]
+                  : [
+                      ['spaces', education ? 'Courses' : 'Spaces'],
+                      ['people', 'People']
+                    ]) as [OrgTab, string][]
+              ).map(([id, label]) => (
+                <button key={id} className={`seg-btn${orgTab === id ? ' on' : ''}`} onClick={() => setOrgTab(id)}>
+                  {label}
+                  {id === 'spaces' && spaces.length > 0 && <span className="seg-n">{spaces.length}</span>}
+                  {id === 'people' && org.members > 0 && <span className="seg-n">{org.members}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {lead && orgTab === 'overview' && !steps.every((s) => s.done) && (
             <div className="org-steps">
               {steps.map((s, i) => (
                 <button
@@ -348,7 +390,7 @@ export default function OrgView({
             </div>
           )}
 
-          {!lead && (
+          {!lead && orgTab === 'spaces' && (
             <div className="org-intro">
               <Mark size={16} />
               <span>
@@ -359,16 +401,12 @@ export default function OrgView({
             </div>
           )}
 
+          {orgTab === 'spaces' && (
+          <>
           <div className="org-section-row">
             <div className="section-title" style={{ margin: 0 }}>
               {education ? 'Courses' : 'Spaces'}
             </div>
-            {lead && (
-              <button className="btn btn-sm" onClick={() => setCreating((v) => !v)}>
-                <IconPlus size={13} strokeWidth={2.2} />
-                {education ? 'New course' : 'New space'}
-              </button>
-            )}
           </div>
 
           {creating && (
@@ -461,9 +499,13 @@ export default function OrgView({
             </div>
           )}
 
-          {lead ? (
-            <div style={{ marginTop: 36 }}>
+          </>
+          )}
+
+          {lead && orgTab !== 'spaces' ? (
+            <div style={{ marginTop: 8 }}>
               <OrgAdmin
+                section={orgTab}
                 org={org}
                 onOpenSpace={(id) => {
                   const s = spaces.find((x) => x.id === id)
@@ -475,9 +517,9 @@ export default function OrgView({
                 }}
               />
             </div>
-          ) : (
+          ) : !lead && orgTab === 'people' ? (
             <>
-          <div className="section-title" style={{ marginTop: 36 }}>
+          <div className="section-title" style={{ marginTop: 8 }}>
             People
           </div>
           <div className="org-people">
@@ -495,8 +537,9 @@ export default function OrgView({
             ))}
           </div>
             </>
-          )}
+          ) : null}
 
+          {(lead ? orgTab === 'settings' : orgTab === 'people') && (
           <div className="org-foot">
             <span>
               {education
@@ -513,6 +556,7 @@ export default function OrgView({
               </button>
             )}
           </div>
+          )}
         </div>
 
         {inviting && org.code && (

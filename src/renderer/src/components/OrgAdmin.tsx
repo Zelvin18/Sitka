@@ -6,6 +6,8 @@ import { IconCopy } from '../lib/icons'
 
 interface Props {
   org: Organization
+  /** which part of the administration this shows: the workspace page keeps each on its own tab */
+  section: 'overview' | 'people' | 'settings'
   /** open a course or space */
   onOpenSpace: (id: string) => void
   /** something changed that the parent lists (members, name, codes) */
@@ -20,7 +22,7 @@ const SITE = 'https://sitcaai.vercel.app'
  * rules of the house, and the invitation codes. The owner may change what
  * is shown; lecturers and leads see it as it is.
  */
-export default function OrgAdmin({ org, onOpenSpace, onChanged }: Props): React.JSX.Element {
+export default function OrgAdmin({ org, section, onOpenSpace, onChanged }: Props): React.JSX.Element {
   const education = org.kind === 'education'
   const owner = org.role === 'owner'
   const [data, setData] = useState<OrgOverview | null>(null)
@@ -79,59 +81,60 @@ export default function OrgAdmin({ org, onOpenSpace, onChanged }: Props): React.
 
   return (
     <div className="org-admin">
-      <div className="org-admin-head">
-        <div>
-          <div className="section-title" style={{ marginTop: 0 }}>
-            Administration
+      {section === 'settings' && (
+        <div className="org-admin-head">
+          <div>
+            <div className="section-title" style={{ marginTop: 0 }}>
+              Settings
+            </div>
+            <div className="org-admin-sub">
+              {education ? 'The name, who may join, who makes courses, and the codes that let people in.' : 'The name, who may join, and the codes that let people in.'}
+            </div>
           </div>
-          <div className="org-admin-sub">
-            {education
-              ? 'The whole university in one place: who is in, every course, and what the month has taken.'
-              : 'The whole organisation in one place: who is in, every space, and what the month has taken.'}
-          </div>
+          {owner && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(true)}>
+              Rename
+            </button>
+          )}
         </div>
-        {owner && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(true)}>
-            Rename
-          </button>
-        )}
-      </div>
+      )}
 
-      {/* the month, in numbers */}
-      <div className="org-stats">
-        <div className="org-stat">
-          <b>{leads}</b>
-          <span>{education ? (leads === 1 ? 'Lecturer' : 'Lecturers') : leads === 1 ? 'Lead' : 'Leads'}</span>
+      {/* the month, in numbers: one quiet line, not a wall of tiles */}
+      {section === 'overview' && (
+        <div className="org-kpis">
+          <div className="org-kpi">
+            <b>{data.month.sessions}</b>
+            <span>sessions this month</span>
+          </div>
+          <div className="org-kpi">
+            <b>{data.month.hours}</b>
+            <span>hours captured</span>
+          </div>
+          <div className="org-kpi">
+            <b>{data.month.asks}</b>
+            <span>questions asked</span>
+          </div>
+          <div className="org-kpi">
+            <b>{data.month.active}</b>
+            <span>people active</span>
+          </div>
+          <div className="org-kpi">
+            <b>{data.courses.length}</b>
+            <span>{education ? (data.courses.length === 1 ? 'course' : 'courses') : data.courses.length === 1 ? 'space' : 'spaces'}</span>
+          </div>
+          <div className="org-kpi">
+            <b>{leads + students}</b>
+            <span>
+              {leads} {education ? (leads === 1 ? 'lecturer' : 'lecturers') : leads === 1 ? 'lead' : 'leads'} · {students}{' '}
+              {education ? (students === 1 ? 'student' : 'students') : students === 1 ? 'member' : 'members'}
+            </span>
+          </div>
         </div>
-        <div className="org-stat">
-          <b>{students}</b>
-          <span>{education ? (students === 1 ? 'Student' : 'Students') : students === 1 ? 'Member' : 'Members'}</span>
-        </div>
-        <div className="org-stat">
-          <b>{data.courses.length}</b>
-          <span>{education ? (data.courses.length === 1 ? 'Course' : 'Courses') : data.courses.length === 1 ? 'Space' : 'Spaces'}</span>
-        </div>
-        <div className="org-stat">
-          <b>{data.month.sessions}</b>
-          <span>Sessions this month</span>
-        </div>
-        <div className="org-stat">
-          <b>{data.month.hours}</b>
-          <span>Hours this month</span>
-        </div>
-        <div className="org-stat">
-          <b>{data.month.asks}</b>
-          <span>Questions this month</span>
-        </div>
-        <div className="org-stat">
-          <b>{data.month.active}</b>
-          <span>Active people</span>
-        </div>
-      </div>
+      )}
 
       {/* the courses */}
-      <div className="section-title">{education ? 'Courses' : 'Spaces'}</div>
-      {data.courses.length === 0 ? (
+      {section === 'overview' && <div className="section-title">{education ? 'Courses' : 'Spaces'}</div>}
+      {section !== 'overview' ? null : data.courses.length === 0 ? (
         <div className="org-admin-empty">{education ? 'No courses yet. Lecturers make them from the top of this page.' : 'No spaces yet.'}</div>
       ) : (
         <div className="org-table">
@@ -160,8 +163,10 @@ export default function OrgAdmin({ org, onOpenSpace, onChanged }: Props): React.
       )}
 
       {/* the people */}
+      {section === 'people' && (
+      <>
       <div className="org-admin-row">
-        <div className="section-title">People</div>
+        <div className="section-title" style={{ marginTop: 0 }}>People</div>
         <input className="input org-admin-find" placeholder="Find by name or email" value={filter} onChange={(e) => setFilter(e.currentTarget.value)} />
       </div>
       <div className="org-table">
@@ -223,9 +228,11 @@ export default function OrgAdmin({ org, onOpenSpace, onChanged }: Props): React.
         ))}
         {people.length === 0 && <div className="org-admin-empty">Nobody matches.</div>}
       </div>
+      </>
+      )}
 
       {/* the rules, and the way in */}
-      {owner && (
+      {section === 'settings' && owner && (
         <div className="org-admin-cards">
           <div className="invite-card">
             <div className="invite-card-head">
