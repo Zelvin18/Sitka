@@ -50,6 +50,10 @@ export interface Store {
   /** True when this deployment stores recordings in R2. */
   ready(): Promise<boolean>
   upload(key: string, blob: Blob, contentType: string): Promise<{ error?: string }>
+  /** A recording's upload links for pieces from..from+count, issued at once (null: none issued, and why). */
+  grant(session: string, from: number, count: number): Promise<{ links: { n: number; url: string }[]; expiresAt: number } | { error: string }>
+  /** Send one piece to a link already issued. `expired`: the link is no longer good and a new one is needed. */
+  putTo(url: string, blob: Blob, contentType: string): Promise<{ ok: true } | { error: string; expired?: boolean }>
   /** Whichever store holds this folder: R2 first, then the older Supabase one. */
   list(prefix: string): Promise<Listing>
   /** One named store only, for clearing a session out of both. */
@@ -290,6 +294,32 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     urls,
     url,
     candidates,
+
+    async grant(sessionId, from, count) {
+      const res = await post<{ links: { n: number; url: string }[]; expiresAt: number }>('grant', { session: sessionId, from, count }).catch(() => null)
+      if (res?.links?.length) return res
+      return { error: lastAnswer || 'the server did not answer' }
+    },
+
+    async putTo(url, blob, contentType) {
+      // three goes, further apart each time; the piece stays on the device
+      // whatever happens here, so a failure costs only a later retry
+      const waits = [0, 1500, 5000]
+      let last = ''
+      for (const w of waits) {
+        if (w) await sleep(w)
+        try {
+          const r = await fetch(url, { method: 'PUT', body: blob, headers: { 'content-type': contentType } })
+          if (r.ok) return { ok: true as const }
+          last = `storage answered ${r.status}`
+          // a link past its time, or one signed for another moment: a new one is needed, not a retry
+          if (r.status === 403 || r.status === 400) return { error: last, expired: true }
+        } catch (err) {
+          last = err instanceof Error ? err.message : String(err)
+        }
+      }
+      return { error: last || 'the piece did not go up' }
+    },
 
     async upload(key, blob, contentType) {
       if (!(await ready())) {

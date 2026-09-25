@@ -301,6 +301,30 @@ export default function LiveSession({
   stillAskRef.current = stillAsk
   const levelTimerRef = useRef<number | null>(null)
   const [noSound, setNoSound] = useState<'' | 'silent' | 'none'>('')
+  // The cloud, while recording: how far the recording has safely gone up,
+  // and — the moment a piece is refused — a plain word about it, so trouble
+  // is seen while it can still be fixed, not found in a banner afterwards.
+  const [cloudUpTo, setCloudUpTo] = useState<number | null>(null)
+  const [cloudTrouble, setCloudTrouble] = useState('')
+  useEffect(() => {
+    const ok = (e: Event): void => {
+      const d = (e as CustomEvent<{ sessionId: string }>).detail
+      if (d?.sessionId !== sessionIdRef.current) return
+      setCloudTrouble('')
+      setCloudUpTo(Date.now() - sessionStartRef.current)
+    }
+    const bad = (e: Event): void => {
+      const d = (e as CustomEvent<{ sessionId: string; error: string }>).detail
+      if (d?.sessionId !== sessionIdRef.current) return
+      setCloudTrouble(d.error)
+    }
+    window.addEventListener('sitka:upload-ok', ok)
+    window.addEventListener('sitka:upload-trouble', bad)
+    return () => {
+      window.removeEventListener('sitka:upload-ok', ok)
+      window.removeEventListener('sitka:upload-trouble', bad)
+    }
+  }, [])
   const enableMicNow = useCallback(async (): Promise<void> => {
     const ctx = audioCtxRef.current
     const dest = destRef.current
@@ -3027,6 +3051,20 @@ export default function LiveSession({
         {sttError && (
           <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
             <span>Transcription issue: {sttError}</span>
+          </div>
+        )}
+        {phase === 'recording' && cloudTrouble && (
+          <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
+            <span>
+              <strong>The recording is not reaching the cloud.</strong> {cloudTrouble} It is kept safely on this device meanwhile and keeps
+              trying; the transcript and notes are saved as usual.
+            </span>
+          </div>
+        )}
+        {phase === 'recording' && !cloudTrouble && cloudUpTo !== null && (
+          <div className="cloud-line" style={{ margin: '10px 20px 0' }}>
+            <span className="cloud-dot" />
+            In the cloud up to {formatTime(cloudUpTo / 1000)}
           </div>
         )}
         {noSound && (

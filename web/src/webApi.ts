@@ -1452,6 +1452,65 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const uploadTrouble = new Set<string>()
   /** the cloud's last word on a failed upload, per session, for the page to show */
   const lastUploadError = new Map<string, string>()
+
+  // ---- upload links, issued once for the whole recording ----
+  // A recording asks for its links at the start — one per piece, for the
+  // next hour or so — and then sends every piece straight to storage with
+  // them. Asking permission before each piece was a door that could close
+  // mid-session (it did, for forty-five minutes); with the links in hand,
+  // nothing between the recorder and the cloud can hold it back.
+  const GRANT_COUNT = 180
+  const grants = new Map<string, { links: Map<number, string>; top: number; until: number }>()
+  const granting = new Map<string, Promise<void>>()
+  async function askGrant(sessionId: string, from: number): Promise<void> {
+    const running = granting.get(sessionId)
+    if (running) return running
+    const run = (async () => {
+      const g = await store.grant(sessionId, from, GRANT_COUNT)
+      if ('error' in g) {
+        lastUploadError.set(sessionId, `upload links not issued: ${g.error}`)
+        return
+      }
+      const cur = grants.get(sessionId) ?? { links: new Map<number, string>(), top: -1, until: 0 }
+      for (const l of g.links) cur.links.set(l.n, l.url)
+      cur.top = Math.max(cur.top, ...g.links.map((l) => l.n))
+      cur.until = g.expiresAt
+      grants.set(sessionId, cur)
+    })().finally(() => granting.delete(sessionId))
+    granting.set(sessionId, run)
+    return run
+  }
+  /** The link for one piece: from the grant in hand, asking for more when it runs low or runs out. */
+  async function linkFor(sessionId: string, partNo: number): Promise<string | null> {
+    let g = grants.get(sessionId)
+    // ten minutes' margin on the twelve hours: a link is never used at its last second
+    if (g && g.until - Date.now() < 600000) {
+      grants.delete(sessionId)
+      g = undefined
+    }
+    if (!g || !g.links.has(partNo)) {
+      await askGrant(sessionId, partNo)
+      g = grants.get(sessionId)
+    }
+    // running low: the next batch is fetched ahead, while this one still serves
+    if (g && g.top - partNo < 30) void askGrant(sessionId, g.top + 1)
+    return g?.links.get(partNo) ?? null
+  }
+  /** The safety copy on this device may not be thrown away by the browser to make room. */
+  async function keepDeviceCopy(): Promise<void> {
+    try {
+      if (navigator.storage?.persisted && (await navigator.storage.persisted())) return
+      await navigator.storage?.persist?.()
+    } catch {
+      /* an older browser: the copy is kept as before */
+    }
+  }
+  /** sessions already told that this device could not keep a copy (said once) */
+  const deviceCopyWarned = new Set<string>()
+  /** said on the recording page, while it can still be acted on */
+  const sayUploadTrouble = (sessionId: string, error: string): void => {
+    window.dispatchEvent(new CustomEvent('sitka:upload-trouble', { detail: { sessionId, error } }))
+  }
   // Closing the tab while a recording is still going up would strand the last
   // parts on this device. The browser asks first, the way it does mid-session.
   window.addEventListener('beforeunload', (e) => {
@@ -1500,9 +1559,26 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           (await loadSession(p.sessionId))?.meta.mime ??
           'video/webm'
     const blob = new Blob(bufs, { type: kind })
-    const { error } = await store.upload(partPath(p.sessionId, p.partNo), blob, kind)
+    // With a link issued at the start, the piece goes straight up; a link
+    // past its time is replaced once. Only a deployment without the
+    // recording store, or a grant that could not be had, asks piece by piece.
+    let error: string | undefined
+    const url = (await store.ready()) ? await linkFor(p.sessionId, p.partNo) : null
+    if (url) {
+      let sent = await store.putTo(url, blob, kind)
+      if ('error' in sent && sent.expired) {
+        grants.delete(p.sessionId)
+        const fresh = await linkFor(p.sessionId, p.partNo)
+        sent = fresh ? await store.putTo(fresh, blob, kind) : sent
+      }
+      if ('error' in sent) error = sent.error
+    } else {
+      error = (await store.upload(partPath(p.sessionId, p.partNo), blob, kind)).error
+    }
     if (error) {
       console.error('Sitca: part upload failed', p.sessionId, p.partNo, error)
+      // the recorder, if it is on screen, says so while there is still time to act
+      window.dispatchEvent(new CustomEvent('sitka:upload-trouble', { detail: { sessionId: p.sessionId, error } }))
       lastUploadError.set(p.sessionId, error.slice(0, 160))
       // said once per session, so a blocked network shows up in the operations view
       if (!uploadTrouble.has(p.sessionId)) {
@@ -1513,6 +1589,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return false
     }
     uploadTrouble.delete(p.sessionId)
+    window.dispatchEvent(new CustomEvent('sitka:upload-ok', { detail: { sessionId: p.sessionId, partNo: p.partNo } }))
     const b = recBuf.get(p.sessionId)
     if (p.partNo === 0 && (!b || !b.thumbDone)) {
       if (b) b.thumbDone = true
@@ -3233,6 +3310,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         thumbDone: false,
         chain: Promise.resolve()
       })
+      // Before the first piece exists: the device may keep its safety copy
+      // for good, and the links for the recording's pieces are in hand, so
+      // the first piece goes up the moment it is made.
+      void keepDeviceCopy()
+      void (async () => {
+        if (!(await store.ready())) return
+        await askGrant(meta.id, 0)
+        if (!grants.get(meta.id)) sayUploadTrouble(meta.id, lastUploadError.get(meta.id) ?? 'Upload links could not be issued yet.')
+      })()
       return meta
     },
 
@@ -3716,10 +3802,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const d = cache.get(id)
         if (d && b.kind !== 'application/octet-stream') d.meta.mime = b.kind
       }
-      // The device keeps it first; the cloud gets it next.
-      await idb('chunks', 'readwrite', (s) => {
-        s.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk)
-      })
+      // The device keeps it first; the cloud gets it next. A copy the device
+      // could not keep is said at once, never discovered afterwards: the
+      // piece still goes up from memory, but the tab must stay open for it.
+      const kept = await idb('chunks', 'readwrite', (s) => s.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk))
+      if (kept === undefined && !deviceCopyWarned.has(id)) {
+        deviceCopyWarned.add(id)
+        reportError(location.pathname, `device copy not kept for ${id} (IndexedDB write failed) · ${navigator.userAgent.slice(0, 60)}`)
+        sayUploadTrouble(id, 'This device could not keep a safety copy, so keep this tab open until the recording is in the cloud.')
+      }
       b.chunks.push({ seq, buf: chunk })
       b.bytes += chunk.byteLength
       flushPart(id, false)

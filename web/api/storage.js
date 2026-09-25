@@ -66,6 +66,7 @@ export default async function handler(req, res) {
 
   try {
     if (op === 'put') return await putLinks(res, cfg, owner, body)
+    if (op === 'grant') return await grantLinks(res, cfg, owner, body)
     if (op === 'get') return await getLinks(res, cfg, owner, body)
     if (op === 'list') return await listFolder(res, cfg, owner, body)
     if (op === 'media') return await mediaLinks(res, cfg, owner, body)
@@ -196,6 +197,29 @@ async function putLinks(res, cfg, owner, body) {
     return { key, url: presign(cfg, 'PUT', key, WRITE_SECS) }
   })
   return res.status(200).json({ links, expiresIn: WRITE_SECS })
+}
+
+/**
+ * A recording's upload links, all at once, at the start: one per piece for
+ * the next hour or so, good for twelve hours. The page then sends every
+ * piece straight to storage without asking anyone again, so nothing between
+ * the recorder and the cloud (this server, the account service, a slow
+ * network to either) can hold a recording back once it has begun. Only the
+ * owner's own session folder is ever granted.
+ */
+const GRANT_SECS = 12 * 3600
+async function grantLinks(res, cfg, owner, body) {
+  if (!owner) return res.status(401).json({ error: 'Sign in first.' })
+  const session = String(body.session || '')
+  if (!UUID.test(session)) return res.status(400).json({ error: 'Bad session.' })
+  const from = Math.max(0, Math.min(99999, Math.floor(Number(body.from) || 0)))
+  const count = Math.max(1, Math.min(400, Math.floor(Number(body.count) || 180)))
+  const links = []
+  for (let n = from; n < from + count; n++) {
+    const key = `${owner}/${session}/part-${String(n).padStart(4, '0')}.webm`
+    links.push({ n, url: presign(cfg, 'PUT', key, GRANT_SECS) })
+  }
+  return res.status(200).json({ links, expiresAt: Date.now() + GRANT_SECS * 1000 })
 }
 
 async function getLinks(res, cfg, owner, body) {
