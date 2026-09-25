@@ -27,6 +27,7 @@ A migration is not finished until that passes.
 | `20260925_05_functions.sql` | a fixed search path on every raised-rights function; functions closed by default, opened per role |
 | `20260925_06_indexes_constraints.sql` | indexes; status checks; account links (new rows only) |
 | `20260925_07_usage_retention.sql` | use counted by the server; sane session numbers; the nightly clean-up |
+| `20260925_08_functions_again.sql` | part 5 again, one function at a time (on the live database the SQL editor undid part 5 when it met a function not ours to change); ends by listing what visitors may run |
 
 ## Order for a release
 

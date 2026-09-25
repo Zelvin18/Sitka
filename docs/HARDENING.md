@@ -56,7 +56,7 @@ replays every older script in order and then runs the migrations twice
 | ☑ | S6 | D6, A6 | Attendee questions readable | No room read of questions or answers; the attendee's own page reads through the server with its secret; the room sees shared speaker questions without who asked (`03`) |
 | ☑ | S9 | A7 | `/api/ask` upserts any row | Insert only (Set 1); in the database, every attendee write must come from a real attendee of that event, shown by the secret their page sends (`03`) |
 | ☑ | S7 | D7 | Stage and replay buckets writable by anyone | Changes only by the host the file name belongs to; no listing; pictures only, 5 MB, on the stage (`04`) |
-| ☑ | S16 | D13 | Security-definer functions without `search_path`, callable by anyone | `search_path` fixed on all; execute closed by default, granted per role; `current_plan` no longer callable (`05`) |
+| ☑ | S16 | D13 | Security-definer functions without `search_path`, callable by anyone | `search_path` fixed on all; execute closed by default, granted per role; `current_plan` no longer callable (`05`, and `08`, which does it function by function after the live run of `05` was undone) |
 | ☑ | S17 | D9 | Course live link, filing into other spaces, insights by `eventId` | Lecturers only, to their own event's page; filing only into a space the owner belongs to (the session is always saved); insights joined on the event's owner (`02`) |
 | ☑ | S18 | D10 | Anonymous floods of attendees, messages, votes, telemetry | Joins paced per address and per event; messages, reactions, questions and votes per attendee; error reports and usage events per caller (`03`, `07`) |
 | ☑ | D2 | D15 | Missing indexes | 23 indexes; every rule reads the caller once per query (`06`) |
@@ -68,7 +68,7 @@ replays every older script in order and then runs the migrations twice
 | ☑ | D6 | — | Stale duplicate folder | Deleted (the files were identical to the top-level copies) |
 | ⊘ | D4 | — | No backups on the Free plan | `scripts/backup-db.mjs` copies every table to `backups/` (git-ignored); Pro with point-in-time recovery when upgrading |
 
-Run order for the owner: deploy the site, then run `00` to `07` in the SQL
+Run order for the owner: deploy the site, then run `00` to `08` in the SQL
 editor, then rebuild the extension. Known limit: captions of a live event
 remain readable to anyone while it is live (the room is public by link).
 

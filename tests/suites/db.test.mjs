@@ -543,6 +543,46 @@ test('rules read the caller once per query', async () => {
   assert.deepEqual(rows, [])
 })
 
+// ---------- the live database: part 5 stopped, part 8 finishes the job ----------
+
+test('part 8 closes the functions on a database where part 5 was undone, and touches nothing not ours', async () => {
+  const { supaDb: fresh, migrationFiles } = await import('../lib/supadb.mjs')
+  const { readFileSync } = await import('node:fs')
+  const live = await fresh({ migrations: false })
+  // as on Supabase: a raised-rights function in public that belongs to another role
+  await live.sql(`create role platform_admin nologin;
+                  create function public.platform_helper() returns int language sql security definer as 'select 1';
+                  alter function public.platform_helper() owner to platform_admin;`)
+  const files = migrationFiles()
+  // the live database: every part ran except 5, which the SQL editor undid
+  for (const f of files) {
+    if (/_0[58]_/.test(f)) continue
+    await live.raw.exec(readFileSync(f, 'utf8'))
+  }
+  const [open] = await live.as(null, `select public.current_plan($1) as p`, [A])
+  assert.equal(open.p, 'free', 'the hole is open, as it is on the live database')
+  const f08 = files.find((f) => /_08_/.test(f))
+  const out = await live.raw.exec(readFileSync(f08, 'utf8'))
+  assert.deepEqual(out.at(-1).rows.map((r) => r.visitors_may_run), [
+    'attendee_count(text)', 'event_open(text)', 'sitka_course_preview(text)', 'sitka_event(text)',
+    'sitka_recap(text)', 'sitka_shared_owner(text)'
+  ])
+  assert.match(await live.fails(null, `select public.current_plan($1)`, [A]), /permission denied/i)
+  assert.match(await live.fails(B, `select public.current_plan($1)`, [A]), /permission denied/i)
+  assert.match(await live.fails(null, `select public.sitka_space_org('x')`), /permission denied/i)
+  assert.equal(await live.fails(A, `select public.sitka_my_orgs()`), '')
+  assert.equal(await live.fails(A, `select public.my_usage()`), '')
+  assert.equal(await live.fails(null, `select public.sitka_event('x')`), '')
+  const [fx] = await live.sql(`select proconfig is null as untouched from pg_proc where proname = 'platform_helper'`)
+  assert.equal(fx.untouched, true, 'a function that is not ours was changed')
+  const [nf] = await live.sql(`select count(*)::int as n from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+    where ns.nspname = 'public' and p.prosecdef and pg_get_userbyid(p.proowner) = current_user
+      and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) c where c like 'search_path=%')`)
+  assert.equal(nf.n, 0)
+  // and it is safe to run again
+  await live.raw.exec(readFileSync(f08, 'utf8'))
+})
+
 // ---------- before the migrations, the holes were real ----------
 
 test('the same attacks succeed on the database as it was (so these tests test something)', async () => {
