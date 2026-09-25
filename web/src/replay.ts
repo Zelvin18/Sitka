@@ -8,6 +8,7 @@ import { md, parseTs as parseChipTs } from './mdlite'
 import { installFocusGuard } from '../../src/shared/focusGuard'
 import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { createStore } from './store'
+import { readRecap } from './recapRead'
 
 // Phones: the keyboard appears only when a field is tapped, never on its own.
 installFocusGuard()
@@ -610,8 +611,7 @@ async function bootEvent(): Promise<boolean> {
 }
 
 async function bootRecap(): Promise<boolean> {
-  const { data } = await sb.from('recaps').select('*').eq('id', pageId).single()
-  const rc = (data ?? null) as RecapRow | null
+  const rc = await readRecap<RecapRow>(sb, pageId)
   if (!rc || !rc.enabled) return false
 
   // The recording plays here too, from the owner's own storage (wave12.sql),

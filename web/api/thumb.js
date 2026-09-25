@@ -13,12 +13,19 @@ export default async function handler(req, res) {
   const id = String(req.query.id || '')
   if (!UUID.test(id) || !SUPA_URL || !SUPA_ANON) return res.status(404).end()
   try {
-    const r = await fetch(`${SUPA_URL}/rest/v1/recaps?id=eq.${id}&enabled=is.true&select=thumb`, {
-      headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` },
-      signal: AbortSignal.timeout(6000)
-    })
-    const rows = r.ok ? await r.json() : []
-    const thumb = Array.isArray(rows) && rows[0] ? String(rows[0].thumb || '') : ''
+    // one recap, by its id (supabase/recap-privacy.sql); the table as it was
+    // before that script has run
+    const headers = { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` }
+    let thumb = ''
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_recap?p_id=${id}`, { headers, signal: AbortSignal.timeout(6000) })
+    if (r.ok) {
+      const row = await r.json()
+      thumb = row && typeof row === 'object' ? String(row.thumb || '') : ''
+    } else if (r.status === 404) {
+      const old = await fetch(`${SUPA_URL}/rest/v1/recaps?id=eq.${id}&enabled=is.true&select=thumb`, { headers, signal: AbortSignal.timeout(6000) })
+      const rows = old.ok ? await old.json() : []
+      thumb = Array.isArray(rows) && rows[0] ? String(rows[0].thumb || '') : ''
+    }
     const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(thumb)
     if (!m) {
       res.setHeader('location', '/og-default.png')

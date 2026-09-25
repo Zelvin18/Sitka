@@ -56,7 +56,6 @@ export default async function handler(req, res) {
   const op = String(body.op || '')
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const owner = token ? await userOf(token) : null
-  askerToken = token
   // A token that could not be checked at all (the account service was
   // unreachable for a moment) must not read as "not your file": that turned
   // a blip into a refused recording upload. The page is told to try again.
@@ -67,9 +66,9 @@ export default async function handler(req, res) {
   try {
     if (op === 'put') return await putLinks(res, cfg, owner, body)
     if (op === 'grant') return await grantLinks(res, cfg, owner, body)
-    if (op === 'get') return await getLinks(res, cfg, owner, body)
-    if (op === 'list') return await listFolder(res, cfg, owner, body)
-    if (op === 'media') return await mediaLinks(res, cfg, owner, body)
+    if (op === 'get') return await getLinks(res, cfg, owner, body, token)
+    if (op === 'list') return await listFolder(res, cfg, owner, body, token)
+    if (op === 'media') return await mediaLinks(res, cfg, owner, body, token)
     if (op === 'del') return await removeKeys(res, cfg, owner, body)
     if (op === 'usage') return await usage(res, cfg, token)
     if (op === 'mine') return await mine(res, cfg, owner)
@@ -109,63 +108,69 @@ async function userOf(token) {
 }
 
 /**
- * Is this session shared with the world? True when its recap is on, or when
- * it was hosted as an event whose replay is on. The same two conditions the
- * database policy used when the recordings lived in Supabase.
+ * Is this owner's session shared with the world? True when its recap is on,
+ * or when it was hosted as an event whose replay is on, and the person who
+ * shared it is the person whose folder it is. A recap or an event pointing
+ * at someone else's session opens nothing.
+ *
+ * The database answers (sitka_shared_owner, supabase/recap-privacy.sql).
+ * Until that script has run, the same two questions are asked of the tables,
+ * with the owner in both.
  */
 const shareCache = new Map()
-async function isShared(sessionId) {
-  if (!UUID.test(sessionId)) return false
-  const hit = shareCache.get(sessionId)
+async function isShared(ownerId, sessionId) {
+  if (!UUID.test(ownerId) || !UUID.test(sessionId)) return false
+  const who = ownerId.toLowerCase()
+  const cacheKey = `${who}/${sessionId}`
+  const hit = shareCache.get(cacheKey)
   if (hit && hit.until > Date.now()) return hit.ok
   const headers = { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` }
+  const any = async (path) => {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { headers })
+    const rows = r.ok ? await r.json().catch(() => []) : []
+    return Array.isArray(rows) && rows.length > 0
+  }
   let ok = false
   try {
-    const recap = await fetch(
-      `${SUPA_URL}/rest/v1/recaps?id=eq.${sessionId}&enabled=is.true&select=id&limit=1`,
-      { headers }
-    )
-    const shared = recap.ok ? await recap.json().catch(() => []) : []
-    ok = Array.isArray(shared) && shared.length > 0
-    if (!ok) {
-      const ev = await fetch(
-        `${SUPA_URL}/rest/v1/events?session_id=eq.${sessionId}&replay->>enabled=eq.true&select=id&limit=1`,
-        { headers }
-      )
-      const rows = ev.ok ? await ev.json().catch(() => []) : []
-      ok = Array.isArray(rows) && rows.length > 0
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_shared_owner?p_session=${sessionId}`, { headers })
+    if (r.ok) {
+      const sharer = await r.json().catch(() => null)
+      ok = typeof sharer === 'string' && sharer.toLowerCase() === who
+    } else if (r.status === 404) {
+      ok =
+        (await any(`recaps?id=eq.${sessionId}&owner=eq.${who}&enabled=is.true&select=id&limit=1`)) ||
+        (await any(`events?session_id=eq.${sessionId}&owner=eq.${who}&replay->>enabled=eq.true&select=id&limit=1`))
     }
   } catch {
     ok = false
   }
   // Remembered briefly so a page of parts asks once, not once per part.
-  shareCache.set(sessionId, { ok, until: Date.now() + (ok ? 60000 : 5000) })
+  if (shareCache.size > 2000) shareCache.clear()
+  shareCache.set(cacheKey, { ok, until: Date.now() + (ok ? 60000 : 5000) })
   return ok
 }
 
 // Keys are <owner>/<session>.<ext> or <owner>/<session>/<name>, and slide
 // frames sit in <owner>/<session>-slides/<name>. A shared session opens
 // exactly those and nothing else in the owner's folder.
-function sessionOfKey(key) {
+function folderOfKey(key) {
   const parts = String(key).split('/')
-  if (parts.length < 2) return null
+  if (parts.length < 2 || !UUID.test(parts[0])) return null
   const second = parts[1].replace(/\.[a-z0-9]{2,5}$/i, '').replace(/-slides$/, '')
-  return UUID.test(second) ? second : null
+  return UUID.test(second) ? { owner: parts[0], session: second } : null
 }
-
-/** the token of the person asking, for the course check (set per request) */
-let askerToken = ''
 
 /**
  * A member of the course a session is filed in may watch it. The database
- * decides, as the person: their token, their membership.
+ * decides, as the person: their token, their membership. The token is passed
+ * in, never kept between requests: one instance serves several at once.
  */
-async function memberCanWatch(sessionId) {
-  if (!askerToken || !UUID.test(sessionId)) return false
+async function memberCanWatch(sessionId, token) {
+  if (!token || !UUID.test(sessionId)) return false
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_can_watch`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${askerToken}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_id: sessionId })
     })
     return r.ok && (await r.json()) === true
@@ -174,15 +179,22 @@ async function memberCanWatch(sessionId) {
   }
 }
 
-async function allow(owner, keys, write) {
+async function allow(owner, keys, write, token) {
   const list = (Array.isArray(keys) ? keys : []).map(String)
   if (list.length === 0 || list.length > 1200) return false
   if (list.some((k) => k.includes('..') || k.startsWith('/'))) return false
   if (owner && list.every((k) => k.startsWith(owner + '/'))) return true
   if (write) return false
-  const sessions = new Set(list.map(sessionOfKey))
-  if (sessions.has(null) || sessions.size > 4) return false
-  for (const s of sessions) if (!(await isShared(s)) && !(await memberCanWatch(s))) return false
+  const folders = new Map()
+  for (const k of list) {
+    const f = folderOfKey(k)
+    if (!f) return false
+    folders.set(`${f.owner}/${f.session}`, f)
+  }
+  if (folders.size > 4) return false
+  for (const f of folders.values()) {
+    if (!(await isShared(f.owner, f.session)) && !(await memberCanWatch(f.session, token))) return false
+  }
   return true
 }
 
@@ -222,17 +234,17 @@ async function grantLinks(res, cfg, owner, body) {
   return res.status(200).json({ links, expiresAt: Date.now() + GRANT_SECS * 1000 })
 }
 
-async function getLinks(res, cfg, owner, body) {
+async function getLinks(res, cfg, owner, body, token) {
   const keys = (Array.isArray(body.keys) ? body.keys : []).map(String)
-  if (!(await allow(owner, keys, false))) return res.status(403).json({ error: 'Not allowed.' })
+  if (!(await allow(owner, keys, false, token))) return res.status(403).json({ error: 'Not allowed.' })
   const links = keys.map((key) => ({ key, url: presign(cfg, 'GET', key, READ_SECS) }))
   return res.status(200).json({ links, expiresIn: READ_SECS })
 }
 
-async function listFolder(res, cfg, owner, body) {
+async function listFolder(res, cfg, owner, body, token) {
   const prefix = String(body.prefix || '')
   if (!prefix || prefix.includes('..')) return res.status(400).json({ error: 'Bad prefix.' })
-  if (!(await allow(owner, [prefix.replace(/\/$/, '') + '/x'], false))) {
+  if (!(await allow(owner, [prefix.replace(/\/$/, '') + '/x'], false, token))) {
     return res.status(403).json({ error: 'Not allowed.' })
   }
   const objects = await r2List(cfg, prefix.endsWith('/') ? prefix : prefix + '/')
@@ -246,14 +258,16 @@ async function listFolder(res, cfg, owner, body) {
  * whole file exists, the parts in order, and a link to each. A recap page
  * opened by a student who is not signed in asks this once and starts playing.
  */
-async function mediaLinks(res, cfg, owner, body) {
+async function mediaLinks(res, cfg, owner, body, token) {
   const ownerId = String(body.owner || '')
   const sessionId = String(body.session || '')
   if (!UUID.test(ownerId) || !UUID.test(sessionId)) {
     return res.status(400).json({ error: 'Bad session.' })
   }
   const mine = owner && owner === ownerId
-  if (!mine && !(await isShared(sessionId)) && !(await memberCanWatch(sessionId))) return res.status(403).json({ error: 'Not allowed.' })
+  if (!mine && !(await isShared(ownerId, sessionId)) && !(await memberCanWatch(sessionId, token))) {
+    return res.status(403).json({ error: 'Not allowed.' })
+  }
 
   // One listing catches both shapes, because the whole file and the folder of
   // parts share a prefix: <owner>/<session>.webm and <owner>/<session>/part-*
@@ -280,10 +294,9 @@ async function mediaLinks(res, cfg, owner, body) {
 
 /** May this asker (by token) watch this session? The rule the links follow. */
 async function mayWatch(token, ownerId, sessionId) {
-  askerToken = token || ''
   const owner = token ? await userOf(token) : null
   if (owner && owner === ownerId) return true
-  return (await isShared(sessionId)) || (await memberCanWatch(sessionId))
+  return (await isShared(ownerId, sessionId)) || (await memberCanWatch(sessionId, token))
 }
 
 /**

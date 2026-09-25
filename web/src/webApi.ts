@@ -42,6 +42,7 @@ import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
 import { defragmentMp4, fragmentIndex, isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore, type Where } from './store'
+import { readRecap } from './recapRead'
 import type {
   AiStreamEvent,
   AskRequest,
@@ -540,8 +541,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   }
   /** a kept recap as session data, read from its public row: its words, for Ask and the transcript */
   async function loadSavedRecap(id: string): Promise<SessionData | null> {
-    const { data } = await sb.from('recaps').select('*').eq('id', id).eq('enabled', true).maybeSingle()
-    const r = data as RecapRow | null
+    const r = await readRecap<RecapRow>(sb, id)
     if (!r) return null
     const segments = (Array.isArray(r.transcript) ? r.transcript : []).map((s) => ({
       start: Number(s.start) || 0,
@@ -3445,6 +3445,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           .then(() => undefined, () => undefined)
         await sb.storage.from('replays').remove([`${evId}.webm`]).catch(() => undefined)
       }
+      // its shared recap goes with it: the link closes, and every kept copy
+      // with it (the database does this too once recap-privacy.sql has run)
+      await sb.from('recaps').delete().eq('id', id).eq('owner', user.id).then(() => undefined, () => undefined)
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
       await forgetSession(id)
@@ -5387,8 +5390,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     keepRecap: async (id: string) => {
       // one of the person's own sessions needs no keeping
       if (cache.get(id) || (await loadSession(id))) return { ok: true }
-      const { data } = await sb.from('recaps').select('id,enabled').eq('id', id).maybeSingle()
-      const r = data as { id: string; enabled: boolean } | null
+      const r = await readRecap<{ id: string; enabled: boolean }>(sb, id)
       if (!r || !r.enabled) return { error: 'This recap is no longer shared.' }
       const { error } = await sb.from('saved_recaps').upsert({ user_id: user.id, recap_id: id }, { onConflict: 'user_id,recap_id' })
       if (error) return { error: error.message }

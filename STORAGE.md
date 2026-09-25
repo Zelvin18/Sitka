@@ -79,16 +79,23 @@ Then record a short session and open it on a phone. If it plays, it is done.
 
 ## Who can read what
 
-The rule is the same one the database used when recordings lived in Supabase,
-and it is enforced in `web/api/storage.js`:
+It is enforced in `web/api/storage.js`, and for recordings still in Supabase by
+the storage policy in `supabase/recap-privacy.sql`:
 
 - the owner may read and write anything inside their own folder;
-- anyone at all may read a session whose recap the owner has shared, or whose
-  event replay is switched on;
+- anyone with the link may read a session whose recap the owner has shared,
+  or whose event replay is switched on, but only from that owner's folder,
+  and only when the person who shared it is the person who recorded it
+  (`sitka_shared_owner` in the database decides);
+- a member of a course may watch the sessions filed in it;
 - nobody may read anything else, and no unsigned request reaches R2 at all.
 
-Links are signed and expire: six hours for reading, fifteen minutes for
-uploading.
+A recap is read one at a time, by its id (`sitka_recap`). The recaps table
+cannot be listed, so a recap can be found only by someone who was given its
+link. Deleting a session deletes its recap and switches off its event replay.
+
+Links are signed and expire: six hours for reading, twelve hours for the
+upload links a recording is given when it starts.
 
 ## What it is expected to cost
 

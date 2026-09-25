@@ -11,6 +11,7 @@ import { installFocusGuard } from '../../src/shared/focusGuard'
 import { canStream, mediaType, playProgressively, sniffWebmMime, sourceFromParts, sourceFromUrl, streamMedia } from '../../src/shared/progressive'
 import { isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore } from './store'
+import { readRecap } from './recapRead'
 import { downloadBytes, fileName, notesPdf } from './notesFile'
 
 /**
@@ -148,8 +149,7 @@ async function loadEvent(): Promise<Loaded | null> {
 }
 
 async function loadRecap(): Promise<Loaded | null> {
-  const { data } = await sb.from('recaps').select('*').eq('id', pageId).single()
-  const rc = data as {
+  const rc = await readRecap<{
     enabled: boolean
     owner?: string | null
     has_recording?: boolean | null
@@ -161,7 +161,7 @@ async function loadRecap(): Promise<Loaded | null> {
     duration_ms: number
     session_at: string | null
     thumb?: string | null
-  } | null
+  }>(sb, pageId)
   if (!rc || !rc.enabled) return null
   // a frame of the recording stands in as the picture until the file is ready
   if (rc.thumb && rc.thumb.startsWith('data:image/')) video().poster = rc.thumb

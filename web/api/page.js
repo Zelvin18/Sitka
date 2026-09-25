@@ -144,16 +144,37 @@ async function describe(kind, id) {
       image: typeof ev.banner === 'string' && /^https:\/\//.test(ev.banner) ? ev.banner : '/og-event.png'
     }
   }
-  // the picture column arrives with supabase/wave14.sql; before that script
-  // has run the words are still served, without a picture
-  const rc =
-    (await get(`recaps?id=eq.${id}&enabled=is.true&select=title,summary,duration_ms,thumb`)) ||
-    (await get(`recaps?id=eq.${id}&enabled=is.true&select=title,summary,duration_ms`))
+  // One recap, by its id (supabase/recap-privacy.sql: the table itself can
+  // no longer be listed). Before that script has run, the table is read as
+  // it was; the picture column arrives with wave14.sql, and before that the
+  // words are still served, without a picture.
+  let rc = await recapById(id, headers)
+  if (rc === undefined) {
+    rc =
+      (await get(`recaps?id=eq.${id}&enabled=is.true&select=title,summary,duration_ms,thumb`)) ||
+      (await get(`recaps?id=eq.${id}&enabled=is.true&select=title,summary,duration_ms`))
+  }
   if (!rc) return null
   const len = minutes(rc.duration_ms)
   return {
     title: rc.title || 'Session recap',
     description: line(rc.summary) || (len ? `A ${len} session, with the recording and Sitca to ask.` : 'The recording and recap, with Sitca to ask.'),
     hasThumb: Boolean(rc.thumb && String(rc.thumb).startsWith('data:image/'))
+  }
+}
+
+/**
+ * A shared recap, one at a time: the row, null when it is not shared, or
+ * undefined when the database does not have sitka_recap yet.
+ */
+async function recapById(id, headers) {
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_recap?p_id=${id}`, { headers, signal: AbortSignal.timeout(6000) })
+    if (r.status === 404) return undefined
+    if (!r.ok) return null
+    const row = await r.json()
+    return row && typeof row === 'object' ? row : null
+  } catch {
+    return null
   }
 }
