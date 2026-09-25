@@ -80,7 +80,7 @@ Then record a short session and open it on a phone. If it plays, it is done.
 ## Who can read what
 
 It is enforced in `web/api/storage.js`, and for recordings still in Supabase by
-the storage policy in `supabase/recap-privacy.sql`:
+the storage policy in `supabase/migrations/20260925_00_recap_privacy.sql`:
 
 - the owner may read and write anything inside their own folder;
 - anyone with the link may read a session whose recap the owner has shared,

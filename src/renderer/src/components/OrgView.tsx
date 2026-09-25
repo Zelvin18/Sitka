@@ -670,7 +670,7 @@ export default function OrgView({
               (education
                 ? 'Every course in it, with its materials, is removed for every member. '
                 : 'Every space in it, with its materials, is removed for every member. ') +
-              'Sessions are not deleted: they stay with the people who recorded them. This cannot be undone.'
+              'Sessions are not deleted: they stay with the people who recorded them. For 30 days it can be brought back on request; after that it is gone for good.'
             }
             confirmLabel="Delete for everyone"
             onConfirm={() => {

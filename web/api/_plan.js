@@ -6,8 +6,7 @@
 // leaves room for one more to finish. The limits mirror src/shared/plans.ts;
 // a change there is a change here.
 
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SUPA_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE } from './_auth.js'
 
 /** hours, questions and storage a month; 0 = no limit */
 const LIMITS = {
@@ -22,11 +21,11 @@ const HOURS_GRACE = 2
 
 const cache = new Map()
 
-/** This month's use behind a token; null when it cannot be learned (then nothing is refused). */
-export async function usageOf(token) {
+/** This month's use behind a token; null when it cannot be learned. */
+export async function usageOf(token, fresh = false) {
   if (!token || !SUPA_URL || !SUPA_ANON) return null
   const hit = cache.get(token)
-  if (hit && hit.until > Date.now()) return hit.usage
+  if (!fresh && hit && hit.until > Date.now()) return hit.usage
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/my_usage`, {
       method: 'POST',
@@ -53,11 +52,22 @@ function upgradeLine(plan) {
 
 /**
  * May this account do one more of `meter` ('hours' | 'asks')? Answers
- * { ok: true } or { ok: false, message } to send back with status 402.
+ * { ok: true }, or { ok: false, message } to send back with status 402, or
+ * { ok: false, transient: true, message } (503) when the plan cannot be
+ * checked just now.
+ *
+ * A question is refused when the plan cannot be checked (it can be asked
+ * again in a moment). Transcription is not: a lecture's words are never
+ * dropped because the database blinked, and the per-person limit on the
+ * route still caps what one account can spend.
  */
 export async function allow(token, meter) {
-  const u = await usageOf(token)
-  if (!u) return { ok: true }
+  let u = await usageOf(token)
+  if (!u) u = await usageOf(token, true)
+  if (!u) {
+    if (meter === 'hours') return { ok: true }
+    return { ok: false, transient: true, message: 'Your plan could not be checked just now. Ask again in a moment.' }
+  }
   const plan = LIMITS[u.plan] ? u.plan : 'free'
   const lim = LIMITS[plan]
   if (meter === 'hours') {
@@ -70,6 +80,26 @@ export async function allow(token, meter) {
     }
   }
   return { ok: true }
+}
+
+/**
+ * The server's own count of what costs money, in a table only it writes
+ * (public.usage_meter): 'ask' for a question to the AI, 'ai' for the app's
+ * other AI work, 'stt' for seconds of audio transcribed. Never throws; a
+ * count that cannot be written is not worth failing the request over.
+ */
+export async function meter(userId, kind, amount = 1) {
+  if (!userId || !SUPA_URL || !SUPA_SERVICE || !(amount > 0)) return
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_meter`, {
+      method: 'POST',
+      headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_user: userId, p_kind: kind, p_amount: amount }),
+      signal: AbortSignal.timeout(3000)
+    })
+  } catch {
+    /* counted next time */
+  }
 }
 
 export function tokenOf(req) {

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * A shared recap, read by its id: anyone with the link may read the recap it
- * names, and nobody may list the others (supabase/recap-privacy.sql).
+ * names, and nobody may list the others (supabase/migrations/20260925_00_recap_privacy.sql).
  * sitka_recap answers for one recap that is on, or null. Until that script
  * has run, the table is read as it was.
  */

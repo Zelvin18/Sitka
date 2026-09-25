@@ -2,7 +2,7 @@
  * Sitca · Operations. The owners' view of the whole system: who is using it,
  * how that is growing, what they do with it, what is live this minute, and
  * what has gone wrong. Every number comes from an admin-only function in the
- * database (supabase/admin.sql); this page only draws.
+ * database (supabase/legacy/admin.sql); this page only draws.
  */
 import { createClient } from '@supabase/supabase-js'
 import { PLANS, formatMoney, planOf, priceIn, type PlanId } from '../../src/shared/plans'
@@ -326,7 +326,7 @@ function renderOverviewCards(pd: PlansData | null, l: Live, o: Overview): void {
       line('New in 30 days', fmtInt(pd.new_30d)) +
       line('Lapsing this week', fmtInt(pd.lapsing)) +
       `<div class="note"><a href="#plans">Plans &amp; revenue →</a></div>`
-    : '<div class="calm">Run supabase/plans.sql to see money here.</div>'
+    : '<div class="calm">Run supabase/legacy/plans.sql to see money here.</div>'
   el('ov-live').innerHTML =
     `<div class="big">${fmtInt(l.people_15m)}<small style="font-size:13px;font-weight:500;color:var(--t2)"> people in the last 15 min</small></div>` +
     line('Recording now', fmtInt(l.recording_now)) +
@@ -689,7 +689,7 @@ async function reloadPeople(): Promise<void> {
 function renderPlans(): void {
   const pd = plansData
   if (!pd) {
-    el('plan-kpis').innerHTML = '<div class="card kpi" style="grid-column:1/-1"><span class="k-label">Plans</span><span class="k-value">—</span><span class="k-delta">Run supabase/plans.sql in the Supabase SQL editor, then refresh.</span></div>'
+    el('plan-kpis').innerHTML = '<div class="card kpi" style="grid-column:1/-1"><span class="k-label">Plans</span><span class="k-value">—</span><span class="k-delta">Run supabase/legacy/plans.sql in the Supabase SQL editor, then refresh.</span></div>'
     el('paid-table').innerHTML = ''
     el('plan-split').innerHTML = ''
   } else {
@@ -737,7 +737,7 @@ async function renderFeedback(): Promise<void> {
       .join('')
     box.innerHTML = head + (rows ? `<div class="errs" style="margin-top:10px">${rows}</div>` : '<div class="calm" style="margin-top:10px">Nothing marked wrong yet.</div>')
   } catch {
-    box.innerHTML = '<div class="calm">Run supabase/hardening.sql to see rated answers here.</div>'
+    box.innerHTML = '<div class="calm">Run supabase/legacy/hardening.sql to see rated answers here.</div>'
   }
 }
 
@@ -749,7 +749,7 @@ async function renderTeam(): Promise<void> {
       ? team.map((t) => `<div class="team-row"><span class="av" style="width:26px;height:26px;border-radius:50%;background:var(--text);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none">${esc((t.email || '?').slice(0, 1).toUpperCase())}</span><span class="em">${esc(t.email || t.id)}</span><span class="when">since ${ago(t.since)}</span></div>`).join('')
       : '<div class="calm">Nobody yet.</div>'
   } catch {
-    el('team-list').innerHTML = '<div class="calm">Run supabase/plans.sql to manage the team from here.</div>'
+    el('team-list').innerHTML = '<div class="calm">Run supabase/legacy/plans.sql to manage the team from here.</div>'
   }
 }
 
@@ -900,7 +900,7 @@ async function boot(): Promise<void> {
   }
   if (!admin) {
     el('gate-title').textContent = 'This page is for the Sitca team'
-    el('gate-text').textContent = `You are signed in as ${data.session.user.email}. Ask an owner to add you, or run supabase/admin.sql if the dashboard has not been set up yet.`
+    el('gate-text').textContent = `You are signed in as ${data.session.user.email}. Ask an owner to add you, or run supabase/legacy/admin.sql if the dashboard has not been set up yet.`
     el('gate-btn').textContent = 'Back to Sitca'
     el('gate').classList.remove('hidden')
     return

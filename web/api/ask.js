@@ -189,7 +189,15 @@ export default async function handler(req, res) {
         res.status(503).json({ error: 'not-configured' })
         return
       }
-      if (await overLimitKey(`ask-read:ip:${ipOf(req)}`, 120, 3000)) {
+      // Each page asks about its own rows every few seconds while it waits for
+      // an answer. The limit is per row asked about; the one per address is
+      // generous, since a whole hall may share one Wi-Fi.
+      const q = req.query || {}
+      const about = [q.ask, q.question, q.proxy, q.attendee].find((v) => typeof v === 'string' && v) || 'none'
+      if (
+        (await overLimitKey(`ask-read:row:${String(about).slice(0, 64)}`, 40, 1200)) ||
+        (await overLimitKey(`ask-read:ip:${ipOf(req)}`, 1500, 30000))
+      ) {
         res.status(429).json({ error: 'Slow down a little.' })
         return
       }

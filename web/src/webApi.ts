@@ -3076,7 +3076,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     orgOverview: async (orgId: string) => {
       const { data, error } = await sb.rpc('sitka_org_overview', { p_org: orgId })
       if (error) {
-        if (/does not exist|function/i.test(error.message)) reportError(location.pathname, 'orgOverview: run supabase/orgadmin.sql')
+        if (/does not exist|function/i.test(error.message)) reportError(location.pathname, 'orgOverview: run supabase/legacy/orgadmin.sql')
         return null
       }
       const o = data as Record<string, unknown>
@@ -3451,7 +3451,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         await sb.storage.from('replays').remove([`${evId}.webm`]).catch(() => undefined)
       }
       // its shared recap goes with it: the link closes, and every kept copy
-      // with it (the database does this too once recap-privacy.sql has run)
+      // with it (the database does this too once supabase/migrations/20260925_00_recap_privacy.sql has run)
       await sb.from('recaps').delete().eq('id', id).eq('owner', user.id).then(() => undefined, () => undefined)
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
@@ -3487,7 +3487,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (error) {
         throw new Error(
           /column .* does not exist/i.test(error.message)
-            ? 'Materials are not set up yet — run supabase/wave8.sql in the Supabase SQL editor.'
+            ? 'Materials are not set up yet — run supabase/legacy/wave8.sql in the Supabase SQL editor.'
             : error.message
         )
       }
@@ -3717,7 +3717,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
           .from('creations')
           .upsert({ id: creation.id, owner: user.id, data: creation, updated_at: new Date().toISOString() })
         if (error && /relation .* does not exist/i.test(error.message)) {
-          return { error: 'Create is not set up yet — run supabase/wave7.sql in the Supabase SQL editor.' }
+          return { error: 'Create is not set up yet — run supabase/legacy/wave7.sql in the Supabase SQL editor.' }
         }
         return { creation }
       } catch (err) {
@@ -4560,6 +4560,28 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
     // ---------- organisations: a university or a company, with spaces inside ----------
     listOrgs: async (): Promise<Organization[]> => {
+      // My organisations as the database gives them: the codes only to those
+      // who may hand them out, counts without anyone's details
+      const mine = await sb.rpc('sitka_my_orgs')
+      if (!mine.error && Array.isArray(mine.data)) {
+        return (mine.data as Record<string, unknown>[]).map((r) => {
+          const role = (['owner', 'lead', 'member'].includes(r.role as string) ? r.role : 'member') as OrgRole
+          return {
+            id: r.id as string,
+            name: r.name as string,
+            kind: r.kind as Space,
+            role,
+            code: typeof r.code === 'string' ? r.code : undefined,
+            leadCode: typeof r.leadCode === 'string' ? r.leadCode : undefined,
+            domains: Array.isArray(r.domains) ? (r.domains as string[]) : [],
+            coursesBy: r.coursesBy === 'owner' ? 'owner' : 'leads',
+            members: Number(r.members) || 0,
+            spaces: Number(r.spaces) || 0,
+            createdAt: new Date(r.createdAt as string).getTime()
+          }
+        })
+      }
+      // a database without that function yet: read the tables
       const { data: rows, error } = await sb
         .from('organizations')
         .select('id,name,kind,owner,code,lead_code,created_at,domains,courses_by')
@@ -4593,6 +4615,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     createOrg: async (name: string, kind: Space) => {
       const clean = name.trim()
       if (!clean) return { error: 'Give the organisation a name.' }
+      // made by the database: its codes, its owner, the limit of five
+      const made = await sb.rpc('sitka_create_org', { p_name: clean, p_kind: kind })
+      if (!made.error) {
+        const newId = (made.data as { id?: string } | null)?.id
+        const org = newId ? (await api.listOrgs()).find((o) => o.id === newId) : undefined
+        return org ? { org } : { error: 'The organisation was created but could not be read back.' }
+      }
+      if (!/sitka_create_org|PGRST202|Could not find the function/i.test(`${made.error.code ?? ''} ${made.error.message}`)) {
+        return { error: made.error.message.replace(/^.*?:\s*/, '') || 'Could not create the organisation.' }
+      }
+      // a database without that function yet: the older way
       // up to five of one's own, for now
       const { count } = await sb.from('organizations').select('id', { count: 'exact', head: true }).eq('owner', user.id)
       if ((count ?? 0) >= 5) return { error: 'You have set up five organisations, the most for now.' }
@@ -4610,7 +4643,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (error) {
         return {
           error: /relation .* does not exist/i.test(error.message)
-            ? 'Organisations are not set up yet — run supabase/wave9.sql in the Supabase SQL editor.'
+            ? 'Organisations are not set up yet — run supabase/legacy/wave9.sql in the Supabase SQL editor.'
             : error.message
         }
       }
@@ -4637,9 +4670,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('org_members').delete().eq('org_id', orgId).eq('user_id', user.id)
     },
     deleteOrg: async (orgId: string) => {
-      // The row goes and the database takes its members, spaces and materials
-      // with it. Sessions filed in its spaces are untouched: they belong to
-      // the people who recorded them and simply stop being filed anywhere.
+      // Into the bin for 30 days: nobody sees it, nothing in it is erased yet;
+      // after that the nightly clean-up removes its spaces and materials.
+      // Sessions filed in its spaces are untouched: they belong to the people
+      // who recorded them and simply stop being filed anywhere.
+      const binned = await sb.rpc('sitka_delete_org', { p_org: orgId })
+      if (!binned.error) {
+        track('org_deleted', { org: orgId })
+        return {}
+      }
+      if (!/sitka_delete_org|PGRST202|Could not find the function/i.test(`${binned.error.code ?? ''} ${binned.error.message}`)) {
+        return { error: binned.error.message.replace(/^.*?:\s*/, '') || 'Could not delete the organisation.' }
+      }
       const { error, count } = await sb.from('organizations').delete({ count: 'exact' }).eq('id', orgId)
       if (error) return { error: error.message }
       if (!count) return { error: 'Only the owner can delete an organisation.' }
@@ -5158,7 +5200,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (error) {
         return {
           error: /relation .* does not exist/i.test(error.message)
-            ? 'Sharing is not set up yet — run supabase/wave6.sql in the Supabase SQL editor.'
+            ? 'Sharing is not set up yet — run supabase/legacy/wave6.sql in the Supabase SQL editor.'
             : 'Could not share: ' + error.message
         }
       }
@@ -5259,7 +5301,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         text: t
       })
       return error
-        ? { error: /relation|does not exist/i.test(error.message) ? 'Run supabase/wave10.sql to enable the room chat.' : error.message }
+        ? { error: /relation|does not exist/i.test(error.message) ? 'Run supabase/legacy/wave10.sql to enable the room chat.' : error.message }
         : {}
     },
     // ---------- live video to attendees (direct connections, small rooms) ----------
@@ -5308,9 +5350,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         if (error) {
           return {
             error: /bucket|not found/i.test(error.message)
-              ? 'the "stage" storage bucket is missing — run supabase/schema.sql'
+              ? 'the "stage" storage bucket is missing — run supabase/legacy/schema.sql'
               : /policy|security/i.test(error.message)
-                ? 'the storage policy is missing — run supabase/host-upgrade.sql'
+                ? 'the storage policy is missing — run supabase/legacy/host-upgrade.sql'
                 : error.message
           }
         }
@@ -5382,7 +5424,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     keepEvent: async (eventId: string) => {
       const { data, error } = await sb.rpc('sitka_keep_event', { p_event: eventId })
-      if (error) return { error: /does not exist|function/i.test(error.message) ? 'Keeping events is not switched on yet — run supabase/keeplive.sql.' : error.message }
+      if (error) return { error: /does not exist|function/i.test(error.message) ? 'Keeping events is not switched on yet — run supabase/legacy/keeplive.sql.' : error.message }
       const r = (data ?? {}) as { ok?: boolean; sessionId?: string }
       return r.ok ? { ok: true, sessionId: r.sessionId } : { error: 'The recap is still being written. Try again in a moment.' }
     },

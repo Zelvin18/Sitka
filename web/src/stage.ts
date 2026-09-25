@@ -124,11 +124,10 @@ setInterval(tickCountdown, 1000)
 
 // ---------- attendee count ----------
 async function refreshCount(): Promise<void> {
-  const { count } = await sb
-    .from('attendees')
-    .select('id', { count: 'exact', head: true })
-    .eq('event_id', eventId)
-  if (count && count > 0) {
+  // the room's size, and nothing else about who is in it
+  const { data } = await sb.rpc('attendee_count', { eid: eventId })
+  const count = typeof data === 'number' ? data : 0
+  if (count > 0) {
     el('scount').textContent = `${count} joined`
   }
 }
@@ -203,15 +202,26 @@ function showStageNote(text: string): void {
   noteTimer = window.setTimeout(() => el('tknote').classList.add('hidden'), 30000)
 }
 
+// ---------- the event ----------
+// Its public fields, through sitka_event() (never the host's materials); a
+// database without that function yet is read the older way.
+async function readEvent(): Promise<EventRow | null> {
+  const r = await sb.rpc('sitka_event', { p_id: eventId })
+  if (!r.error) return (r.data as EventRow | null) ?? null
+  if (!/sitka_event|PGRST202|Could not find the function/i.test(`${r.error.code ?? ''} ${r.error.message}`)) return null
+  const t = await sb.from('events').select('*').eq('id', eventId).maybeSingle()
+  return (t.data as EventRow | null) ?? null
+}
+
 // ---------- boot ----------
 async function boot(): Promise<void> {
   if (!eventId) return
-  const { data } = await sb.from('events').select('*').eq('id', eventId).single()
+  const data = await readEvent()
   if (!data) {
     el('wtitle').textContent = 'Event not found'
     return
   }
-  ev = data as EventRow
+  ev = data
   el('wtitle').textContent = ev.title
   document.title = ev.title + ' — Sitca Stage'
   el('wurl').textContent = joinUrl().replace(/^https?:\/\//, '')
@@ -290,6 +300,8 @@ async function boot(): Promise<void> {
         applyState()
       }
     )
+    // (the host's own screen gets these live; a stage opened by anyone else
+    // learns of a start or an end from the check below)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'polls', filter: 'event_id=eq.' + eventId },
@@ -307,6 +319,18 @@ async function boot(): Promise<void> {
       }
     )
     .subscribe()
+
+  // the start, the end, a new title: asked for every five seconds
+  window.setInterval(async () => {
+    const fresh = await readEvent().catch(() => null)
+    if (!fresh || !ev) return
+    const changed = fresh.status !== ev.status || fresh.title !== ev.title || fresh.starts_at !== ev.starts_at
+    ev = fresh
+    if (changed) {
+      el('wtitle').textContent = ev.title
+      applyState()
+    }
+  }, 5000)
 
   // fullscreen on any click (projector-friendly), cursor already hidden
   document.body.addEventListener('click', () => {

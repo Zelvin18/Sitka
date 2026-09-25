@@ -63,7 +63,7 @@ export default function OrgAdmin({ org, section, onOpenSpace, onChanged }: Props
     return (
       <div className="notice">
         <span>
-          <strong>The administration view is not ready on this server.</strong> Run <code>supabase/orgadmin.sql</code> once in the SQL editor, then reload.
+          <strong>The administration view is not ready on this server.</strong> Run <code>supabase/legacy/orgadmin.sql</code> once in the SQL editor, then reload.
         </span>
       </div>
     )

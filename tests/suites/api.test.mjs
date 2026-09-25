@@ -167,6 +167,47 @@ test('S3: when the account service cannot be reached, the answer is “try again
   assert.equal(w.ai.groq.length + w.ai.anthropic.length, 0)
 })
 
+test('S12/D14: the server counts each question itself; own keys are not counted', async () => {
+  const res = await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'ask', system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body))
+  assert.deepEqual(w.meter, [{ user: USERS.a.id, kind: 'ask', amount: 1 }])
+  const other = await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'summary', system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
+  assert.equal(other.statusCode, 200)
+  assert.equal(w.meter.at(-1).kind, 'ai')
+  w.meter = []
+  const own = 'gsk_own_chat_key_1234567890abcdef'
+  await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'ask', keys: { groqApiKey: own }, system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
+  assert.deepEqual(w.meter, [])
+})
+
+test('S12: a question is not answered free when the plan cannot be checked', async () => {
+  w.usageDown = true
+  const res = await call(chat, request({ headers: bearer(USERS.b), body: { kind: 'ask', system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
+  assert.equal(res.statusCode, 503)
+  assert.equal(w.ai.groq.length + w.ai.anthropic.length + w.ai.gemini.length, 0)
+})
+
+test('S12/D14: transcription is counted in seconds the service measured; a lecture is never cut by a database blink', async () => {
+  const res = await call(transcribe, request({ headers: bearer(USERS.a), body: { audioB64: Buffer.alloc(3000).toString('base64') } }))
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body))
+  assert.deepEqual(w.meter, [{ user: USERS.a.id, kind: 'stt', amount: 12.5 }])
+  w.usageDown = true
+  const still = await call(transcribe, request({ headers: bearer(USERS.b), body: { audioB64: Buffer.alloc(3000).toString('base64') } }))
+  assert.equal(still.statusCode, 200)
+})
+
+test('A6: a hall on one Wi-Fi can wait for its answers; one row asked about too often is slowed', async () => {
+  const rows = []
+  for (let i = 0; i < 60; i++) rows.push(eventWithAttendee({ secret: 's' + i }))
+  for (let i = 0; i < 60; i++) {
+    const r = await call(ask, request({ method: 'GET', query: { attendee: rows[i].attendee, secret: 's' + i } }))
+    assert.equal(r.statusCode, 200, `attendee ${i} was refused`)
+  }
+  let last = 0
+  for (let i = 0; i < 45; i++) last = (await call(ask, request({ method: 'GET', query: { attendee: rows[0].attendee, secret: 's0' } }))).statusCode
+  assert.equal(last, 429)
+})
+
 // ---------- the public recap page: server-built prompts only ----------
 
 function sharedRecap() {

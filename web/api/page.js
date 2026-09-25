@@ -145,7 +145,7 @@ async function describe(kind, id) {
       image: typeof ev.banner === 'string' && /^https:\/\//.test(ev.banner) ? ev.banner : '/og-event.png'
     }
   }
-  // One recap, by its id (supabase/recap-privacy.sql: the table itself can
+  // One recap, by its id (supabase/migrations/20260925_00_recap_privacy.sql: the table itself can
   // no longer be listed). Before that script has run, the table is read as
   // it was; the picture column arrives with wave14.sql, and before that the
   // words are still served, without a picture.

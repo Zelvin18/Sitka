@@ -1789,18 +1789,11 @@ export default function LiveSession({
     setNoSound('')
 
     const durationMs = Date.now() - sessionStartRef.current
-    // For the extension's card: the recap link is ready the moment the
-    // devices are released, long before the last uploads finish, so the
-    // person can copy it and go while the rest is tidied up here.
-    let recapUrl: string | undefined
+    // The extension's card says the session is being saved. Nothing is
+    // shared unless the person chooses to: the card offers to open the
+    // session, where Share makes the recap link.
     if (meetTab && extShell()?.engine) {
-      try {
-        const r = await window.sitka.publishRecap(id, true)
-        if (r.url) recapUrl = r.url
-      } catch {
-        /* no link: the card says saved, and the session has Share */
-      }
-      tellEngine({ state: 'ending', sessionId: id, tabId: meetTab.tabId, recapUrl })
+      tellEngine({ state: 'ending', sessionId: id, tabId: meetTab.tabId })
     }
     // the last pieces of speech are still being written down: the session's
     // end waits for them (within reason), so its title and notes see every word
@@ -1837,7 +1830,7 @@ export default function LiveSession({
       report?.(location.pathname, 'finalize failed: ' + (err instanceof Error ? err.message : String(err)))
     }
     onFinished(id)
-    tellEngine({ state: 'ended', sessionId: id, tabId: meetTab?.tabId, recapUrl })
+    tellEngine({ state: 'ended', sessionId: id, tabId: meetTab?.tabId })
   }, [onFinished, hosting, meetTab])
 
   // ---- still there? ----

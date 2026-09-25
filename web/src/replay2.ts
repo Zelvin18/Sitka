@@ -110,11 +110,16 @@ const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'
 
 // ---------- loading ----------
 async function loadEvent(): Promise<Loaded | null> {
-  const { data } = await sb
-    .from('events')
-    .select('title,replay,starts_at,owner,session_id,materials_text,status')
-    .eq('id', pageId)
-    .single()
+  // the event's public fields, by its id (sitka_event: never the host's
+  // materials); a database without the function yet is read the older way
+  type Ev = { title?: string; replay?: unknown; starts_at?: string | null; owner?: string | null; session_id?: string | null; status?: string }
+  let data: Ev | null = null
+  const fn = await sb.rpc('sitka_event', { p_id: pageId })
+  if (!fn.error) data = (fn.data as Ev | null) ?? null
+  else if (/sitka_event|PGRST202|Could not find the function/i.test(`${fn.error.code ?? ''} ${fn.error.message}`)) {
+    const t = await sb.from('events').select('title,replay,starts_at,owner,session_id,status').eq('id', pageId).maybeSingle()
+    data = (t.data as Ev | null) ?? null
+  }
   const r = (data?.replay ?? null) as {
     enabled?: boolean
     title?: string
@@ -144,7 +149,8 @@ async function loadEvent(): Promise<Loaded | null> {
     sessionId: (data.session_id as string) || '',
     video: r.video === true ? 'public' : r.video === 'parts' ? 'parts' : null,
     kindWord: 'live event',
-    materials: ((data.materials_text as string) || '').slice(0, 10000),
+    // the host's materials stay with the host: the server reads them when it answers
+    materials: '',
     live: data.status === 'live'
   }
 }

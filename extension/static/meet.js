@@ -509,9 +509,14 @@
           <div class="sc-share-d">Anyone with it can watch, read the notes and ask Sitca.</div>
         </div>`
       } else if (!saved) {
-        html += `<p class="sc-p sc-p-tight">The recap link appears here in a moment.</p>`
+        html += `<p class="sc-p sc-p-tight">It stays private to you unless you share it.</p>`
       } else {
-        html += `<p class="sc-p sc-p-tight">No recap link: nothing was said in this session.</p>`
+        // nothing is shared until the person chooses: Share lives with the session
+        html += `<div class="sc-share">
+          <div class="sc-share-t">Private to you</div>
+          <button type="button" class="sc-btn sc-btn-wide" data-act="open">Share the recap…</button>
+          <div class="sc-share-d">Opens the session in Sitca, where Share makes a link to send.</div>
+        </div>`
       }
       html += `<div class="sc-actions">
           <button type="button" class="sc-mini sc-mini-lg" data-act="open">Open in Sitca</button>

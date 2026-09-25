@@ -11,7 +11,17 @@ window.addEventListener('pageshow', () => window.scrollTo(0, 0))
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false }, global: { fetch: patientFetch } })
+// Everything the room writes (questions, messages, reactions, votes) must come
+// from a real attendee: the database checks the secret this page holds, sent
+// with every request. Empty until the attendee has joined.
+let writeSecret = ''
+const attendeeFetch: typeof fetch = (input, init) => {
+  if (!writeSecret) return patientFetch(input, init)
+  const headers = new Headers(init?.headers)
+  headers.set('x-sitca-attendee', writeSecret)
+  return patientFetch(input, { ...init, headers })
+}
+const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false }, global: { fetch: attendeeFetch } })
 // The person's own account, when they have one on this browser: the app keeps
 // its session here too. Used only to say who they are and to keep the event.
 const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, global: { fetch: patientFetch } })
@@ -122,6 +132,20 @@ interface EventRow {
   /** a picture shown where the video would be, for a voice-only event */
   banner?: string | null
 }
+/**
+ * The event's public fields. Read through sitka_event(), which answers for
+ * one event at a time and never with the host's materials; a database that
+ * has not had that function yet is read the older way.
+ */
+async function readEvent(): Promise<{ data: EventRow | null; error: string }> {
+  const r = await sb.rpc('sitka_event', { p_id: eventId })
+  if (!r.error) return { data: (r.data as EventRow | null) ?? null, error: '' }
+  if (!/sitka_event|PGRST202|Could not find the function/i.test(`${r.error.code ?? ''} ${r.error.message}`)) {
+    return { data: null, error: r.error.message || 'no reply' }
+  }
+  const t = await sb.from('events').select('*').eq('id', eventId).maybeSingle()
+  return { data: (t.data as EventRow | null) ?? null, error: t.error ? t.error.message || 'no reply' : '' }
+}
 interface SegRow {
   idx: number
   start_sec: number
@@ -162,7 +186,7 @@ let myName = ''
 // ---------- the room: who is here, and what they are saying ----------
 async function refreshCount(): Promise<void> {
   // The number only, from a function that may count what the room may not
-  // read (supabase/wave13.sql). Before that script runs, the badge stays away.
+  // read (supabase/legacy/wave13.sql). Before that script runs, the badge stays away.
   const { data, error } = await sb.rpc('attendee_count', { eid: eventId })
   if (error) return
   const count = Number(data)
@@ -174,7 +198,10 @@ async function refreshCount(): Promise<void> {
 
 interface RoomRow {
   id: string
-  attendee_id: string | null
+  /** an anonymous tag of the writer; the writer's own page knows its own */
+  author?: string | null
+  /** only on this page's own messages (and on databases before the tag) */
+  attendee_id?: string | null
   name: string
   host: boolean
   text: string
@@ -182,17 +209,35 @@ interface RoomRow {
 }
 const roomSeen = new Set<string>()
 let roomLastAt = ''
+/** this attendee's tag: the first 16 hex of the sha-256 of their id's 16 bytes */
+let myAuthor = ''
+async function authorTag(id: string): Promise<string> {
+  const hex = id.replace(/-/g, '')
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  const d = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, '0')).join('').slice(0, 16)
+}
+// The room is read by its anonymous tags; a database without them yet is
+// read the older way.
+let roomCols = 'id,author,name,host,text,created_at'
+async function roomRows(since: string | null, limit: number): Promise<RoomRow[]> {
+  const run = (cols: string) => {
+    let q = sb.from('room_messages').select(cols).eq('event_id', eventId)
+    if (since !== null) q = q.gt('created_at', since || '1970-01-01')
+    return q.order('created_at', { ascending: true }).limit(limit)
+  }
+  let r = await run(roomCols)
+  if (r.error && /author/i.test(r.error.message)) {
+    roomCols = 'id,attendee_id,name,host,text,created_at'
+    r = await run(roomCols)
+  }
+  return (r.data ?? []) as unknown as RoomRow[]
+}
 // Realtime delivers instantly; this quiet poll guarantees nothing is ever
 // missed even when the live connection drops for a moment.
 async function pollRoom(): Promise<void> {
-  const { data } = await sb
-    .from('room_messages')
-    .select('id,attendee_id,name,host,text,created_at')
-    .eq('event_id', eventId)
-    .gt('created_at', roomLastAt || '1970-01-01')
-    .order('created_at', { ascending: true })
-    .limit(50)
-  for (const r of data ?? []) renderRoomMsg(r as RoomRow)
+  for (const r of await roomRows(roomLastAt, 50)) renderRoomMsg(r)
 }
 function renderRoomMsg(row: RoomRow): void {
   if (row.created_at && row.created_at > roomLastAt) roomLastAt = row.created_at
@@ -200,7 +245,7 @@ function renderRoomMsg(row: RoomRow): void {
   roomSeen.add(row.id)
   el('roomwait')?.classList.add('hidden')
   const d = document.createElement('div')
-  const mine = row.attendee_id && row.attendee_id === attId
+  const mine = Boolean((row.attendee_id && row.attendee_id === attId) || (row.author && myAuthor && row.author === myAuthor))
   d.className = `rm${mine ? ' me' : ''}${row.host ? ' host' : ''}`
   const who = document.createElement('b')
   who.textContent = row.host ? 'Host' : mine ? 'You' : row.name || 'Guest'
@@ -1724,10 +1769,10 @@ async function submitAsk(
     resolveAsk(id, 'error', 'Connection problem — try again.')
     return
   }
-  // fallback poll in case the realtime update is missed
+  // the host's app answers it; the page asks for the answer until it comes
   let tries = 0
   const poll = window.setInterval(async () => {
-    if (!pendingAsks.has(id) || ++tries > 36) {
+    if (!pendingAsks.has(id) || ++tries > 72) {
       clearInterval(poll)
       if (pendingAsks.has(id)) resolveAsk(id, 'error', 'No answer arrived — is the host app running?')
       return
@@ -1735,9 +1780,12 @@ async function submitAsk(
     const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}${secretParam(attSecret)}`)
     if (data && data.status !== 'pending') {
       clearInterval(poll)
+      if (kind === 'ask' && data.status === 'answered' && data.answer) {
+        myChat.push({ role: 'user', content: question }, { role: 'assistant', content: data.answer })
+      }
       resolveAsk(id, data.status, data.answer)
     }
-  }, 5000)
+  }, 2500)
 }
 
 let busy = false
@@ -1946,6 +1994,7 @@ async function join(newJoin: boolean): Promise<void> {
   if (newJoin) {
     attId = crypto.randomUUID()
     attSecret = newSecret()
+    writeSecret = attSecret
     myName = (el('name') as HTMLInputElement).value.trim().slice(0, 40)
     const { error } = await insertAttendee(
       {
@@ -2053,29 +2102,8 @@ async function join(newJoin: boolean): Promise<void> {
       { event: 'INSERT', schema: 'public', table: 'attendees', filter: 'event_id=eq.' + eventId },
       () => void refreshCount()
     )
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'asks', filter: 'attendee_id=eq.' + attId },
-      (payload) => {
-        const row = payload.new as { id: string; kind: string; question: string; status: string; answer: string | null }
-        if (row.kind === 'ask' && row.status === 'answered' && row.answer) {
-          myChat.push({ role: 'user', content: row.question }, { role: 'assistant', content: row.answer })
-        }
-        resolveAsk(row.id, row.status, row.answer)
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'speaker_questions',
-        filter: 'attendee_id=eq.' + attId
-      },
-      (payload) => {
-        renderQuestionResult(payload.new as Parameters<typeof renderQuestionResult>[0])
-      }
-    )
+    // (an attendee's own questions and their answers are private: they are
+    // not sent over the room's live link, and arrive by the page asking)
     .subscribe()
 
   // Realtime is the fast path; this is the safety net. A phone drops the
@@ -2098,7 +2126,7 @@ async function join(newJoin: boolean): Promise<void> {
     }
     watching = true
     try {
-      const { data: fresh } = await sb.from('events').select('*').eq('id', eventId).single()
+      const { data: fresh } = await readEvent()
       if (fresh) {
         const before = ev.status
         const hadRecap = Boolean(ev.replay?.enabled)
@@ -2192,13 +2220,8 @@ async function join(newJoin: boolean): Promise<void> {
   listening = wasListening
 
   // the room so far, and how many are here
-  const { data: roomRows } = await sb
-    .from('room_messages')
-    .select('id,attendee_id,name,host,text,created_at')
-    .eq('event_id', eventId)
-    .order('created_at', { ascending: true })
-    .limit(150)
-  for (const r of roomRows ?? []) renderRoomMsg(r as RoomRow)
+  if (attId) myAuthor = await authorTag(attId).catch(() => '')
+  for (const r of await roomRows(null, 150)) renderRoomMsg(r)
   document.querySelector('[data-pane=room]')?.classList.remove('new')
   window.setInterval(() => void pollRoom(), 3000)
   void refreshCount()
@@ -2266,6 +2289,8 @@ el('proxyback').onclick = () => {
     },
     secret
   )
+  // the request is written as the proxy's own attendee, with its secret
+  if (!aerr) writeSecret = secret
   const { error: perr } = aerr
     ? { error: aerr }
     : await sb.from('proxies').insert({
@@ -2384,7 +2409,7 @@ function showProxyStatus(proxyId: string): void {
     // and when it ends without anyone refreshing it
     const [data, { data: fresh }] = await Promise.all([
       readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}${secretParam(proxySecret())}`),
-      sb.from('events').select('*').eq('id', eventId).single()
+      readEvent()
     ])
     if (fresh) {
       ev = fresh as EventRow
@@ -2447,12 +2472,12 @@ async function boot(): Promise<void> {
     if (attempt) await new Promise((r) => setTimeout(r, 800 * attempt))
     try {
       const res = await Promise.race([
-        sb.from('events').select('*').eq('id', eventId).single(),
+        readEvent(),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 7000))
       ])
-      if (res.data) row = res.data as EventRow
-      else if (res.error && /PGRST116|0 rows|multiple/i.test(res.error.message)) break // truly not there
-      else failed = res.error?.message || 'no reply'
+      if (res.data) row = res.data
+      else if (!res.error) break // truly not there: the link is wrong, not the connection
+      else failed = res.error
     } catch (err) {
       failed = err instanceof Error ? err.message : String(err)
     }
@@ -2502,6 +2527,7 @@ async function boot(): Promise<void> {
   if (saved?.id) {
     attId = saved.id
     attSecret = saved.secret || ''
+    writeSecret = attSecret
     persona = saved.persona
     myLang = saved.lang || 'English'
     myName = saved.name || ''

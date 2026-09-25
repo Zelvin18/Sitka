@@ -16,7 +16,7 @@
 // Answers stream as lines of JSON ({"delta"}, then {"done"}) when asked to.
 
 import { answer, platformKeys } from './_ai.js'
-import { allow } from './_plan.js'
+import { allow, meter } from './_plan.js'
 import { overLimitKey } from './_limit.js'
 import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, ipOf, deadline, failSafely, realKey } from './_auth.js'
 
@@ -306,10 +306,12 @@ export default async function handler(req, res) {
     if (body.kind === 'ask') {
       const may = await allow(tokenOf(req), 'asks')
       if (!may.ok) {
-        res.status(402).json({ error: may.message, plan: may.plan, limit: 'asks' })
+        res.status(may.transient ? 503 : 402).json({ error: may.message, plan: may.plan, limit: 'asks' })
         return
       }
     }
+    // counted by the server as it is asked (a question, or the app's other AI work)
+    const counted = meter(me.id, body.kind === 'ask' ? 'ask' : 'ai', 1)
     const out = await answer({
       system,
       messages,
@@ -320,6 +322,7 @@ export default async function handler(req, res) {
       keys: { anthropic: platformKeys('ANTHROPIC_API_KEY')[0] || '', groq: platformKeys('GROQ_API_KEY'), gemini: platformKeys('GEMINI_API_KEY') },
       dl
     })
+    await counted
     deliver(out)
   } catch (err) {
     if (streaming || res.headersSent) {

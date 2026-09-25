@@ -73,7 +73,11 @@ export function world() {
     /** tables whose deletes fail, to test that a failure stops the account going */
     failDelete: new Set(),
     /** database functions this "deployment" has (a missing one answers 404, as PostgREST does) */
-    functions: new Set(['sitka_recap', 'sitka_shared_owner', 'my_usage', 'sitka_rate_hit', 'sitka_can_watch', 'is_admin']),
+    functions: new Set(['sitka_recap', 'sitka_shared_owner', 'my_usage', 'sitka_rate_hit', 'sitka_can_watch', 'is_admin', 'sitka_meter']),
+    /** the plan lookup fails (the database is unreachable for it) */
+    usageDown: false,
+    /** what the server counted: { user, kind, amount } */
+    meter: [],
     usage: {}, // user id -> { plan, asks, hours }
     courseMembers: new Map(), // session id -> Set(user id)
     admins: new Set(),
@@ -211,6 +215,7 @@ function rpc(w, name, args, headers) {
     return json(200, viaEvent ? viaEvent.owner : null)
   }
   if (name === 'my_usage') {
+    if (w.usageDown) return json(503, { message: 'down' })
     if (!me) return json(401, {})
     return json(200, { plan: 'free', asks: 0, hours: 0, ...(w.usage[me.id] || {}) })
   }
@@ -227,6 +232,11 @@ function rpc(w, name, args, headers) {
     return json(200, Boolean(me && (w.courseMembers.get(String(args.p_id)) || new Set()).has(me.id)))
   }
   if (name === 'is_admin') return json(200, Boolean(me && w.admins.has(me.id)))
+  if (name === 'sitka_meter') {
+    if (keyRole(headers) !== 'service') return json(401, {})
+    w.meter.push({ user: args.p_user, kind: args.p_kind, amount: args.p_amount })
+    return json(200, null)
+  }
   return json(404, {})
 }
 
@@ -271,7 +281,7 @@ function provider(w, host, path, method, headers, body) {
     }
     if (path.endsWith('/audio/transcriptions')) {
       w.ai.groq.push({ kind: 'stt', auth })
-      return json(200, { segments: [{ start: 0, end: 2, text: 'hello from the lecture', no_speech_prob: 0.01, avg_logprob: -0.2 }], language: 'english' })
+      return json(200, { segments: [{ start: 0, end: 2, text: 'hello from the lecture', no_speech_prob: 0.01, avg_logprob: -0.2 }], language: 'english', duration: 12.5 })
     }
     const b = JSON.parse(body || '{}')
     w.ai.groq.push({ kind: 'chat', auth, model: b.model, system: b.messages?.[0]?.content, messages: b.messages })
@@ -289,7 +299,7 @@ function provider(w, host, path, method, headers, body) {
   }
   if (host === 'api.openai.com') {
     w.ai.openai.push({ auth })
-    return json(200, { segments: [{ start: 0, end: 2, text: 'openai words', no_speech_prob: 0.01, avg_logprob: -0.2 }], language: 'english' })
+    return json(200, { segments: [{ start: 0, end: 2, text: 'openai words', no_speech_prob: 0.01, avg_logprob: -0.2 }], language: 'english', duration: 12.5 })
   }
   if (host === 'api.deepgram.com') {
     w.ai.deepgram.push({ path })

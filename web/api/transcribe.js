@@ -6,7 +6,7 @@
 // person (never per address: a whole lecture hall shares one) and counted
 // against their plan's hours.
 
-import { allow } from './_plan.js'
+import { allow, meter } from './_plan.js'
 import { overLimitKey } from './_limit.js'
 import { platformKeys } from './_ai.js'
 import { UNCHECKED, userOf, tokenOf, deadline, failSafely, realKey } from './_auth.js'
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     if (!usingOwn) {
       const may = await allow(tokenOf(req), 'hours')
       if (!may.ok) {
-        res.status(402).json({ error: may.message, plan: may.plan, limit: 'hours' })
+        res.status(may.transient ? 503 : 402).json({ error: may.message, plan: may.plan, limit: 'hours', retry: Boolean(may.transient) })
         return
       }
     }
@@ -147,6 +147,8 @@ export default async function handler(req, res) {
     }
     // what language the model heard, for the session to hold on to
     const heard = typeof j.language === 'string' ? j.language.toLowerCase().slice(0, 12) : ''
+    // the platform's time, counted by the server from the service's own measure
+    if (!usingOwn) await meter(me.id, 'stt', Math.min(Number(j.duration) || 0, 600))
     res.status(200).json({ segments, language: heard })
   } catch (err) {
     failSafely(res, err, 'transcribe')

@@ -43,26 +43,34 @@ with both builds on 25 September 2026 (`tests/RESULTS.md`, "Set 1").
 
 ## Set 2 — Database: who can read and change what
 
+All in `supabase/migrations/` (`00` to `07`), tested on a real Postgres that
+replays every older script in order and then runs the migrations twice
+(`tests/suites/db.test.mjs`: every row written before is still there after).
+
 | | Audit | Henry | Finding | Fix |
 |---|---|---|---|---|
-| ☐ | S1 | D3 | A planted recap or event unlocks a private recording | `sitka_shared_owner`, owner checks, guard triggers (drafted, reviewed) |
-| ☐ | S4 | D4 | Recaps can be listed by anyone | `sitka_recap(id)`; no anonymous table read (drafted, reviewed) |
-| ☐ | S2 | D1, D2, D8, D16, D17 | Self-promotion to organisation owner; readable codes; every member's email; short codes; cascades | Join through a function that sets the role; codes hidden and long; members read their own row; soft cascades |
-| ☐ | S5 | D5 | Events table public, with materials | Public view through a function; private columns closed to anonymous reads |
-| ☐ | S6 | D6, A6 | Attendee questions readable | Policy removed; attendee secret checked on read |
-| ☐ | S9 | A7 | `/api/ask` upserts any row | Insert only; attendee must belong to the event |
-| ☐ | S7 | D7 | Stage and replay buckets writable by anyone | Writes only to the owner's events |
-| ☐ | S16 | D13 | Security-definer functions without `search_path`, callable by anyone | `search_path` set; execute revoked from public, granted per role |
-| ☐ | S17 | D9 | Course live link, filing into other spaces, insights by `eventId` | Lead only, URL validated; membership checked on filing; insights joined on owner |
-| ☐ | S18 | D10 | Anonymous floods of attendees, messages, votes | Per-event rate guards with indexes |
-| ☐ | D2 | D15 | Missing indexes | One migration with the indexes |
-| ☐ | D5 | — | No foreign keys, weak constraints | Foreign keys added `not valid` (existing rows untouched), check constraints |
-| ☐ | X3 | D12 | Deleting a session leaves its recap public | Trigger removes recap and replay (drafted, reviewed) |
-| ☐ | S12 | D14 | Usage counted from values the client writes | Usage recorded by the server |
-| ☐ | P4 | — | No retention | Retention jobs for telemetry and anonymous event data |
-| ☐ | D1 | — | No migration history; re-runs change rules | `supabase/migrations/`, legacy scripts moved aside with a do-not-run note |
-| ☐ | D6 | — | Stale duplicate folder | Deleted |
-| ⊘ | D4 | — | No backups on the Free plan | Nightly export script now; Pro with PITR when upgrading |
+| ☑ | S1 | D3 | A planted recap or event unlocks a private recording | `sitka_shared_owner`, owner checks, guard triggers (`00_recap_privacy`) |
+| ☑ | S4 | D4 | Recaps can be listed by anyone; the extension shares on Stop | `sitka_recap(id)`, no table read (`00`); the extension no longer shares on Stop: its card offers "Share the recap…", which opens the session's Share |
+| ☑ | S2 | D1, D2, D8, D16, D17 | Self-promotion to owner; readable codes; every member's email; short codes; cascades | Memberships only through functions that set the role; codes hidden by column grants, made by the database (12 characters), guesses counted and slowed; members read their own row; five organisations enforced by the database; deleting puts an organisation in a 30-day bin (`02`) |
+| ☑ | S5 | D5 | Events table public, with materials | Table read by its host only; `sitka_event(id)` gives one event's public fields; the event, stage and recap pages use it (`03`) |
+| ☑ | S6 | D6, A6 | Attendee questions readable | No room read of questions or answers; the attendee's own page reads through the server with its secret; the room sees shared speaker questions without who asked (`03`) |
+| ☑ | S9 | A7 | `/api/ask` upserts any row | Insert only (Set 1); in the database, every attendee write must come from a real attendee of that event, shown by the secret their page sends (`03`) |
+| ☑ | S7 | D7 | Stage and replay buckets writable by anyone | Changes only by the host the file name belongs to; no listing; pictures only, 5 MB, on the stage (`04`) |
+| ☑ | S16 | D13 | Security-definer functions without `search_path`, callable by anyone | `search_path` fixed on all; execute closed by default, granted per role; `current_plan` no longer callable (`05`) |
+| ☑ | S17 | D9 | Course live link, filing into other spaces, insights by `eventId` | Lecturers only, to their own event's page; filing only into a space the owner belongs to (the session is always saved); insights joined on the event's owner (`02`) |
+| ☑ | S18 | D10 | Anonymous floods of attendees, messages, votes, telemetry | Joins paced per address and per event; messages, reactions, questions and votes per attendee; error reports and usage events per caller (`03`, `07`) |
+| ☑ | D2 | D15 | Missing indexes | 23 indexes; every rule reads the caller once per query (`06`) |
+| ☑ | D5 | — | No foreign keys, weak constraints | Links to accounts and status checks, `not valid` so existing rows are untouched (`06`). Recaps and events are left unlinked: the retired desktop app wrote some without an account |
+| ☑ | X3 | D12 | Deleting a session leaves its recap public | Trigger removes recap and replay (`00`) |
+| ☑ | S12 | D14 | Usage counted from values the client writes | The server counts questions and transcribed seconds in `usage_meter`; hours are the longer of the sessions and the transcribed audio; a question is refused when the plan cannot be checked (transcription is not, so a lecture is never cut); non-numbers in sessions no longer break the sums (`07`) |
+| ☑ | P4 | — | No retention | Nightly clean-up (errors 90 days, usage 13 months, a room's anonymous traces a year after the event, the bin after 30 days), scheduled with pg_cron (`07`) |
+| ☑ | D1 | — | No migration history; re-runs change rules | `supabase/migrations/` with a README; the old scripts in `supabase/legacy/` with a do-not-run note |
+| ☑ | D6 | — | Stale duplicate folder | Deleted (the files were identical to the top-level copies) |
+| ⊘ | D4 | — | No backups on the Free plan | `scripts/backup-db.mjs` copies every table to `backups/` (git-ignored); Pro with point-in-time recovery when upgrading |
+
+Run order for the owner: deploy the site, then run `00` to `07` in the SQL
+editor, then rebuild the extension. Known limit: captions of a live event
+remain readable to anyone while it is live (the room is public by link).
 
 ## Set 3 — Recording: nothing lost, and the recorder tells the truth
 

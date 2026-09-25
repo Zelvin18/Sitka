@@ -4,7 +4,7 @@
 // own currency. The app's Settings, the website, the server's checks and the
 // owners' dashboard all read this file, so a number changed here changes
 // everywhere at once. Nothing here talks to a database: what plan an account
-// is on comes from the `plans` table (supabase/plans.sql); this file only says
+// is on comes from the `plans` table (supabase/legacy/plans.sql); this file only says
 // what that plan means.
 
 export type PlanId = 'free' | 'plus' | 'pro' | 'institution'

@@ -16,3 +16,6 @@ web/dist/
 
 # the extension's private key (pins its ID), never committed
 extension/key.pem
+
+# database copies from scripts/backup-db.mjs: everyone's data, never committed
+backups/
