@@ -67,4 +67,7 @@ the phase is called done.
 
 ## Found on the way
 
-- (nothing yet)
+- [x] **A 48-minute recording was lost (Sep 24).** Every per-piece upload link was refused for 45 minutes, nobody was told during the session, and the device copy was later evicted. Rebuilt (427bf97): links issued once for the whole session, persistent device copy, a failed device copy said at once, "in the cloud up to…" and a warning while recording.
+- [x] The sidebar hid sessions filed under Education/Business, which read as data loss. It now lists everything, tagged.
+- [x] "Upload now" was offered on browsers that held nothing to upload. The banner now says where the recording is.
+- [ ] Prove the new flow with a real 10-minute recording on the website and on the extension before calling it done.
