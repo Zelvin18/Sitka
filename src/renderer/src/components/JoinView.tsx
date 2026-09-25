@@ -19,36 +19,11 @@ interface BarcodeDetectorLike {
 type BarcodeDetectorCtor = new (opts: { formats: string[] }) => BarcodeDetectorLike
 type JsQr = (data: Uint8ClampedArray, w: number, h: number) => { data: string } | null
 
-const JSQR_URLS = [
-  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
-]
 let jsQrPromise: Promise<JsQr> | null = null
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = src
-    s.async = true
-    s.onload = () => resolve()
-    s.onerror = () => reject(new Error(`could not load ${src}`))
-    document.head.appendChild(s)
-  })
-}
+/** The decoder, part of the app itself (no script from elsewhere runs on this page), loaded on first use. */
 function loadJsQr(): Promise<JsQr> {
   if (!jsQrPromise) {
-    jsQrPromise = (async () => {
-      const w = window as unknown as { jsQR?: JsQr }
-      for (const url of JSQR_URLS) {
-        if (w.jsQR) break
-        try {
-          await loadScript(url)
-        } catch {
-          /* try the next mirror */
-        }
-      }
-      if (!w.jsQR) throw new Error('QR reader unavailable')
-      return w.jsQR
-    })()
+    jsQrPromise = import('jsqr').then((m) => (m.default ?? m) as unknown as JsQr)
     jsQrPromise.catch(() => {
       jsQrPromise = null // allow a retry next time
     })

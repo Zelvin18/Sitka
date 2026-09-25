@@ -32,9 +32,6 @@
   <svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>
   <div class="loader-words" data-words="Connecting to the event|Finding your seat|Almost there">Connecting to the event</div>
 </div>
-<script>
-(function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0;setInterval(function(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')},2400)})})();
-</script>
 
 <div id="notfound" class="center hidden" style="text-align:center">
   <h1>Event not found</h1>
@@ -44,7 +41,7 @@
 <div id="join" class="joinwrap hidden">
   <aside class="joinvis" aria-hidden="true">
     <div class="jv-glimpse" style="background-image:url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABUOEBIQDRUSERIYFhUZHzQiHx0dH0AuMCY0TENQT0tDSUhUXnlmVFlyWkhJaY9qcnyAh4iHUWWUn5ODnXmEh4L/2wBDARYYGB8cHz4iIj6CVklWgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoL/wAARCAAoACADASIAAhEBAxEB/8QAGgAAAQUBAAAAAAAAAAAAAAAAAAECAwUGBP/EACUQAAICAQQBAwUAAAAAAAAAAAECABEDBAUSQSETFDFCQ2Fxgf/EABUBAQEAAAAAAAAAAAAAAAAAAAAB/8QAFREBAQAAAAAAAAAAAAAAAAAAABH/2gAMAwEAAhEDEQA/AKrT42ObKAPtm5c7AVTGUY0zt4H8md98y5GdCLYEEEdRun12U5UZmrifBEDeFT9InBvWLlt4B+eQmfG+alRTO5I7DRcu5Z8iuGcsgFjz3LRSXUA1RtxbkEqEcY8JeH1B8qaP6kAavyJP6qhOKigR5EK5YQhCHKO+opNwhA//2Q==)"></div>
-    <img class="jv-photo" src="/event-join.png" alt="" decoding="async" fetchpriority="high" onload="this.classList.add('in')">
+    <img class="jv-photo" src="/event-join.png" alt="" decoding="async" fetchpriority="high" data-reveal>
     <div class="jv-veil"></div>
     <div class="jv-in">
       <h2 class="jv-title">Everything the speaker says and shows — on your screen, in your language.</h2>

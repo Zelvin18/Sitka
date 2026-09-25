@@ -49,7 +49,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com"
+          "value": "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: data: https://*.r2.cloudflarestorage.com https://*.r2.dev https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.r2.cloudflarestorage.com https://*.r2.dev https://accounts.google.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://sitcaai.firebaseapp.com; frame-src https://accounts.google.com https://sitcaai.firebaseapp.com https://*.firebaseapp.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self' https://accounts.google.com"
         },
         {
           "key": "Cross-Origin-Opener-Policy",
@@ -113,16 +113,19 @@
       "destination": "/api/page?kind=recap&id=:id"
     },
     {
-      "source": "/r1/:id",
-      "destination": "/api/page?kind=recap1&id=:id"
-    },
-    {
       "source": "/s/:id",
       "destination": "/stage.html"
     },
     {
       "source": "/admin",
       "destination": "/admin.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/r1/:id",
+      "destination": "/r/:id",
+      "permanent": true
     }
   ]
 }

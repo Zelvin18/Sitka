@@ -1,3 +1,4 @@
+import './pageboot'
 /**
  * Recap, second take. Same data as /r/<id>, a different page: a dark stage
  * with the recording, chapters that fill as it plays, the summary as a lead,
@@ -741,11 +742,10 @@ function watchStart(): void {
       if (started()) return
       if (!stallTold) {
         stallTold = true
-        const b = []
-        for (let i = 0; i < v.buffered.length; i++) b.push(`${v.buffered.start(i).toFixed(0)}-${v.buffered.end(i).toFixed(0)}`)
-        const line = `recap slow start: ready ${v.readyState} net ${v.networkState} err ${v.error?.code ?? '-'} t ${v.currentTime.toFixed(1)} buf [${b.join(' ')}] src ${v.currentSrc.slice(0, 40)} ${streamedHere ? 'stream' : 'native'}`
         try {
-          navigator.sendBeacon('/api/notify', JSON.stringify({ lines: [line], user: 'recap-visitor', page: location.pathname, ua: navigator.userAgent.slice(0, 120) }))
+          // the one report a public page may make; the server writes the words
+          const detail = `ready ${v.readyState} net ${v.networkState} err ${v.error?.code ?? '-'} ${streamedHere ? 'stream' : 'native'}`
+          navigator.sendBeacon('/api/notify', JSON.stringify({ kind: 'recap-slow', recap: pageId, detail, ua: navigator.userAgent.slice(0, 120) }))
         } catch {
           /* nothing to say it to */
         }
@@ -1119,14 +1119,15 @@ function renderMoments(d: Loaded): void {
 const LANGS = ['English', 'Luganda', 'Nyankole', 'Swahili', 'Shona', 'Ndebele', 'French', 'Portuguese', 'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi']
 async function translateBatch(texts: string[], lang: string): Promise<string[] | null> {
   try {
+    // the server builds the translation prompt; the page sends the lines and the language
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        keys: {},
-        system: `You translate into ${lang}. The user sends numbered lines. Reply with ONLY the translated lines, one per line, keeping the same numbers in the form "N: text". No notes, no extra lines.`,
-        messages: [{ role: 'user', content: texts.map((t, i) => `${i + 1}: ${t}`).join('\n') }],
-        maxTokens: 2000
+        ...(data?.kindWord === 'live event' ? { replayEvent: pageId } : { recap: pageId }),
+        mode: 'translate',
+        lines: texts,
+        lang
       })
     })
     if (!r.ok) return null
@@ -1194,57 +1195,8 @@ function wireLang(): void {
 
 // ---------- ask ----------
 function wireAsk(d: Loaded): void {
-  // The brief sent with a question is built for that question: the lines
-  // that share its words, with a little around them, capped small. A whole
-  // hour of words on every "hi" is what made replies take half a minute —
-  // the free models refuse prompts that big and the request limps through
-  // the fallbacks. A small brief answers in a second or two.
-  const STOP = new Set(
-    'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only into onto over under after before earlier later show shown showed said say tell explain please hello hi thanks thank'.split(' ')
-  )
-  const excerptFor = (q: string): string => {
-    const words = q
-      .toLowerCase()
-      .split(/[^\p{L}\p{N}]+/u)
-      .filter((w) => w.length >= 4 && !STOP.has(w))
-    const lines = d.lines
-    const keep = new Set<number>()
-    if (words.length > 0) {
-      lines.forEach((l, i) => {
-        const t = l.text.toLowerCase()
-        if (words.some((w) => t.includes(w))) {
-          for (let k = Math.max(0, i - 2); k <= Math.min(lines.length - 1, i + 2); k++) keep.add(k)
-        }
-      })
-    }
-    // a general question, or nothing matched: the shape of the session instead
-    if (keep.size < 12) {
-      const step = Math.max(1, Math.floor(lines.length / 60))
-      for (let i = 0; i < lines.length; i += step) keep.add(i)
-    }
-    let out = ''
-    for (const i of [...keep].sort((a, b) => a - b)) {
-      const line = `[${fmt(lines[i].sec)}] ${lines[i].text}\n`
-      if (out.length + line.length > 14000) break
-      out += line
-    }
-    return out
-  }
-  const system = (q: string): string =>
-    [
-      `You are Sitca, answering questions about a recorded ${d.kindWord}: "${d.title}".`,
-      d.summary ? `Summary of the session: ${d.summary}` : '',
-      'Answer every question. Look in the excerpt (and materials) below first; when the session covers it, answer from what was said. When it does not, or the question is about something else, never refuse: say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge, kept clearly apart from what the speaker said.',
-      'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
-      'When you reference a specific moment, cite the time exactly as it appears at the start of that line, inside plain double square brackets — for example [[12:37]] or [[1:02:15]]. Never write letters inside the brackets, never a range. These become tap-to-play links.',
-      'Cite a moment when the reader would want to jump to it; a summary reads as prose.',
-      'Shape every answer so it can be taken in at a glance: the answer itself in one or two plain sentences first; then, only if more is needed, short bullets that each open with a bold lead-in of two or three words; a blank line between parts. Never one long paragraph. A greeting gets one friendly line.',
-      readLang !== 'English' ? `Always answer in ${readLang}.` : '',
-      d.materials ? `\nMaterials:\n${d.materials.slice(0, 4000)}` : '',
-      `\nExcerpt of the session (each line starts with its time):\n${excerptFor(q) || '(no words captured)'}`
-    ]
-      .filter(Boolean)
-      .join('\n')
+  // The question goes to the server with the recap's id; the server finds the
+  // lines that share its words and builds the brief (web/api/chat.js).
   // The conversation survives a reload, a closed sheet, or coming back later:
   // it is kept on this device for this recap, and drawn again on open.
   const CHAT_KEY = 'sitka-recap-chat-' + pageId
@@ -1329,15 +1281,17 @@ function wireAsk(d: Loaded): void {
     bubble('bub-u', '', q)
     const typing = bubble('typing', '<svg class="mark mark-live" viewBox="0 0 64 64" fill="currentColor" style="width:14px;height:14px"><circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="46.1" cy="17.9" r="9"/></svg>Reading the session')
     try {
+      // The server reads this recap and builds the prompt itself: the page
+      // sends only which recap, the question and the conversation so far.
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          keys: {},
-          system: system(q),
-          messages: [...history.slice(-6), { role: 'user', content: q }],
-          maxTokens: 700,
-          fast: true
+          ...(d.kindWord === 'live event' ? { replayEvent: pageId } : { recap: pageId }),
+          mode: 'ask',
+          question: q,
+          history: history.slice(-6),
+          lang: readLang
         })
       })
       const j = await r.json()

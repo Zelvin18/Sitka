@@ -12,7 +12,8 @@ export default defineConfig({
       // pinned to this project's node_modules for the Vercel build.
       react: resolve(__dirname, 'node_modules/react'),
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),
-      qrcode: resolve(__dirname, 'node_modules/qrcode')
+      qrcode: resolve(__dirname, 'node_modules/qrcode'),
+      jsqr: resolve(__dirname, 'node_modules/jsqr')
     }
   },
   server: {
@@ -27,7 +28,6 @@ export default defineConfig({
         host: resolve(__dirname, 'host.html'),
         legal: resolve(__dirname, 'legal.html'),
         extension: resolve(__dirname, 'extension.html'),
-        replay: resolve(__dirname, 'replay.html'),
         stage: resolve(__dirname, 'stage.html'),
         admin: resolve(__dirname, 'admin.html'),
         replay2: resolve(__dirname, 'replay2.html')

@@ -443,9 +443,6 @@ html,body{overflow-x:hidden;max-width:100vw}
   <div class="sheet-body" id="chat"></div>
 </aside>
 
-<script>
-(function(){document.querySelectorAll('[data-words]').forEach(function(el){var w=el.getAttribute('data-words').split('|'),i=0;setInterval(function(){if(i>=w.length-1)return;i++;el.textContent=w[i];el.classList.remove('lw');void el.offsetWidth;el.classList.add('lw')},2400)})})();
-</script>
 <script type="module" src="/src/replay2.ts"></script>
 </body>
 </html>

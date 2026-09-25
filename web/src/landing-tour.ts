@@ -1,3 +1,4 @@
+import './pageboot'
 /**
  * Landing page: the film plays in the hero (its sound on request), and the
  * sections reveal as they scroll into view.

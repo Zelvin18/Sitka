@@ -1,43 +1,59 @@
 // Whisper proxy: audio chunk (base64) in, timestamped segments out.
 // OpenAI preferred when its key is present, otherwise Groq's free Whisper.
+//
+// Only a signed-in person may transcribe. Someone who sends their own key
+// pays with it alone; everyone else is paid for by the platform, limited per
+// person (never per address: a whole lecture hall shares one) and counted
+// against their plan's hours.
 
-import { overLimit } from './_limit.js'
-import { allow, tokenOf } from './_plan.js'
+import { allow } from './_plan.js'
+import { overLimitKey } from './_limit.js'
+import { platformKeys } from './_ai.js'
+import { UNCHECKED, userOf, tokenOf, deadline, failSafely, realKey } from './_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
     return
   }
+  const dl = deadline(55000)
   try {
-    const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = req.body || {}
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const { keys = {}, audioB64 = '', mime = 'audio/webm', offsetSec = 0 } = body
     // The language the session is in, once known. Left to guess on every
     // piece, the model hears a mumbled second of English as Japanese or
     // Korean and writes that; told the language, it stays in it.
-    const language = /^[a-z]{2}$/i.test(String((req.body || {}).language || '')) ? String(req.body.language).toLowerCase() : ''
-    // a session sends a piece every few seconds; a flood from one address is something else
-    if (!(keys.openaiApiKey || keys.groqApiKey) && overLimit(req, 60, 1500)) {
-      res.status(429).json({ error: 'Slow down a little.' })
+    const language = /^[a-z]{2}$/i.test(String(body.language || '')) ? String(body.language).toLowerCase() : ''
+    const me = await userOf(tokenOf(req))
+    if (me === UNCHECKED) {
+      res.status(503).json({ error: 'Could not check who you are just now. Try again in a moment.' })
       return
     }
-    // the month's hours, for a signed-in person; a session under way may finish
-    if (!(keys.openaiApiKey || keys.groqApiKey)) {
+    if (!me) {
+      res.status(401).json({ error: 'Sign in first.' })
+      return
+    }
+    const ownOpenai = realKey(keys.openaiApiKey)
+    const ownGroq = realKey(keys.groqApiKey)
+    const usingOwn = Boolean(ownOpenai || ownGroq)
+    // a session sends a piece every few seconds; a flood from one person is something else
+    if (await overLimitKey(`${usingOwn ? 'stt-own' : 'stt'}:user:${me.id}`, 60, 2500)) {
+      res.status(429).json({ error: 'Slow down a little.', retry: true })
+      return
+    }
+    // the month's hours; a session under way may finish
+    if (!usingOwn) {
       const may = await allow(tokenOf(req), 'hours')
       if (!may.ok) {
         res.status(402).json({ error: may.message, plan: may.plan, limit: 'hours' })
         return
       }
     }
-    const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
-    const openaiKey = clean(keys.openaiApiKey) || clean(process.env.OPENAI_API_KEY)
+    // their keys alone, or the platform's alone: never a mix
+    const openaiKey = usingOwn ? ownOpenai : platformKeys('OPENAI_API_KEY')[0] || ''
     // Every Groq key the deployment has, the same set the chat route rotates
     // through, so one account being rate-limited does not silence a lecture.
-    const groqKeys = [
-      clean(keys.groqApiKey),
-      clean(process.env.GROQ_API_KEY),
-      ...String(process.env.GROQ_API_KEYS || '').split(/[,\s]+/).map(clean),
-      ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GROQ_API_KEY_${n}`]))
-    ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i)
+    const groqKeys = usingOwn ? (ownGroq ? [ownGroq] : []) : platformKeys('GROQ_API_KEY')
     const tries = openaiKey
       ? [{ key: openaiKey, url: 'https://api.openai.com/v1/audio/transcriptions', model: 'whisper-1' }]
       : groqKeys.map((key) => ({ key, url: 'https://api.groq.com/openai/v1/audio/transcriptions', model: 'whisper-large-v3-turbo' }))
@@ -59,6 +75,8 @@ export default async function handler(req, res) {
     let j = null
     let lastError = 'Transcription error'
     for (const t of tries) {
+      // nothing new is started that could not finish inside the request
+      if (dl.left() < 5000) break
       const form = new FormData()
       // the service reads the container from the file name: iPhones record AAC in MP4
       const ext = /mp4|m4a|aac/i.test(mime) ? 'mp4' : /ogg/i.test(mime) ? 'ogg' : /wav/i.test(mime) ? 'wav' : 'webm'
@@ -73,7 +91,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { Authorization: `Bearer ${t.key}` },
           body: form,
-          signal: AbortSignal.timeout(40000)
+          signal: dl.signal(40000)
         })
       } catch (err) {
         lastError = err && err.name === 'TimeoutError' ? 'The transcription service did not answer in time.' : String((err && err.message) || err)
@@ -96,7 +114,9 @@ export default async function handler(req, res) {
       break
     }
     if (!j) {
-      res.status(502).json({ error: lastError })
+      // the page keeps the piece and asks again; the provider's words stay in the logs
+      console.error('[transcribe]', lastError)
+      res.status(502).json({ error: 'Transcription is busy right now. Sitca tries this piece again.', retry: true })
       return
     }
     // Silence makes Whisper invent words: lone punctuation, "Thank you.",
@@ -129,6 +149,6 @@ export default async function handler(req, res) {
     const heard = typeof j.language === 'string' ? j.language.toLowerCase().slice(0, 12) : ''
     res.status(200).json({ segments, language: heard })
   } catch (err) {
-    res.status(500).json({ error: String((err && err.message) || err) })
+    failSafely(res, err, 'transcribe')
   }
 }

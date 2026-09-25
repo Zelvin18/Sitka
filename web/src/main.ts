@@ -1,3 +1,4 @@
+import './pageboot'
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { patientFetch } from './patientFetch'
 import { downloadBytes, fileName, notesPdf, withoutTimes } from './notesFile'
@@ -130,6 +131,28 @@ interface SegRow {
 
 let ev: EventRow | null = null
 let attId: string | null = null
+/**
+ * A secret only this page holds, made when the person joins. Its hash is on
+ * their attendee row; the server shows their answers only to whoever has it.
+ * Someone who joined before secrets existed has none, and is still answered.
+ */
+let attSecret = ''
+function newSecret(): string {
+  const b = new Uint8Array(32)
+  crypto.getRandomValues(b)
+  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+}
+async function sha256Hex(text: string): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, '0')).join('')
+}
+/** An attendee row with the hash of its secret; without it on a database that has not got the column yet. */
+async function insertAttendee(row: Record<string, unknown>, secret: string): Promise<{ error: { message: string } | null }> {
+  const withHash = await sb.from('attendees').insert({ ...row, secret_hash: await sha256Hex(secret) })
+  if (!withHash.error || !/secret_hash/i.test(withHash.error.message)) return withHash
+  return sb.from('attendees').insert(row)
+}
+const secretParam = (secret: string): string => (secret ? `&secret=${encodeURIComponent(secret)}` : '')
 let persona: string | null = null
 let myLang = 'English'
 let joined = false
@@ -436,7 +459,7 @@ async function fetchVoice(text: string): Promise<Blob | null> {
     const r = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang: myLang, who: attId || '' }),
+      body: JSON.stringify({ text, lang: myLang, event: eventId }),
       signal: AbortSignal.timeout(12000)
     })
     if (!r.ok || !/^audio\//i.test(r.headers.get('content-type') || '')) {
@@ -1670,6 +1693,7 @@ async function submitAsk(
         id,
         eventId,
         attendeeId: attId,
+        secret: attSecret,
         kind,
         question,
         persona: persona || '',
@@ -1708,7 +1732,7 @@ async function submitAsk(
       if (pendingAsks.has(id)) resolveAsk(id, 'error', 'No answer arrived — is the host app running?')
       return
     }
-    const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}`)
+    const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}${secretParam(attSecret)}`)
     if (data && data.status !== 'pending') {
       clearInterval(poll)
       resolveAsk(id, data.status, data.answer)
@@ -1921,20 +1945,24 @@ const storeKey = 'sitka-att-' + eventId
 async function join(newJoin: boolean): Promise<void> {
   if (newJoin) {
     attId = crypto.randomUUID()
+    attSecret = newSecret()
     myName = (el('name') as HTMLInputElement).value.trim().slice(0, 40)
-    const { error } = await sb.from('attendees').insert({
-      id: attId,
-      event_id: eventId,
-      persona: persona || 'Curious attendee',
-      lang: myLang
-    })
+    const { error } = await insertAttendee(
+      {
+        id: attId,
+        event_id: eventId,
+        persona: persona || 'Curious attendee',
+        lang: myLang
+      },
+      attSecret
+    )
     if (error) {
       ;(el('joinbtn') as HTMLButtonElement).disabled = false
       alert('Could not join — check your connection and try again.')
       return
     }
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ id: attId, persona, lang: myLang, name: myName }))
+      localStorage.setItem(storeKey, JSON.stringify({ id: attId, persona, lang: myLang, name: myName, secret: attSecret }))
     } catch {
       /* private mode */
     }
@@ -1954,7 +1982,7 @@ async function join(newJoin: boolean): Promise<void> {
   applyEventState()
 
   // history: restore my previous Q&A after a refresh
-  const prevAsks = await readOwnRows<{ kind: string; question: string; answer: string | null; status: string }>(`attendee=${attId}`)
+  const prevAsks = await readOwnRows<{ kind: string; question: string; answer: string | null; status: string }>(`attendee=${attId}${secretParam(attSecret)}`)
   for (const a of prevAsks) {
     if (a.status !== 'answered' || !a.answer) continue
     bubble('bub-u', a.question)
@@ -2206,6 +2234,14 @@ async function join(newJoin: boolean): Promise<void> {
 
 // ---------- "attend for me": absent-attendee proxy ----------
 const proxyKey = 'sitka-proxy-' + eventId
+const proxySecretKey = 'sitka-proxy-secret-' + eventId
+function proxySecret(): string {
+  try {
+    return localStorage.getItem(proxySecretKey) || ''
+  } catch {
+    return ''
+  }
+}
 el('proxylink').onclick = () => {
   el('join').classList.add('hidden')
   el('proxy').classList.remove('hidden')
@@ -2220,12 +2256,16 @@ el('proxyback').onclick = () => {
   ;(el('proxysend') as HTMLButtonElement).disabled = true
   const proxyId = crypto.randomUUID()
   const lang = (el('lang') as HTMLSelectElement).value
-  const { error: aerr } = await sb.from('attendees').insert({
-    id: proxyId,
-    event_id: eventId,
-    persona: 'Absent (Sitca attending as proxy)',
-    lang
-  })
+  const secret = newSecret()
+  const { error: aerr } = await insertAttendee(
+    {
+      id: proxyId,
+      event_id: eventId,
+      persona: 'Absent (Sitca attending as proxy)',
+      lang
+    },
+    secret
+  )
   const { error: perr } = aerr
     ? { error: aerr }
     : await sb.from('proxies').insert({
@@ -2241,6 +2281,7 @@ el('proxyback').onclick = () => {
   }
   try {
     localStorage.setItem(proxyKey, proxyId)
+    localStorage.setItem(proxySecretKey, secret)
   } catch {
     /* private mode — the brief will still generate, but this device may not find it */
   }
@@ -2293,7 +2334,7 @@ function renderBrief(brief: string, proxyId: string): void {
       const r = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitca to attend for them', lang: myLang, history: history.slice(-8) }),
+        body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, secret: proxySecret(), kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitca to attend for them', lang: myLang, history: history.slice(-8) }),
         signal: AbortSignal.timeout(55000)
       })
       const j = (await r.json().catch(() => ({}))) as { answer?: string; error?: string }
@@ -2342,7 +2383,7 @@ function showProxyStatus(proxyId: string): void {
     // the event itself is asked as well, so the page knows when it starts
     // and when it ends without anyone refreshing it
     const [data, { data: fresh }] = await Promise.all([
-      readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}`),
+      readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}${secretParam(proxySecret())}`),
       sb.from('events').select('*').eq('id', eventId).single()
     ])
     if (fresh) {
@@ -2452,7 +2493,7 @@ async function boot(): Promise<void> {
     return
   }
 
-  let saved: { id: string; persona: string | null; lang: string; name?: string } | null = null
+  let saved: { id: string; persona: string | null; lang: string; name?: string; secret?: string } | null = null
   try {
     saved = JSON.parse(localStorage.getItem(storeKey) || 'null')
   } catch {
@@ -2460,6 +2501,7 @@ async function boot(): Promise<void> {
   }
   if (saved?.id) {
     attId = saved.id
+    attSecret = saved.secret || ''
     persona = saved.persona
     myLang = saved.lang || 'English'
     myName = saved.name || ''

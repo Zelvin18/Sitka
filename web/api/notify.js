@@ -2,20 +2,25 @@
 //
 // The app gathers what went wrong for someone and sends it here; this route
 // mails it to the address in ADMIN_EMAIL through Resend (RESEND_API_KEY).
-// Without those two settings it answers quietly and the ops view remains the
-// record. A flood from one address is cut short; nothing here is stored.
+// Without those two settings it answers quietly and the operations view
+// remains the record. Nothing here is stored.
+//
+// A signed-in page may send its own lines. A public recap page may report
+// one thing only — that a recording was slow to start — and the words of
+// that report are written here, not taken from the caller, so the route
+// cannot be used to send anyone's text to the owner's inbox.
 
-import { overLimit } from './_limit.js'
+import { overLimitKey } from './_limit.js'
+import { UNCHECKED, userOf, tokenOf, ipOf } from './_auth.js'
 
 const RESEND_KEY = process.env.RESEND_API_KEY || ''
 const TO = process.env.ADMIN_EMAIL || ''
 // Resend lets a new account send from this address to its own inbox before a domain is verified
 const FROM = process.env.NOTIFY_FROM || 'Sitca <onboarding@resend.dev>'
+const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
-  if (!RESEND_KEY || !TO) return res.status(200).json({ ok: false, reason: 'not-configured' })
-  if (overLimit(req, 6, 60)) return res.status(429).json({ error: 'Slow down a little.' })
 
   let body = req.body
   if (typeof body === 'string') {
@@ -25,11 +30,33 @@ export default async function handler(req, res) {
       body = {}
     }
   }
-  const lines = Array.isArray(body?.lines) ? body.lines.map((l) => String(l).slice(0, 500)).slice(0, 40) : []
+  body = body && typeof body === 'object' ? body : {}
+
+  let user = ''
+  let lines = []
+  let page = ''
+  const token = tokenOf(req)
+  const me = token ? await userOf(token) : null
+  if (me === UNCHECKED) return res.status(503).json({ error: 'Try again in a moment.' })
+  if (me) {
+    if (await overLimitKey(`notify:user:${me.id}`, 6, 60)) return res.status(429).json({ error: 'Slow down a little.' })
+    user = me.email || me.id
+    lines = Array.isArray(body.lines) ? body.lines.map((l) => String(l).slice(0, 500)).slice(0, 40) : []
+    page = String(body.page || '').slice(0, 120)
+  } else if (body.kind === 'recap-slow' && UUID.test(String(body.recap || ''))) {
+    // the one report an anonymous page may make, in words chosen here
+    if (await overLimitKey(`notify:ip:${ipOf(req)}`, 2, 6)) return res.status(429).json({ error: 'Slow down a little.' })
+    if (await overLimitKey(`notify:recap:${body.recap}`, 2, 6)) return res.status(429).json({ error: 'Slow down a little.' })
+    user = 'a recap visitor'
+    const detail = /^[\w .:\-[\]()/]{0,160}$/.test(String(body.detail || '')) ? String(body.detail) : ''
+    lines = [`A shared recap was slow to start: /r/${body.recap}${detail ? ` (${detail})` : ''}`]
+    page = `/r/${body.recap}`
+  } else {
+    return res.status(401).json({ error: 'Sign in first.' })
+  }
   if (lines.length === 0) return res.status(400).json({ error: 'nothing to say' })
-  const user = String(body?.user || 'someone').slice(0, 120)
-  const ua = String(body?.ua || '').slice(0, 160)
-  const page = String(body?.page || '').slice(0, 120)
+  if (!RESEND_KEY || !TO) return res.status(200).json({ ok: false, reason: 'not-configured' })
+  const ua = String(body.ua || '').slice(0, 160)
 
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const subject = `Sitca: ${lines.length === 1 ? 'a fault' : `${lines.length} faults`} for ${user}`
@@ -51,11 +78,11 @@ export default async function handler(req, res) {
     if (!r.ok) {
       const t = await r.text().catch(() => '')
       console.error('notify', r.status, t.slice(0, 200))
-      return res.status(200).json({ ok: false, reason: `mail ${r.status}` })
+      return res.status(200).json({ ok: false })
     }
     return res.status(200).json({ ok: true })
   } catch (err) {
     console.error('notify', err)
-    return res.status(200).json({ ok: false, reason: String((err && err.message) || err) })
+    return res.status(200).json({ ok: false })
   }
 }

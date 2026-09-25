@@ -9,7 +9,33 @@
 // "not found", "decommissioned" or "requires terms acceptance" is skipped for
 // a while.
 
-import { overLimit } from './_limit.js'
+import { overLimitKey } from './_limit.js'
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, ipOf, allowOrigin } from './_auth.js'
+
+const EVENT_ID = /^[0-9a-zA-Z-]{6,64}$/
+/** An event that is on, about to be, or just over: its attendees may hear answers read aloud. */
+const eventCache = new Map()
+async function eventIsOpen(id) {
+  if (!EVENT_ID.test(id) || !SUPA_URL) return false
+  const hit = eventCache.get(id)
+  if (hit && hit.until > Date.now()) return hit.ok
+  let ok = false
+  try {
+    const key = SUPA_SERVICE || SUPA_ANON
+    const r = await fetch(`${SUPA_URL}/rest/v1/events?id=eq.${id}&select=status,updated_at`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(4000)
+    })
+    const rows = r.ok ? await r.json() : []
+    const ev = Array.isArray(rows) ? rows[0] : null
+    ok = Boolean(ev && (ev.status === 'waiting' || ev.status === 'live' || (ev.status === 'ended' && Date.now() - new Date(ev.updated_at).getTime() < 6 * 3600000)))
+  } catch {
+    ok = false
+  }
+  if (eventCache.size > 2000) eventCache.clear()
+  eventCache.set(id, { ok, until: Date.now() + 60000 })
+  return ok
+}
 
 const KNOWN_GEMINI = [
   'gemini-2.5-flash-preview-tts',
@@ -301,22 +327,25 @@ async function synthesize(text, lang) {
 }
 
 export default async function handler(req, res) {
-  // the desktop app asks for the same voice from its own window
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  // only the site and the extension may call this from a browser
+  allowOrigin(req, res)
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
   }
-  // GET /api/speak — a check you can open in a browser: which voice answers.
+  // GET /api/speak — which voices are set up. It says so without speaking:
+  // a check anyone can open must not cost anything.
   if (req.method === 'GET') {
-    const out = await synthesize('Sitca is ready.', 'en')
-    res.status(out.wav ? 200 : 503).json({
-      ok: Boolean(out.wav),
-      provider: out.provider,
-      bytes: out.wav ? out.wav.length : 0,
-      errors: out.errors.slice(0, 8)
+    const configured = []
+    if (clean(process.env.DEEPGRAM_API_KEY)) configured.push('deepgram:' + DEEPGRAM_VOICE)
+    if (keysFrom('GROQ_API_KEY', 'GROQ_API_KEYS', 'GROQ_API_KEY').length) configured.push('groq')
+    if (keysFrom('GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GEMINI_API_KEY').length) configured.push('gemini')
+    res.status(configured.length ? 200 : 503).json({
+      ok: configured.length > 0,
+      provider: configured[0] || null,
+      providers: configured,
+      bytes: 0,
+      errors: configured.length ? [] : ['No DEEPGRAM_API_KEY, GEMINI_API_KEY(S) or GROQ_API_KEY(S) set']
     })
     return
   }
@@ -324,8 +353,34 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'POST only' })
     return
   }
-  // a voice costs money each time: a flood from one address is refused
-  if (overLimit(req, 60, 1500, String((req.body || {}).who || ''))) {
+  // A voice costs money each time. A signed-in person is limited as
+  // themselves; an attendee by the event they are in; nobody else is served.
+  // The key is never something the caller chose.
+  const body = req.body && typeof req.body === 'object' ? req.body : {}
+  const token = tokenOf(req)
+  let bucket = ''
+  if (token) {
+    const me = await userOf(token)
+    if (me === UNCHECKED) {
+      res.status(503).json({ error: 'Could not check who you are just now.' })
+      return
+    }
+    if (me) bucket = `speak:user:${me.id}`
+  }
+  if (!bucket) {
+    const eventId = String(body.event || '')
+    if (!(await eventIsOpen(eventId))) {
+      res.status(401).json({ error: 'Sign in first.' })
+      return
+    }
+    // the room has a budget, and so does each address in it
+    if (await overLimitKey(`speak:ip:${ipOf(req)}`, 40, 800)) {
+      res.status(429).json({ error: 'Slow down a little.' })
+      return
+    }
+    bucket = `speak:event:${eventId}`
+  }
+  if (await overLimitKey(bucket, bucket.startsWith('speak:event:') ? 150 : 40, bucket.startsWith('speak:event:') ? 4000 : 800)) {
     res.status(429).json({ error: 'Slow down a little.' })
     return
   }

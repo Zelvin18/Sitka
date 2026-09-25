@@ -160,6 +160,11 @@ export default function SessionView({
   const loadGenRef = useRef(0)
   /** counts the ways tried in this load, so a late watchdog from an earlier way cannot skip the next */
   const wayRef = useRef(0)
+  /** the way now playing from links, and when they were made: a link lives
+   *  two hours, so one that fails after a long watch is made again and the
+   *  recording carries on from the same moment */
+  const linkRef = useRef<{ way: Way; at: number } | null>(null)
+  const renewalsRef = useRef(0)
   /** the parts and their sizes, listed once per load and shared by the ways */
   const sizedRef = useRef<{ url: string; size: number }[]>([])
   /** the session's meta as soon as it is known, for decisions taken before the state settles */
@@ -540,6 +545,7 @@ export default function SessionView({
             return
           }
           diagRef.current = 'the recording as a playlist'
+          linkRef.current = { way, at: Date.now() }
           setVideoSrc(url)
           return
         }
@@ -552,6 +558,7 @@ export default function SessionView({
             return
           }
           diagRef.current = 'the whole file by its link'
+          linkRef.current = { way, at: Date.now() }
           setVideoSrc(url)
           return
         }
@@ -566,6 +573,7 @@ export default function SessionView({
           streamPartsRef.current = parts
           streamSizesRef.current = sized.length > 0 ? sized.map((p) => p.size) : null
           diagRef.current = `a stream of ${parts.length} part${parts.length === 1 ? '' : 's'}`
+          linkRef.current = { way, at: Date.now() }
           setVideoSrc('progressive')
           return
         }
@@ -620,6 +628,7 @@ export default function SessionView({
           }
         }
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        linkRef.current = null
         objectUrlRef.current = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: kind }))
         setVideoSrc(objectUrlRef.current)
       } catch (err) {
@@ -628,6 +637,24 @@ export default function SessionView({
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessionId]
+  )
+  // A link that fails after a long watch has simply lapsed: the same way is
+  // taken again with fresh links, from the moment the viewer was at. A way
+  // that fails early is a way that does not work, and the next is tried.
+  const renewLink = useCallback(
+    (at: number): boolean => {
+      const cur = linkRef.current
+      if (!cur || Date.now() - cur.at < 45 * 60000 || renewalsRef.current >= 4) return false
+      renewalsRef.current++
+      linkRef.current = null
+      if (at > 0) pendingSeekRef.current = at
+      // the parts' links were made with the rest: listed again
+      sizedRef.current = []
+      ladderRef.current.ways.unshift(cur.way)
+      void advance(loadGenRef.current, `${diagRef.current}: links renewed after ${Math.round((Date.now() - cur.at) / 60000)} min`)
+      return true
+    },
+    [advance]
   )
   // still being recorded (by the extension's engine, or another tab): there
   // is no file to play yet; the words arrive as they are said instead
@@ -739,6 +766,8 @@ export default function SessionView({
     // loader is slow to open a long file by its link. Elsewhere the whole
     // file by its link is the quickest, the stream next.
     ladderRef.current = { ways: IOS ? ['hls', 'stream', 'url', 'blob'] : ['url', 'stream', 'blob'], tried: [] }
+    linkRef.current = null
+    renewalsRef.current = 0
     if (!videoWanted || stillRecording || preparing) return undefined
     void (async () => {
       // a tab opened in the background waits until it is looked at
@@ -869,6 +898,7 @@ export default function SessionView({
       if (cancelled || gen !== loadGenRef.current || way !== wayRef.current) return
       cancelled = true
       streamPartsRef.current = []
+      if (renewLink(videoRef.current?.currentTime ?? 0)) return
       void advance(gen, why)
     }
     const stopWatch = visibleTimeout(10000, () => {
@@ -1332,6 +1362,7 @@ export default function SessionView({
                   const code = el.error?.code
                   const msg = el.error?.message ? ` ${el.error.message.slice(0, 80)}` : ''
                   streamPartsRef.current = []
+                  if (renewLink(el.currentTime)) return
                   void advance(loadGenRef.current, `${diagRef.current} would not play (code ${code ?? '?'}${msg})`)
                 }}
               />

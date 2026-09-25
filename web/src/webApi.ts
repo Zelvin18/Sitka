@@ -331,8 +331,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     try {
       await fetch('/api/notify', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lines, user: user.email ?? user.id, page: location.pathname, ua: UA })
+        headers: { 'content-type': 'application/json', ...(await authHeader()) },
+        body: JSON.stringify({ lines, page: location.pathname, ua: UA })
       })
     } catch {
       /* the ops view still has it */
@@ -960,6 +960,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       return {}
     }
   }
+  // the reading-aloud helper lives outside this module and asks for it here
+  ;(window as unknown as { sitkaAuthHeader?: () => Promise<Record<string, string>> }).sitkaAuthHeader = authHeader
 
   // ---------- the plan's meter ----------
   // What this account has used this month, from the database, and how much
@@ -1003,6 +1005,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     folderId: string,
     name: string,
     mime: string,
+    session: string,
     sources: { url: string; size: number }[],
     onProgress: (sent: number, total: number) => void
   ): Promise<string> {
@@ -1015,7 +1018,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         r = await fetch('/api/drive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...auth },
-          body: JSON.stringify({ google, folderId, name, mime, sources, uploadUrl, from })
+          // the server finds the recording by its session: it reads nothing it is pointed at
+          body: JSON.stringify({ google, folderId, name, mime, session, uploadUrl, from })
         })
       } catch {
         return ''
@@ -1459,7 +1463,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // them. Asking permission before each piece was a door that could close
   // mid-session (it did, for forty-five minutes); with the links in hand,
   // nothing between the recorder and the cloud can hold it back.
-  const GRANT_COUNT = 180
+  // the server gives at most 60 at a time (links for three hours); the next batch is asked for with 30 still in hand
+  const GRANT_COUNT = 60
   const grants = new Map<string, { links: Map<number, string>; top: number; until: number }>()
   const granting = new Map<string, Promise<void>>()
   async function askGrant(sessionId: string, from: number): Promise<void> {
@@ -1483,7 +1488,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   /** The link for one piece: from the grant in hand, asking for more when it runs low or runs out. */
   async function linkFor(sessionId: string, partNo: number): Promise<string | null> {
     let g = grants.get(sessionId)
-    // ten minutes' margin on the twelve hours: a link is never used at its last second
+    // ten minutes' margin on the links' three hours: a link is never used at its last second
     if (g && g.until - Date.now() < 600000) {
       grants.delete(sessionId)
       g = undefined
@@ -3217,7 +3222,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             // the server moves it, store to Drive, on a wide pipe: seconds
             // rather than the minutes a phone's connection would take;
             // should the server be unable, the browser sends it itself
-            const moved = await moveViaServer(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
+            const moved = await moveViaServer(t, folder.id, `${title}.${ext}`, mime, id, parts, (sent, total) => say('sending', sent, total))
             if (moved) fileUrl = moved
             else {
               const up = await uploadRecording(t, folder.id, `${title}.${ext}`, mime, parts, (sent, total) => say('sending', sent, total))
@@ -3505,20 +3510,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       if (ext === 'pdf') {
         try {
-          // pdf.js from a CDN, loaded only when a PDF is actually dropped in.
-          const url = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.min.mjs'
-          const pdfjs = (await import(/* @vite-ignore */ url)) as {
+          // pdf.js, part of the app (no script from elsewhere runs here), loaded
+          // only when a PDF is actually dropped in
+          const [lib, worker] = await Promise.all([import('pdfjs-dist/build/pdf.min.mjs'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')])
+          const pdfjs = lib as unknown as {
             GlobalWorkerOptions: { workerSrc: string }
-            getDocument: (o: { data: ArrayBuffer }) => {
+            getDocument: (o: { data: ArrayBuffer; isEvalSupported?: boolean }) => {
               promise: Promise<{
                 numPages: number
                 getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: { str?: string }[] }> }>
               }>
             }
           }
-          pdfjs.GlobalWorkerOptions.workerSrc =
-            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs'
-          const doc = await pdfjs.getDocument({ data: bytes }).promise
+          pdfjs.GlobalWorkerOptions.workerSrc = (worker as { default: string }).default
+          // text only, so pdf.js never needs to build code on the fly (the site's security policy forbids it)
+          const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false }).promise
           const pages: string[] = []
           for (let i = 1; i <= Math.min(doc.numPages, 300); i++) {
             const page = await doc.getPage(i)
@@ -3890,11 +3896,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         return m?.hls ?? null
       }
       if (d.meta.audioOnly || d.meta.sample) return null
+      // the playlist address carries its own short-lived ticket: never the sign-in token
       const m = await store.media(user.id, id).catch(() => null)
-      if (!m?.hls) return null
-      const { data } = await sb.auth.getSession()
-      const t = data.session?.access_token
-      return t ? `${m.hls}&t=${encodeURIComponent(t)}` : m.hls
+      return m?.hls ?? null
     },
 
     convertForPhones: (id: string) => convertForPhones(id),

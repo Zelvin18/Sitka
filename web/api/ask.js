@@ -8,11 +8,15 @@
 // a few seconds, before, during and after the event. The host's app still
 // answers anything left pending, so nothing is lost when this route cannot.
 
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SUPA_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-// with the service key the answered question is written back for the host's
-// report and for follow-ups; without it the answer still reaches the attendee
-const SUPA_SERVICE = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+// An attendee is known by the id they joined with and a secret only their
+// page holds (its hash is on their row). Reading their answers, or asking in
+// their name, needs both. Rows made before the secret existed are accepted
+// without it, so nobody in an event already under way is locked out.
+
+import { createHash } from 'node:crypto'
+import { answer, platformKeys } from './_ai.js'
+import { overLimitKey } from './_limit.js'
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, deadline, failSafely, ipOf } from './_auth.js'
 
 const ID = /^[0-9a-zA-Z-]{6,64}$/
 
@@ -37,6 +41,28 @@ async function rest(path, init = {}) {
     signal: AbortSignal.timeout(8000)
   })
   return r
+}
+
+const sha256 = (s) => createHash('sha256').update(String(s)).digest('hex')
+
+/**
+ * The attendee behind an id, when the caller holds its secret: { id, event_id }
+ * or null. A row made before secrets existed (no hash) is accepted as it is.
+ */
+async function attendeeOf(id, secret) {
+  if (!ID.test(id)) return null
+  const r = await rest(`attendees?id=eq.${id}&select=id,event_id,secret_hash`, { service: true })
+  if (r.status === 400) {
+    // the database has not got the secret column yet: the row alone
+    const old = await rest(`attendees?id=eq.${id}&select=id,event_id`, { service: true })
+    const rows = old.ok ? await old.json() : []
+    return Array.isArray(rows) && rows[0] ? rows[0] : null
+  }
+  const rows = r.ok ? await r.json() : []
+  const row = Array.isArray(rows) ? rows[0] : null
+  if (!row) return null
+  if (row.secret_hash && sha256(String(secret || '')) !== row.secret_hash) return null
+  return row
 }
 
 function systemPrompt({ ev, persona, lang, transcript, materials, hasWords }) {
@@ -69,8 +95,7 @@ function systemPrompt({ ev, persona, lang, transcript, materials, hasWords }) {
     '- The user is not a programmer. Never answer with programming code unless they explicitly ask for it.',
     '- Do not end answers with offers like "let me know if you want more" — just answer.',
     materials ? `\nEvent materials shared by the host:\n${materials.slice(0, 14000)}` : '',
-    hasWords ? `\nTranscript so far:\n${transcript}` : preEvent ? '' : '\nTranscript so far: (nothing has been transcribed yet)',
-    kind === 'catchup' ? '' : ''
+    hasWords ? `\nTranscript so far:\n${transcript}` : preEvent ? '' : '\nTranscript so far: (nothing has been transcribed yet)'
   ]
     .filter(Boolean)
     .join('\n')
@@ -117,6 +142,26 @@ async function readOwn(req, res) {
     return
   }
   res.setHeader('Cache-Control', 'no-store')
+  const secret = typeof q.secret === 'string' ? q.secret.slice(0, 128) : ''
+  // a speaker question is read by its own unguessable id; everything else
+  // belongs to one attendee, who must show the secret their page holds
+  if (!question) {
+    const who = attendee || proxy
+    if (who) {
+      if (!(await attendeeOf(who, secret))) {
+        res.status(403).json({ error: 'not-yours' })
+        return
+      }
+    } else if (ask) {
+      const a = await rest(`asks?id=eq.${ask}&select=attendee_id`, { service: true })
+      const rows = a.ok ? await a.json() : []
+      const owner = Array.isArray(rows) && rows[0] ? String(rows[0].attendee_id || '') : ''
+      if (!owner || !(await attendeeOf(owner, secret))) {
+        res.status(owner ? 403 : 200).json(owner ? { error: 'not-yours' } : { row: null })
+        return
+      }
+    }
+  }
   const path = ask
     ? `asks?id=eq.${ask}&select=status,answer`
     : question
@@ -140,13 +185,17 @@ async function readOwn(req, res) {
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
-      if (!SUPA_URL || !(SUPA_SERVICE || SUPA_ANON)) {
+      if (!SUPA_URL || !SUPA_SERVICE) {
         res.status(503).json({ error: 'not-configured' })
+        return
+      }
+      if (await overLimitKey(`ask-read:ip:${ipOf(req)}`, 120, 3000)) {
+        res.status(429).json({ error: 'Slow down a little.' })
         return
       }
       await readOwn(req, res)
     } catch (err) {
-      res.status(500).json({ error: String((err && err.message) || err) })
+      failSafely(res, err, 'ask-read')
     }
     return
   }
@@ -154,8 +203,9 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'POST only' })
     return
   }
+  const dl = deadline(55000)
   try {
-    if (!SUPA_URL || !SUPA_ANON) {
+    if (!SUPA_URL || !SUPA_ANON || !SUPA_SERVICE) {
       res.status(503).json({ error: 'not-configured' })
       return
     }
@@ -176,16 +226,27 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'empty' })
       return
     }
+    // the attendee must be who they say, and in this event
+    const me = await attendeeOf(attendeeId, String(body.secret || '').slice(0, 128))
+    if (!me || String(me.event_id) !== eventId) {
+      res.status(403).json({ error: 'not-yours' })
+      return
+    }
+    // an attendee asks a question at a time; a room asks many
+    if ((await overLimitKey(`ask:att:${attendeeId}`, 8, 120)) || (await overLimitKey(`ask:event:${eventId}`, 240, 4000))) {
+      res.status(429).json({ error: 'Slow down a little — try again in a minute.' })
+      return
+    }
 
     // the event, and every word of it so far
-    const evR = await rest(`events?id=eq.${encodeURIComponent(eventId)}&select=id,title,status,agenda,materials_text,materials_present,starts_at`)
+    const evR = await rest(`events?id=eq.${encodeURIComponent(eventId)}&select=id,title,status,agenda,materials_text,materials_present,starts_at`, { service: true })
     const evRows = evR.ok ? await evR.json() : []
     const ev = Array.isArray(evRows) && evRows.length ? evRows[0] : null
     if (!ev) {
       res.status(404).json({ error: 'not-found' })
       return
     }
-    const segR = await rest(`segments?event_id=eq.${encodeURIComponent(eventId)}&select=idx,start_sec,text&order=idx.asc&limit=4000`)
+    const segR = await rest(`segments?event_id=eq.${encodeURIComponent(eventId)}&select=idx,start_sec,text&order=idx.asc&limit=4000`, { service: true })
     const segs = segR.ok ? await segR.json() : []
     const words = (Array.isArray(segs) ? segs : []).filter((s) => s && String(s.text || '').trim())
     const hasWords = words.length > 0
@@ -219,53 +280,50 @@ export default async function handler(req, res) {
       ]
     }
 
-    // the same chain of models this deployment answers everything with
-    const host = req.headers['x-forwarded-host'] || req.headers.host
-    const proto = req.headers['x-forwarded-proto'] || 'https'
-    const r = await fetch(`${proto}://${host}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-forwarded-for': String(req.headers['x-forwarded-for'] || '')
-      },
-      body: JSON.stringify({ system, messages, fast: kind === 'ask', maxTokens: kind === 'pack' ? 1400 : 1000 }),
-      signal: AbortSignal.timeout(50000)
+    // the same chain of models this deployment answers everything with,
+    // called here directly: the free models, never the costliest provider
+    const out = await answer({
+      system,
+      messages,
+      fast: kind === 'ask',
+      maxTokens: kind === 'pack' ? 1400 : 1000,
+      keys: { anthropic: '', groq: platformKeys('GROQ_API_KEY'), gemini: platformKeys('GEMINI_API_KEY') },
+      dl
     })
-    const j = await r.json().catch(() => ({}))
-    if (!r.ok || !j.text) {
-      res.status(502).json({ error: j.error || 'Sitca could not answer right now.' })
+    if (!out.text) {
+      console.error('[ask]', out.error)
+      res.status(502).json({ error: 'Sitca could not answer right now.' })
       return
     }
-    let answer = String(j.text)
+    let reply = String(out.text)
     if (kind === 'pack') {
-      const parsed = extractJson(answer)
-      answer = JSON.stringify({
-        summary: parsed?.summary ?? answer,
+      const parsed = extractJson(reply)
+      reply = JSON.stringify({
+        summary: parsed?.summary ?? reply,
         takeaways: Array.isArray(parsed?.takeaways) ? parsed.takeaways.map(String) : [],
         moments: []
       })
     }
 
-    // written back for the host's report and for follow-up questions
-    if (SUPA_SERVICE) {
-      await rest('asks?on_conflict=id', {
-        method: 'POST',
-        service: true,
-        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({
-          id,
-          event_id: eventId,
-          attendee_id: attendeeId,
-          kind,
-          question,
-          answer,
-          status: 'answered',
-          answered_at: new Date().toISOString()
-        })
-      }).catch(() => undefined)
-    }
-    res.status(200).json({ answer })
+    // written back for the host's report and for follow-up questions: a new
+    // row only, never over an existing one
+    await rest('asks', {
+      method: 'POST',
+      service: true,
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        id,
+        event_id: eventId,
+        attendee_id: attendeeId,
+        kind,
+        question,
+        answer: reply,
+        status: 'answered',
+        answered_at: new Date().toISOString()
+      })
+    }).catch(() => undefined)
+    res.status(200).json({ answer: reply })
   } catch (err) {
-    res.status(500).json({ error: String((err && err.message) || err) })
+    failSafely(res, err, 'ask')
   }
 }

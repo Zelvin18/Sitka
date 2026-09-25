@@ -4,23 +4,27 @@
 // and keeps the recordings themselves in Cloudflare R2. This is the one place
 // the two meet: it checks with Supabase who is asking and what they are
 // allowed to see, then hands back links that talk to R2 directly. No video
-// passes through this server in either direction, so a two-hour lecture costs
-// the same here as a two-minute one.
+// passes through this server in either direction.
 //
-// Who may read what follows the same rule the database uses:
-//   the owner may read and write anything under their own folder;
-//   anyone at all may read a session whose recap the owner has shared, or
-//   whose event replay is switched on, and nothing else.
+// Who may read what is decided in _share.js. Every key is checked against the
+// few shapes a recording is made of; anything else is refused.
 
 import { r2Config, presign, r2Fetch, r2List } from './_r2.js'
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, failSafely } from './_auth.js'
+import { UUID, isShared, memberCanWatch, keyShape, makeTicket, checkTicket } from './_share.js'
+import { usageOf } from './_plan.js'
+import { overLimitKey } from './_limit.js'
 
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SUPA_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-
-const UUID = /^[0-9a-fA-F-]{16,64}$/
-/** How long a link lives. Long enough to watch a lecture without re-asking. */
-const READ_SECS = 6 * 3600
+/** How long a read link lives: long enough for a lecture; the player renews it. */
+const READ_SECS = 2 * 3600
+/** A single upload link (the whole file, the index, a slide). */
 const WRITE_SECS = 900
+/** A recording's own upload links: a batch at a time, renewed well before they lapse. */
+const GRANT_SECS = 3 * 3600
+const GRANT_MAX = 60
+
+/** the plans' storage, mirrored from src/shared/plans.ts (GB; 0 = no limit) */
+const STORAGE_GB = { free: 3, plus: 30, pro: 150, institution: 0 }
 
 export default async function handler(req, res) {
   const cfg = r2Config()
@@ -29,19 +33,18 @@ export default async function handler(req, res) {
     // The recording as a playlist for a phone's own player lives here too
     // (one function fewer: the deployment's plan allows only so many).
     const q = new URL(req.url, 'http://x').searchParams
-    if (q.get('op') === 'hls') return await playlist(req, res, cfg, q)
-    // A quick look at whether this deployment is wired up, safe to open in a
-    // browser. Nothing secret is reported, only whether each piece is set.
-    return res.status(200).json({
-      configured: Boolean(cfg),
-      bucket: cfg ? cfg.bucket : null,
-      supabase: Boolean(SUPA_URL && SUPA_ANON),
-      publicBase: (process.env.R2_PUBLIC_BASE || '').replace(/\/+$/, '') || null
-    })
+    if (q.get('op') === 'hls') {
+      try {
+        return await playlist(req, res, cfg, q)
+      } catch (err) {
+        return failSafely(res, err, 'storage-hls')
+      }
+    }
+    // Whether this deployment is wired up. Nothing about the bucket is named.
+    return res.status(200).json({ configured: Boolean(cfg), supabase: Boolean(SUPA_URL && SUPA_ANON) })
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-  if (!cfg) return res.status(501).json({ error: 'not-configured' })
-  if (!SUPA_URL || !SUPA_ANON) return res.status(501).json({ error: 'not-configured' })
+  if (!cfg || !SUPA_URL || !SUPA_ANON) return res.status(501).json({ error: 'not-configured' })
 
   let body = req.body
   if (typeof body === 'string') {
@@ -54,18 +57,19 @@ export default async function handler(req, res) {
   if (!body || typeof body !== 'object') body = {}
 
   const op = String(body.op || '')
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  const owner = token ? await userOf(token) : null
+  const token = tokenOf(req)
+  const who = token ? await userOf(token) : null
   // A token that could not be checked at all (the account service was
-  // unreachable for a moment) must not read as "not your file": that turned
-  // a blip into a refused recording upload. The page is told to try again.
-  if (token && owner === UNCHECKED) {
+  // unreachable for a moment) must not read as "not your file": the page is
+  // told to try again.
+  if (who === UNCHECKED) {
     return res.status(503).json({ error: 'Could not check who you are just now. Try again in a moment.' })
   }
+  const owner = who ? who.id.toLowerCase() : null
 
   try {
     if (op === 'put') return await putLinks(res, cfg, owner, body)
-    if (op === 'grant') return await grantLinks(res, cfg, owner, body)
+    if (op === 'grant') return await grantLinks(res, cfg, owner, body, token)
     if (op === 'get') return await getLinks(res, cfg, owner, body, token)
     if (op === 'list') return await listFolder(res, cfg, owner, body, token)
     if (op === 'media') return await mediaLinks(res, cfg, owner, body, token)
@@ -74,123 +78,27 @@ export default async function handler(req, res) {
     if (op === 'mine') return await mine(res, cfg, owner)
     return res.status(400).json({ error: 'Unknown operation.' })
   } catch (err) {
-    console.error('storage', op, err)
-    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
+    return failSafely(res, err, `storage-${op}`)
   }
 }
 
-// ---------- who is asking ----------
-
-/** the answer when the account service itself could not be asked */
-const UNCHECKED = Symbol('unchecked')
-async function userOf(token) {
-  let reached = false
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
-        headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON }
-      })
-      reached = true
-      // 401/403: the token is no good, and saying so is the answer.
-      // 5xx: the service is unwell; asked once more, then reported as such.
-      if (r.status >= 500) {
-        reached = false
-        continue
-      }
-      if (!r.ok) return null
-      const j = await r.json()
-      return typeof j?.id === 'string' ? j.id : null
-    } catch {
-      /* could not be reached: once more */
-    }
-  }
-  return reached ? null : UNCHECKED
-}
+// ---------- who may do what ----------
 
 /**
- * Is this owner's session shared with the world? True when its recap is on,
- * or when it was hosted as an event whose replay is on, and the person who
- * shared it is the person whose folder it is. A recap or an event pointing
- * at someone else's session opens nothing.
- *
- * The database answers (sitka_shared_owner, supabase/recap-privacy.sql).
- * Until that script has run, the same two questions are asked of the tables,
- * with the owner in both.
+ * May `owner` read (or write) these keys? Every key must have one of a
+ * recording's shapes. Writes: only the caller's own folder. Reads: the
+ * caller's own, or a shared session from its sharer's folder, or a course
+ * session for a member.
  */
-const shareCache = new Map()
-async function isShared(ownerId, sessionId) {
-  if (!UUID.test(ownerId) || !UUID.test(sessionId)) return false
-  const who = ownerId.toLowerCase()
-  const cacheKey = `${who}/${sessionId}`
-  const hit = shareCache.get(cacheKey)
-  if (hit && hit.until > Date.now()) return hit.ok
-  const headers = { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` }
-  const any = async (path) => {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { headers })
-    const rows = r.ok ? await r.json().catch(() => []) : []
-    return Array.isArray(rows) && rows.length > 0
-  }
-  let ok = false
-  try {
-    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_shared_owner?p_session=${sessionId}`, { headers })
-    if (r.ok) {
-      const sharer = await r.json().catch(() => null)
-      ok = typeof sharer === 'string' && sharer.toLowerCase() === who
-    } else if (r.status === 404) {
-      ok =
-        (await any(`recaps?id=eq.${sessionId}&owner=eq.${who}&enabled=is.true&select=id&limit=1`)) ||
-        (await any(`events?session_id=eq.${sessionId}&owner=eq.${who}&replay->>enabled=eq.true&select=id&limit=1`))
-    }
-  } catch {
-    ok = false
-  }
-  // Remembered briefly so a page of parts asks once, not once per part.
-  if (shareCache.size > 2000) shareCache.clear()
-  shareCache.set(cacheKey, { ok, until: Date.now() + (ok ? 60000 : 5000) })
-  return ok
-}
-
-// Keys are <owner>/<session>.<ext> or <owner>/<session>/<name>, and slide
-// frames sit in <owner>/<session>-slides/<name>. A shared session opens
-// exactly those and nothing else in the owner's folder.
-function folderOfKey(key) {
-  const parts = String(key).split('/')
-  if (parts.length < 2 || !UUID.test(parts[0])) return null
-  const second = parts[1].replace(/\.[a-z0-9]{2,5}$/i, '').replace(/-slides$/, '')
-  return UUID.test(second) ? { owner: parts[0], session: second } : null
-}
-
-/**
- * A member of the course a session is filed in may watch it. The database
- * decides, as the person: their token, their membership. The token is passed
- * in, never kept between requests: one instance serves several at once.
- */
-async function memberCanWatch(sessionId, token) {
-  if (!token || !UUID.test(sessionId)) return false
-  try {
-    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_can_watch`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_id: sessionId })
-    })
-    return r.ok && (await r.json()) === true
-  } catch {
-    return false
-  }
-}
-
 async function allow(owner, keys, write, token) {
   const list = (Array.isArray(keys) ? keys : []).map(String)
   if (list.length === 0 || list.length > 1200) return false
-  if (list.some((k) => k.includes('..') || k.startsWith('/'))) return false
-  if (owner && list.every((k) => k.startsWith(owner + '/'))) return true
+  const shapes = list.map(keyShape)
+  if (shapes.some((s) => !s)) return false
+  if (owner && shapes.every((s) => s.owner === owner)) return true
   if (write) return false
   const folders = new Map()
-  for (const k of list) {
-    const f = folderOfKey(k)
-    if (!f) return false
-    folders.set(`${f.owner}/${f.session}`, f)
-  }
+  for (const s of shapes) folders.set(`${s.owner}/${s.session}`, s)
   if (folders.size > 4) return false
   for (const f of folders.values()) {
     if (!(await isShared(f.owner, f.session)) && !(await memberCanWatch(f.session, token))) return false
@@ -198,34 +106,88 @@ async function allow(owner, keys, write, token) {
   return true
 }
 
-// ---------- the four things the app asks for ----------
+// ---------- the storage a plan allows ----------
+
+const mineCache = new Map()
+/** One person's recordings in R2: bytes and files, counted once per recording. */
+async function footprint(cfg, owner) {
+  const hit = mineCache.get(owner)
+  if (hit && hit.until > Date.now()) return hit.body
+  const objects = await r2List(cfg, `${owner}/`)
+  // a recording is either its whole file or its pieces: when both are there
+  // (the pieces are kept until the whole is checked) only the whole counts
+  const wholes = new Set()
+  for (const o of objects) {
+    const s = keyShape(o.key)
+    if (s && s.kind === 'whole') wholes.add(s.session)
+  }
+  let bytes = 0
+  let files = 0
+  for (const o of objects) {
+    const s = keyShape(o.key)
+    if (s && s.kind === 'part' && wholes.has(s.session)) continue
+    bytes += o.size
+    if (s && s.kind === 'whole') files++
+  }
+  for (const o of objects) {
+    const s = keyShape(o.key)
+    if (s && s.kind === 'part' && !wholes.has(s.session) && /part-0+\.webm$/.test(o.key)) files++
+  }
+  const body = { bytes, files, objects: objects.length }
+  if (mineCache.size > 500) mineCache.clear()
+  mineCache.set(owner, { body, until: Date.now() + 120000 })
+  return body
+}
+
+/** Has this account room for a new recording? True when its plan cannot be learned (a running session is never stopped by this). */
+async function roomFor(cfg, owner, token) {
+  const u = await usageOf(token)
+  if (!u) return true
+  const gb = STORAGE_GB[u.plan] ?? STORAGE_GB.free
+  if (!gb) return true
+  const { bytes } = await footprint(cfg, owner)
+  return bytes < gb * 1024 ** 3
+}
+
+// ---------- the links ----------
 
 async function putLinks(res, cfg, owner, body) {
+  if (!owner) return res.status(401).json({ error: 'Sign in first.' })
   const items = Array.isArray(body.keys) ? body.keys : []
   const keys = items.map((i) => (typeof i === 'string' ? i : i?.key)).filter(Boolean)
-  if (!(await allow(owner, keys, true))) return res.status(403).json({ error: 'Not allowed.' })
-  const links = items.map((i) => {
-    const key = typeof i === 'string' ? i : i.key
-    return { key, url: presign(cfg, 'PUT', key, WRITE_SECS) }
-  })
+  if (keys.length > 50 || !(await allow(owner, keys, true))) return res.status(403).json({ error: 'Not allowed.' })
+  const links = keys.map((key) => ({ key, url: presign(cfg, 'PUT', key, WRITE_SECS) }))
   return res.status(200).json({ links, expiresIn: WRITE_SECS })
 }
 
 /**
- * A recording's upload links, all at once, at the start: one per piece for
- * the next hour or so, good for twelve hours. The page then sends every
- * piece straight to storage without asking anyone again, so nothing between
- * the recorder and the cloud (this server, the account service, a slow
- * network to either) can hold a recording back once it has begun. Only the
- * owner's own session folder is ever granted.
+ * A recording's upload links, a batch at a time: one per piece, good for a
+ * few hours, so the page sends each piece straight to storage without asking
+ * anyone again mid-session. Only the caller's own session is granted: a
+ * session id that belongs to someone else is refused (the shared-computer
+ * case). A new recording is refused when the plan's storage is full; one
+ * already running never is.
  */
-const GRANT_SECS = 12 * 3600
-async function grantLinks(res, cfg, owner, body) {
+async function grantLinks(res, cfg, owner, body, token) {
   if (!owner) return res.status(401).json({ error: 'Sign in first.' })
-  const session = String(body.session || '')
+  const session = String(body.session || '').toLowerCase()
   if (!UUID.test(session)) return res.status(400).json({ error: 'Bad session.' })
   const from = Math.max(0, Math.min(99999, Math.floor(Number(body.from) || 0)))
-  const count = Math.max(1, Math.min(400, Math.floor(Number(body.count) || 180)))
+  const count = Math.max(1, Math.min(GRANT_MAX, Math.floor(Number(body.count) || GRANT_MAX)))
+  if (await overLimitKey(`grant:user:${owner}`, 30, 400)) return res.status(429).json({ error: 'Slow down a little.' })
+  // whose session this is, by the database's own record
+  if (SUPA_SERVICE) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/sessions?id=eq.${session}&select=owner`, {
+      headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` },
+      signal: AbortSignal.timeout(5000)
+    }).catch(() => null)
+    const rows = r && r.ok ? await r.json().catch(() => []) : []
+    const row = Array.isArray(rows) ? rows[0] : null
+    if (row && String(row.owner).toLowerCase() !== owner) return res.status(403).json({ error: 'This recording belongs to another account.' })
+  }
+  if (from === 0 && !(await roomFor(cfg, owner, token))) {
+    return res.status(402).json({ error: 'Your plan’s storage is full. Delete a recording or move up a plan to record more.', limit: 'storage' })
+  }
   const links = []
   for (let n = from; n < from + count; n++) {
     const key = `${owner}/${session}/part-${String(n).padStart(4, '0')}.webm`
@@ -242,32 +204,34 @@ async function getLinks(res, cfg, owner, body, token) {
 }
 
 async function listFolder(res, cfg, owner, body, token) {
-  const prefix = String(body.prefix || '')
-  if (!prefix || prefix.includes('..')) return res.status(400).json({ error: 'Bad prefix.' })
-  if (!(await allow(owner, [prefix.replace(/\/$/, '') + '/x'], false, token))) {
-    return res.status(403).json({ error: 'Not allowed.' })
-  }
-  const objects = await r2List(cfg, prefix.endsWith('/') ? prefix : prefix + '/')
+  const prefix = String(body.prefix || '').replace(/\/$/, '')
+  // a folder is a session's (<owner>/<session>) or its frames (<owner>/<session>-slides)
+  const m = /^([0-9a-f-]{36})\/([0-9a-f-]{36})(-slides)?$/i.exec(prefix)
+  if (!m || !UUID.test(m[1]) || !UUID.test(m[2])) return res.status(400).json({ error: 'Bad prefix.' })
+  const probe = m[3] ? `${prefix}/x.jpg` : `${prefix}/index.json`
+  if (!(await allow(owner, [probe], false, token))) return res.status(403).json({ error: 'Not allowed.' })
+  const objects = await r2List(cfg, prefix + '/')
   return res.status(200).json({
-    objects: objects.map((o) => ({ name: o.key.slice(prefix.replace(/\/$/, '').length + 1), size: o.size }))
+    objects: objects.map((o) => ({ name: o.key.slice(prefix.length + 1), size: o.size }))
   })
+}
+
+/** May this asker watch this owner's session? The rule every read follows. */
+async function mayWatch(owner, token, ownerId, sessionId) {
+  if (owner && owner === ownerId.toLowerCase()) return true
+  return (await isShared(ownerId, sessionId)) || (await memberCanWatch(sessionId, token))
 }
 
 /**
  * Everything needed to play one recording, in a single request: whether the
- * whole file exists, the parts in order, and a link to each. A recap page
- * opened by a student who is not signed in asks this once and starts playing.
+ * whole file exists, the parts in order, a link to each, and (for phones) a
+ * playlist address carrying a short-lived ticket rather than a sign-in token.
  */
 async function mediaLinks(res, cfg, owner, body, token) {
-  const ownerId = String(body.owner || '')
-  const sessionId = String(body.session || '')
-  if (!UUID.test(ownerId) || !UUID.test(sessionId)) {
-    return res.status(400).json({ error: 'Bad session.' })
-  }
-  const mine = owner && owner === ownerId
-  if (!mine && !(await isShared(ownerId, sessionId)) && !(await memberCanWatch(sessionId, token))) {
-    return res.status(403).json({ error: 'Not allowed.' })
-  }
+  const ownerId = String(body.owner || '').toLowerCase()
+  const sessionId = String(body.session || '').toLowerCase()
+  if (!UUID.test(ownerId) || !UUID.test(sessionId)) return res.status(400).json({ error: 'Bad session.' })
+  if (!(await mayWatch(owner, token, ownerId, sessionId))) return res.status(403).json({ error: 'Not allowed.' })
 
   // One listing catches both shapes, because the whole file and the folder of
   // parts share a prefix: <owner>/<session>.webm and <owner>/<session>/part-*
@@ -276,49 +240,50 @@ async function mediaLinks(res, cfg, owner, body, token) {
   const wholeObj = objects.find((o) => o.key === wholeKey)
   const whole = wholeObj ? presign(cfg, 'GET', wholeKey, READ_SECS) : null
   const parts = objects
-    .filter((o) => /\/part-\d+\.webm$/.test(o.key))
+    .filter((o) => o.key.startsWith(`${ownerId}/${sessionId}/`) && /\/part-\d+\.webm$/.test(o.key))
     .sort((a, b) => (a.key < b.key ? -1 : 1))
-    .map((o) => ({ url: presign(cfg, 'GET', o.key, READ_SECS), size: o.size }))
-  // a recording with its fragment index beside it can be handed to a phone
-  // as a playlist (see hls.js): piece by piece, starting at once
+    .map((o) => ({ url: presign(cfg, 'GET', o.key, READ_SECS), size: o.size, n: Number(/part-(\d+)\.webm$/.exec(o.key)[1]) }))
   const indexed = objects.some((o) => o.key === `${ownerId}/${sessionId}/index.json`)
+  const ticket = makeTicket(ownerId, sessionId, READ_SECS)
   return res.status(200).json({
     where: whole || parts.length > 0 ? 'r2' : 'none',
     whole,
     wholeSize: wholeObj ? wholeObj.size : undefined,
-    parts,
-    hls: indexed && parts.length > 0 ? `/api/storage?op=hls&owner=${ownerId}&session=${sessionId}` : null,
+    parts: parts.map(({ url, size }) => ({ url, size })),
+    // the piece numbers, so a player can see a gap rather than skip over it
+    partNumbers: parts.map((p) => p.n),
+    hls: indexed && parts.length > 0 && ticket ? `/api/storage?op=hls&owner=${ownerId}&session=${sessionId}&ticket=${encodeURIComponent(ticket)}` : null,
     expiresIn: READ_SECS
   })
-}
-
-/** May this asker (by token) watch this session? The rule the links follow. */
-async function mayWatch(token, ownerId, sessionId) {
-  const owner = token ? await userOf(token) : null
-  if (owner && owner === ownerId) return true
-  return (await isShared(ownerId, sessionId)) || (await memberCanWatch(sessionId, token))
 }
 
 /**
  * A recording as a playlist, for phones.
  *
- * Safari (every browser on an iPhone or iPad) plays HLS natively and starts
- * within a second or two: it fetches a small playlist, then the recording
- * piece by piece. The pieces are the recorder's own fragments, addressed by
- * byte range inside the parts already in R2 — nothing is copied or
- * rewritten, and no video passes through this server. The fragment index
- * beside the parts (index.json, written by the app after a session) says
- * where each piece is and when it plays.
+ * Safari plays HLS natively and starts within a second or two: it fetches a
+ * small playlist, then the recording piece by piece. The pieces are the
+ * recorder's own fragments, addressed by byte range inside the parts already
+ * in R2 — nothing is copied, and no video passes through here.
  *
- *   GET /api/storage?op=hls&owner=<uuid>&session=<uuid>[&t=<token>]
+ *   GET /api/storage?op=hls&owner=<uuid>&session=<uuid>&ticket=<ticket>
+ *
+ * The ticket comes from `media`, which has already decided the asker may
+ * watch. A signed-in page may send its token in the Authorization header
+ * instead; a token in the URL is no longer accepted.
  */
 async function playlist(req, res, cfg, q) {
   if (!cfg) return res.status(501).json({ error: 'not-configured' })
-  const owner = String(q.get('owner') || '')
-  const session = String(q.get('session') || '')
+  const owner = String(q.get('owner') || '').toLowerCase()
+  const session = String(q.get('session') || '').toLowerCase()
   if (!UUID.test(owner) || !UUID.test(session)) return res.status(400).json({ error: 'Bad session.' })
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim() || String(q.get('t') || '')
-  if (!(await mayWatch(token, owner, session))) return res.status(403).json({ error: 'Not allowed.' })
+  let ok = checkTicket(String(q.get('ticket') || ''), owner, session)
+  if (!ok) {
+    const token = tokenOf(req)
+    const who = token ? await userOf(token) : null
+    if (who === UNCHECKED) return res.status(503).json({ error: 'Try again in a moment.' })
+    ok = await mayWatch(who ? who.id.toLowerCase() : null, token, owner, session)
+  }
+  if (!ok) return res.status(403).json({ error: 'Not allowed.' })
 
   const prefix = `${owner}/${session}`
   const ix = await r2Fetch(cfg, 'GET', `${prefix}/index.json`)
@@ -329,11 +294,26 @@ async function playlist(req, res, cfg, q) {
   } catch {
     return res.status(500).json({ error: 'The index could not be read.' })
   }
+  // The index is written by the owner's browser: every name and number in it
+  // is checked before it goes into a playlist anyone might receive.
   const parts = Array.isArray(index.parts) ? index.parts : []
   const frags = Array.isArray(index.frags) ? index.frags : []
-  if (parts.length === 0 || frags.length === 0 || typeof index.init !== 'number') return res.status(500).json({ error: 'The index is incomplete.' })
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
+  if (
+    parts.length === 0 ||
+    parts.length > 20000 ||
+    frags.length === 0 ||
+    frags.length > 200000 ||
+    !num(index.init) ||
+    !parts.every((p) => p && typeof p.name === 'string' && /^part-\d{4,6}\.webm$/.test(p.name) && num(p.size)) ||
+    !frags.every((f) => Array.isArray(f) && f.length >= 3 && num(f[0]) && num(f[1]) && num(f[2]))
+  ) {
+    return res.status(500).json({ error: 'The index is incomplete.' })
+  }
+  // the index must describe the parts as they are now
+  const listed = new Map((await r2List(cfg, `${prefix}/`)).map((o) => [o.key.slice(prefix.length + 1), o.size]))
+  if (!parts.every((p) => listed.get(p.name) === Number(p.size))) return res.status(409).json({ error: 'The recording changed since it was indexed.' })
 
-  // the parts, each by its link; a fragment is a byte range of the part it sits in
   const links = parts.map((p) => presign(cfg, 'GET', `${prefix}/${p.name}`, READ_SECS))
   const starts = []
   let at = 0
@@ -351,37 +331,36 @@ async function playlist(req, res, cfg, q) {
   const initAt = locate(0, index.init)
   if (!initAt) return res.status(500).json({ error: 'The header straddles parts.' })
 
-  const body = []
+  const lines = []
   let target = 1
   for (let k = 0; k < frags.length; k++) {
     const [offset, size, start] = frags[k]
-    const next = k + 1 < frags.length ? frags[k + 1][2] : Number(index.duration) || start + 3
+    const next = k + 1 < frags.length ? frags[k + 1][2] : num(index.duration) ? index.duration : start + 3
     const dur = Math.max(0.05, next - start)
     if (dur > target) target = dur
     const where = locate(offset, size)
-    if (!where) return res.status(500).json({ error: `Fragment ${k} straddles parts.` })
-    body.push(`#EXTINF:${dur.toFixed(3)},`, `#EXT-X-BYTERANGE:${size}@${where.within}`, links[where.i])
+    if (!where) return res.status(500).json({ error: 'A fragment straddles parts.' })
+    lines.push(`#EXTINF:${dur.toFixed(3)},`, `#EXT-X-BYTERANGE:${Math.floor(size)}@${Math.floor(where.within)}`, links[where.i])
   }
-  const lines = [
+  const out = [
     '#EXTM3U',
     '#EXT-X-VERSION:7',
     '#EXT-X-PLAYLIST-TYPE:VOD',
     '#EXT-X-INDEPENDENT-SEGMENTS',
     `#EXT-X-TARGETDURATION:${Math.ceil(target)}`,
     '#EXT-X-MEDIA-SEQUENCE:0',
-    `#EXT-X-MAP:URI="${links[initAt.i]}",BYTERANGE="${index.init}@${initAt.within}"`,
-    ...body,
+    `#EXT-X-MAP:URI="${links[initAt.i]}",BYTERANGE="${Math.floor(index.init)}@${Math.floor(initAt.within)}"`,
+    ...lines,
     '#EXT-X-ENDLIST'
   ]
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
   res.setHeader('Cache-Control', 'private, max-age=600')
-  return res.status(200).send(lines.join('\n') + '\n')
+  return res.status(200).send(out.join('\n') + '\n')
 }
 
 /**
- * How much of Cloudflare the recordings take, for the owners' dashboard:
- * everything in the bucket, and the largest folders (one per account). Only
- * someone the database lists as an admin is answered.
+ * How much of Cloudflare the recordings take, for the owners' dashboard.
+ * Only someone the database lists as an admin is answered.
  */
 async function usage(res, cfg, token) {
   if (!token) return res.status(401).json({ error: 'Sign in first.' })
@@ -390,7 +369,8 @@ async function usage(res, cfg, token) {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/is_admin`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
-      body: '{}'
+      body: '{}',
+      signal: AbortSignal.timeout(5000)
     })
     admin = r.ok && (await r.json()) === true
   } catch {
@@ -406,7 +386,8 @@ async function usage(res, cfg, token) {
     const owner = o.key.split('/')[0]
     if (UUID.test(owner)) {
       byOwner.set(owner, (byOwner.get(owner) || 0) + o.size)
-      if (/\.webm$/.test(o.key) && !/-slides\//.test(o.key)) recordings++
+      const s = keyShape(o.key)
+      if (s && s.kind === 'whole') recordings++
     }
   }
   const owners = [...byOwner.entries()]
@@ -418,32 +399,26 @@ async function usage(res, cfg, token) {
 }
 
 /** How much of Cloudflare one person's recordings take, for their Settings. */
-const mineCache = new Map()
 async function mine(res, cfg, owner) {
   if (!owner) return res.status(401).json({ error: 'Sign in first.' })
-  const hit = mineCache.get(owner)
   res.setHeader('Cache-Control', 'no-store')
-  if (hit && hit.until > Date.now()) return res.status(200).json(hit.body)
-  const objects = await r2List(cfg, `${owner}/`)
-  let bytes = 0
-  let files = 0
-  for (const o of objects) {
-    bytes += o.size
-    if (/\.webm$/.test(o.key) && !/-slides\//.test(o.key)) files++
-  }
-  const body = { bytes, files, objects: objects.length }
-  if (mineCache.size > 500) mineCache.clear()
-  mineCache.set(owner, { body, until: Date.now() + 120000 })
-  return res.status(200).json(body)
+  return res.status(200).json(await footprint(cfg, owner))
 }
 
 async function removeKeys(res, cfg, owner, body) {
+  if (!owner) return res.status(401).json({ error: 'Sign in first.' })
   const keys = (Array.isArray(body.keys) ? body.keys : []).map(String)
   if (!(await allow(owner, keys, true))) return res.status(403).json({ error: 'Not allowed.' })
+  const failed = []
   for (let i = 0; i < keys.length; i += 20) {
     await Promise.all(
-      keys.slice(i, i + 20).map((k) => r2Fetch(cfg, 'DELETE', k).catch(() => undefined))
+      keys.slice(i, i + 20).map(async (k) => {
+        const r = await r2Fetch(cfg, 'DELETE', k).catch(() => null)
+        // R2 answers 204 for a delete, and for a key that was already gone
+        if (!r || (!r.ok && r.status !== 404)) failed.push(k)
+      })
     )
   }
-  return res.status(200).json({ removed: keys.length })
+  mineCache.delete(owner)
+  return res.status(failed.length ? 207 : 200).json({ removed: keys.length - failed.length, failed })
 }

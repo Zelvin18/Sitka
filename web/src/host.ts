@@ -83,6 +83,16 @@ el('keyssave').onclick = () => {
 }
 
 // ---------- AI helpers (through /api proxies) ----------
+/** the host's sign-in, sent with every AI request: the platform's keys answer only a signed-in person */
+async function authHeader(): Promise<Record<string, string>> {
+  try {
+    const { data } = await sb.auth.getSession()
+    const t = data.session?.access_token
+    return t ? { Authorization: `Bearer ${t}` } : {}
+  } catch {
+    return {}
+  }
+}
 async function aiChat(
   system: string,
   messages: { role: 'user' | 'assistant'; content: string }[],
@@ -90,7 +100,7 @@ async function aiChat(
 ): Promise<string> {
   const r = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
     body: JSON.stringify({ keys: getKeys(), system, messages, maxTokens })
   })
   const j = await r.json()
@@ -546,7 +556,7 @@ async function transcribeChunk(blob: Blob, offsetSec: number): Promise<void> {
     const audioB64 = await blobToB64(blob)
     const r = await fetch('/api/transcribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
       body: JSON.stringify({ keys: getKeys(), audioB64, mime: blob.type, offsetSec })
     })
     const j = await r.json()

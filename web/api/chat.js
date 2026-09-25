@@ -1,504 +1,171 @@
-// AI chat proxy: the host's browser sends its own provider keys per request.
-// Nothing is stored server-side. Anthropic (Claude) preferred, Groq fallback.
+// The AI answers for the app, the host page and the public recap page.
 //
-// Messages may carry images: a message's `content` is either a string or an
-// array of parts {type:'text', text} | {type:'image', dataUrl}. Images go to
-// Claude as-is; on Groq they need a vision model. The response says whether
-// the images were actually seen (`vision`), so callers never mistake a guess
-// for a reading of the screen.
+// Who pays decides what is allowed:
 //
-// Reliability: every request has a chain of fallbacks — Anthropic, then each
-// Groq key (a user's own key first, then the platform's GROQ_API_KEY and any
-// GROQ_API_KEYS / GROQ_API_KEY_2..9 backups), then each candidate model. A model
-// that answers with "decommissioned", "requires terms acceptance", or "not
-// found" is remembered as dead for a while and skipped.
+//  * A caller who sends their own provider key pays for their own answer:
+//    only their keys are used, never the platform's, and only a signed-in
+//    person may do it (the app's "own keys" setting).
+//  * Anything paid with the platform's keys needs a verified sign-in. It is
+//    limited per person, and a question counts against their plan.
+//  * The one exception is the public recap page, where people who were sent
+//    a link ask about what they are watching without an account. They send a
+//    recap or event id and their question; the server reads that recap and
+//    builds the prompt itself, so the route cannot be used as a free,
+//    general-purpose AI. Limited per address and per recap.
+//
+// Answers stream as lines of JSON ({"delta"}, then {"done"}) when asked to.
 
-import { allow, tokenOf } from './_plan.js'
-const NON_CHAT_RE =
-  /whisper|tts|orpheus|canopylabs|playai|guard|embed|moderation|safety|allam|saudi|arabic|transcri|-stt|rerank/i
-const REASONING_RE = /deepseek|qwq|qwen|r1|reason|think|gpt-oss/i
-const VISION_RE = /llama-4|scout|maverick|vision|-vl|vl-|pixtral|llava|gemma-3|gemma3|multimodal|omni/i
+import { answer, platformKeys } from './_ai.js'
+import { allow } from './_plan.js'
+import { overLimitKey } from './_limit.js'
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, ipOf, deadline, failSafely, realKey } from './_auth.js'
 
-// Known-good ids, in order of preference. Used to rank what the account
-// actually lists, and tried directly when the list cannot be fetched.
-const KNOWN_CHAT = [
-  'moonshotai/kimi-k2-instruct-0905',
-  'moonshotai/kimi-k2-instruct',
-  'llama-3.3-70b-versatile',
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'openai/gpt-oss-120b',
-  'qwen/qwen3-32b',
-  'openai/gpt-oss-20b',
-  'llama-3.1-8b-instant',
-  'groq/compound',
-  'groq/compound-mini'
-]
-const KNOWN_VISION = [
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct'
-]
+// what one request may carry, so a single call cannot run up a bill
+const MAX_SYSTEM = 150000
+const MAX_MESSAGES = 30
+const MAX_TEXT = 30000
+const MAX_IMAGES = 4
+const MAX_IMAGE_CHARS = 2_800_000 // a data URL of about 2 MB
 
-const listCache = new Map() // key tail -> { ids, at }
-const deadModels = new Map() // model id -> until (ms)
-const DEAD_MS = 30 * 60 * 1000
+const UUID = /^[0-9a-fA-F-]{16,64}$/
+const LANGS = ['English', 'Luganda', 'Nyankole', 'Swahili', 'Shona', 'Ndebele', 'French', 'Portuguese', 'Spanish', 'German', 'Arabic', 'Chinese', 'Hindi']
 
-const isDead = (id) => (deadModels.get(id) || 0) > Date.now()
-const markDead = (id) => deadModels.set(id, Date.now() + DEAD_MS)
-
-// Reasoning models sometimes leak their private chain-of-thought — never show it.
-/**
- * Reads a provider's server-sent events and hands each piece of text to
- * `sink` as it arrives. `pick` turns one parsed event into text ('' when the
- * event carries none). Returns the whole text once the stream ends.
- */
-async function drainSse(body, pick, sink) {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  let text = ''
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    let nl
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, nl).trim()
-      buf = buf.slice(nl + 1)
-      if (!line.startsWith('data:')) continue
-      const data = line.slice(5).trim()
-      if (!data || data === '[DONE]') continue
-      let ev
-      try {
-        ev = JSON.parse(data)
-      } catch {
-        continue
-      }
-      const piece = pick(ev)
-      if (piece) {
-        text += piece
-        sink(piece)
-      }
+/** Messages as the providers expect them, trimmed to the caps; null when they break them. */
+function tidyMessages(list) {
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_MESSAGES) return null
+  let images = 0
+  const out = []
+  for (const m of list) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant')) return null
+    if (typeof m.content === 'string') {
+      out.push({ role: m.role, content: m.content.slice(0, MAX_TEXT) })
+      continue
     }
-  }
-  return text
-}
-
-function stripThinking(text) {
-  return String(text || '')
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/^\s*<think>[\s\S]*$/i, '')
-    .trim()
-}
-
-const sizeOf = (id) => {
-  const m = String(id).match(/(\d{1,3})b\b/i)
-  return m ? Number(m[1]) : 0
-}
-
-async function listGroqModels(key) {
-  const tail = key.slice(-8)
-  const hit = listCache.get(tail)
-  if (hit && Date.now() - hit.at < 600000) return hit.ids
-  const r = await fetch('https://api.groq.com/openai/v1/models', {
-    signal: AbortSignal.timeout(12000),
-    headers: { Authorization: `Bearer ${key}` }
-  })
-  const j = await r.json().catch(() => ({}))
-  if (!r.ok) {
-    const err = new Error(j.error?.message || `Groq rejected the key (HTTP ${r.status})`)
-    err.status = r.status
-    throw err
-  }
-  const ids = (j.data || []).map((m) => m.id).filter(Boolean)
-  listCache.set(tail, { ids, at: Date.now() })
-  return ids
-}
-
-// For a quick reply — a greeting, a short question over a recap — the small
-// fast models go first; they answer in a second where the biggest take ten.
-const FAST_FIRST = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b']
-
-/** Chat-capable models for this key, best first. Never a speech or guard model. */
-async function chatCandidates(key, fast = false) {
-  const order = fast ? [...FAST_FIRST, ...KNOWN_CHAT.filter((id) => !FAST_FIRST.includes(id))] : KNOWN_CHAT
-  // A quick answer should not wait on a catalogue. When the list is not
-  // already to hand, the known-good fast models are tried straight away; a
-  // model that has gone is caught by the chain, which then asks properly.
-  if (fast && !listCache.has(key.slice(-8))) {
-    void listGroqModels(key).catch(() => undefined) // warmed for next time
-    return order.slice(0, 4)
-  }
-  let ids
-  try {
-    ids = await listGroqModels(key)
-  } catch (err) {
-    if (err.status === 401 || err.status === 403) throw err
-    return order.slice(0, 5)
-  }
-  const usable = ids.filter((id) => !NON_CHAT_RE.test(id))
-  const known = order.filter((id) => usable.includes(id))
-  const rest = usable.filter((id) => !known.includes(id))
-  const plain = rest.filter((id) => !REASONING_RE.test(id)).sort((a, b) => sizeOf(b) - sizeOf(a))
-  const reasoning = rest.filter((id) => REASONING_RE.test(id)).sort((a, b) => sizeOf(b) - sizeOf(a))
-  return [...known, ...plain, ...reasoning].slice(0, 6)
-}
-
-/** Vision-capable models for this key, best first; [] when the account has none. */
-async function visionCandidates(key) {
-  let ids
-  try {
-    ids = await listGroqModels(key)
-  } catch (err) {
-    if (err.status === 401 || err.status === 403) throw err
-    return KNOWN_VISION
-  }
-  const usable = ids.filter((id) => !NON_CHAT_RE.test(id))
-  const known = KNOWN_VISION.filter((id) => usable.includes(id))
-  const rest = usable.filter((id) => !known.includes(id) && VISION_RE.test(id))
-  return [...known, ...rest].slice(0, 4)
-}
-
-const hasImages = (messages) =>
-  messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image'))
-
-const NO_VISION_NOTE =
-  '[The screen image attached here could not be read: no vision-capable model is available right now. Say plainly that you cannot see the screen at the moment and answer from the transcript only. Never guess what is on screen.]'
-
-function toAnthropic(messages) {
-  return messages.map((m) => {
-    if (!Array.isArray(m.content)) return { role: m.role, content: String(m.content ?? '') }
-    const parts = m.content.map((p) => {
-      if (p.type === 'image') {
-        const mm = String(p.dataUrl || '').match(/^data:(image\/[\w+.-]+);base64,(.+)$/)
-        if (!mm) return null
-        return { type: 'image', source: { type: 'base64', media_type: mm[1], data: mm[2] } }
-      }
-      return { type: 'text', text: String(p.text ?? '') }
-    })
-    return { role: m.role, content: parts.filter(Boolean) }
-  })
-}
-
-function toGroq(messages, keepImages) {
-  return messages.map((m) => {
-    if (!Array.isArray(m.content)) return { role: m.role, content: String(m.content ?? '') }
-    if (!keepImages) {
-      const hadImage = m.content.some((p) => p.type === 'image')
-      const text = m.content
-        .filter((p) => p.type === 'text')
-        .map((p) => p.text)
-        .join('\n')
-      return { role: m.role, content: hadImage ? `${NO_VISION_NOTE}\n\n${text}` : text }
+    if (!Array.isArray(m.content) || m.content.length > 12) return null
+    const parts = []
+    for (const p of m.content) {
+      if (p && p.type === 'text') parts.push({ type: 'text', text: String(p.text || '').slice(0, MAX_TEXT) })
+      else if (p && p.type === 'image') {
+        const url = String(p.dataUrl || '')
+        if (++images > MAX_IMAGES || url.length > MAX_IMAGE_CHARS || !/^data:image\/[\w+.-]+;base64,/.test(url)) return null
+        parts.push({ type: 'image', dataUrl: url })
+      } else return null
     }
+    out.push({ role: m.role, content: parts })
+  }
+  return out
+}
+
+// ---------- the public recap page: prompts built here ----------
+
+const svcHeaders = () => {
+  const key = SUPA_SERVICE || SUPA_ANON
+  return { apikey: key, Authorization: `Bearer ${key}` }
+}
+
+/** A shared recap (or an event with its replay on), with what a prompt needs; null when not shared. */
+async function sharedSession(kind, id, dl) {
+  if (!SUPA_URL || !UUID.test(id)) return null
+  const headers = svcHeaders()
+  const fmt = (sec) => {
+    const s = Math.max(0, Math.floor(Number(sec) || 0))
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const r = s % 60
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
+  }
+  if (kind === 'event') {
+    const r = await fetch(`${SUPA_URL}/rest/v1/events?id=eq.${id}&select=title,replay,materials_text`, { headers, signal: dl.signal(6000) })
+    const rows = r.ok ? await r.json() : []
+    const ev = Array.isArray(rows) ? rows[0] : null
+    if (!ev || !ev.replay || ev.replay.enabled !== true) return null
+    const s = await fetch(`${SUPA_URL}/rest/v1/segments?event_id=eq.${id}&select=start_sec,text&order=idx.asc&limit=6000`, { headers, signal: dl.signal(6000) })
+    const segs = s.ok ? await s.json() : []
     return {
-      role: m.role,
-      content: m.content.map((p) =>
-        p.type === 'image'
-          ? { type: 'image_url', image_url: { url: p.dataUrl } }
-          : { type: 'text', text: String(p.text ?? '') }
-      )
+      title: ev.replay.title || ev.title || 'Event recap',
+      summary: ev.replay.summary || '',
+      kindWord: 'live event',
+      materials: String(ev.materials_text || '').slice(0, 4000),
+      lines: (Array.isArray(segs) ? segs : []).map((x) => ({ t: fmt(x.start_sec), text: String(x.text || '').trim() })).filter((l) => l.text)
     }
-  })
+  }
+  // a recap, one by its id: through sitka_recap once that function exists
+  let rc = null
+  const viaFn = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_recap?p_id=${id}`, { headers, signal: dl.signal(6000) })
+  if (viaFn.ok) rc = await viaFn.json().catch(() => null)
+  else if (viaFn.status === 404) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/recaps?id=eq.${id}&enabled=is.true&select=title,summary,transcript,enabled`, { headers, signal: dl.signal(6000) })
+    const rows = r.ok ? await r.json() : []
+    rc = Array.isArray(rows) ? rows[0] : null
+  }
+  if (!rc || rc.enabled !== true) return null
+  return {
+    title: rc.title || 'Session recap',
+    summary: rc.summary || '',
+    kindWord: 'session',
+    materials: '',
+    lines: (Array.isArray(rc.transcript) ? rc.transcript : []).map((x) => ({ t: fmt(x.start), text: String(x.text || '').trim() })).filter((l) => l.text)
+  }
 }
 
-// Best-effort per-IP limiter for platform-funded (keyless) requests. One
-// person in a live session makes many calls on their own — every screen
-// change is read, notes refresh, questions come and go — so the ceiling is a
-// generous hour-long budget plus a short burst guard, not a hard cap on use.
-const ipLog = new Map()
-function overLimit(ip) {
-  const now = Date.now()
-  const hits = (ipLog.get(ip) || []).filter((t) => now - t < 3600000)
-  hits.push(now)
-  ipLog.set(ip, hits)
-  if (ipLog.size > 5000) ipLog.clear()
-  const lastMinute = hits.filter((t) => now - t < 60000).length
-  return hits.length > 600 || lastMinute > 45
-}
-
-const MODEL_ERROR_RE = /model|decommission|terms|not found|does not exist|not support|deprecated|unavailable/i
-
-/** One Groq call. Returns {text} or {error, kind: 'model'|'key'|'transient'|'request'}. */
-async function groqOnce(key, modelId, system, messages, maxTokens, keepImages, sink) {
-  let r
-  try {
-    r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      signal: AbortSignal.timeout(45000),
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: maxTokens,
-        messages: [{ role: 'system', content: system }, ...toGroq(messages, keepImages)],
-        ...(REASONING_RE.test(modelId) ? { reasoning_format: 'hidden' } : {}),
-        ...(sink ? { stream: true } : {})
-      })
+const STOP = new Set(
+  'what which when where about that this there their they them then than with from into your have been were was does did has had the and for are but not you our its his her she him can could would should will just like more most some such very also only into onto over under after before earlier later show shown showed said say tell explain please hello hi thanks thank'.split(' ')
+)
+/** The lines a question needs, with a little around them, capped small; the shape of the session when nothing matches. */
+function excerptFor(lines, q) {
+  const words = q
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 4 && !STOP.has(w))
+  const keep = new Set()
+  if (words.length > 0) {
+    lines.forEach((l, i) => {
+      const t = l.text.toLowerCase()
+      if (words.some((w) => t.includes(w))) for (let k = Math.max(0, i - 2); k <= Math.min(lines.length - 1, i + 2); k++) keep.add(k)
     })
-  } catch (err) {
-    return { error: String((err && err.message) || err), kind: 'transient' }
   }
-  if (r.ok && sink && r.body) {
-    // the words go out as they come; a stream that breaks after it began
-    // still counts for what was said
-    let text = ''
-    try {
-      text = await drainSse(r.body, (ev) => ev.choices?.[0]?.delta?.content || '', sink)
-    } catch (err) {
-      if (!text) return { error: String((err && err.message) || err), kind: 'transient' }
-    }
-    text = stripThinking(text)
-    if (!text) return { error: 'empty answer', kind: 'transient' }
-    return { text }
+  if (keep.size < 12) {
+    const step = Math.max(1, Math.floor(lines.length / 60))
+    for (let i = 0; i < lines.length; i += step) keep.add(i)
   }
-  const j = await r.json().catch(() => ({}))
-  if (r.ok) {
-    const text = stripThinking(j.choices?.[0]?.message?.content || '')
-    if (!text) return { error: 'empty answer', kind: 'transient' }
-    return { text }
+  let out = ''
+  for (const i of [...keep].sort((a, b) => a - b)) {
+    const line = `[${lines[i].t}] ${lines[i].text}\n`
+    if (out.length + line.length > 14000) break
+    out += line
   }
-  const msg = j.error?.message || `HTTP ${r.status}`
-  if (r.status === 401 || r.status === 403) return { error: msg, kind: 'key' }
-  if (r.status === 429) {
-    // Limits are per account: rest this key for as long as Groq asks
-    // (retry-after header, or "try again in 2m3.5s" in the message).
-    let wait = Number(r.headers.get('retry-after')) || 0
-    if (!wait) {
-      const mm = msg.match(/try again in (?:(\d+)m)?([\d.]+)s/i)
-      if (mm) wait = Number(mm[1] || 0) * 60 + Number(mm[2] || 0)
-    }
-    return { error: msg, kind: 'ratelimit', wait: Math.min(Math.max(wait, 20), 3600) }
-  }
-  if (r.status >= 500) return { error: msg, kind: 'transient' }
-  if (r.status === 404 || MODEL_ERROR_RE.test(msg)) return { error: msg, kind: 'model' }
-  return { error: msg, kind: 'request' }
+  return out
 }
 
-// Keys that were rate limited rest until this time, so the next request
-// goes straight to a key that can answer instead of asking Groq again.
-const keyRest = new Map() // key tail -> until (ms)
-let roundRobin = 0
-
-/**
- * Order keys for this request: a user's own key first, then the platform's
- * keys in rotation so every account carries a share of the load. Keys that
- * are resting after a rate limit go last.
- */
-function orderKeys(keys, ownKey) {
-  const now = Date.now()
-  const platform = keys.filter((k) => k !== ownKey)
-  const start = platform.length ? roundRobin++ % platform.length : 0
-  const rotated = [...platform.slice(start), ...platform.slice(0, start)]
-  const ready = rotated.filter((k) => (keyRest.get(k.slice(-8)) || 0) <= now)
-  const resting = rotated
-    .filter((k) => (keyRest.get(k.slice(-8)) || 0) > now)
-    .sort((a, b) => keyRest.get(a.slice(-8)) - keyRest.get(b.slice(-8)))
-  return [...(ownKey ? [ownKey] : []), ...ready, ...resting]
+function recapAskPrompt(s, q, lang) {
+  return [
+    `You are Sitca, answering questions about a recorded ${s.kindWord}: "${s.title}".`,
+    s.summary ? `Summary of the session: ${s.summary}` : '',
+    'Answer every question. Look in the excerpt (and materials) below first; when the session covers it, answer from what was said. When it does not, or the question is about something else, never refuse: say so in one friendly clause, such as "That was not part of this session, but here is the short answer:", then answer properly from your own knowledge, kept clearly apart from what the speaker said.',
+    'Talking to the reader, call it "the session", never "the transcript" or "the excerpt".',
+    'When you reference a specific moment, cite the time exactly as it appears at the start of that line, inside plain double square brackets — for example [[12:37]] or [[1:02:15]]. Never write letters inside the brackets, never a range. These become tap-to-play links.',
+    'Cite a moment when the reader would want to jump to it; a summary reads as prose.',
+    'Shape every answer so it can be taken in at a glance: the answer itself in one or two plain sentences first; then, only if more is needed, short bullets that each open with a bold lead-in of two or three words; a blank line between parts. Never one long paragraph. A greeting gets one friendly line.',
+    lang && lang !== 'English' ? `Always answer in ${lang}.` : '',
+    s.materials ? `\nMaterials:\n${s.materials}` : '',
+    `\nExcerpt of the session (each line starts with its time):\n${excerptFor(s.lines, q) || '(no words captured)'}`
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
-/**
- * Try every key and every candidate model until one answers. Vision requests
- * try the vision models first; if none can answer the images are dropped
- * (with a note so the model does not invent what it cannot see).
- */
-async function groqChain(keys, system, messages, maxTokens, withImages, requireVision, fast = false, sink = null) {
-  let lastError = 'no Groq key'
-  let keyErrors = 0
-  for (const key of keys) {
-    let plan
-    try {
-      const vis = withImages ? (await visionCandidates(key)).filter((id) => !isDead(id)) : []
-      if (requireVision) {
-        if (vis.length === 0) {
-          lastError = 'no vision model'
-          continue
-        }
-        plan = vis.map((id) => ({ id, keepImages: true }))
-      } else {
-        const chat = (await chatCandidates(key, fast)).filter((id) => !isDead(id))
-        plan = [...vis.map((id) => ({ id, keepImages: true })), ...chat.map((id) => ({ id, keepImages: false }))]
-      }
-    } catch (err) {
-      lastError = String((err && err.message) || err)
-      keyErrors++
-      continue
-    }
-    if (plan.length === 0) {
-      lastError = 'This Groq key lists no usable chat models.'
-      continue
-    }
-    let transientOnThisKey = 0
-    for (const step of plan) {
-      const out = await groqOnce(key, step.id, system, messages, maxTokens, step.keepImages, sink)
-      if (out.text) return { text: out.text, vision: step.keepImages, model: step.id }
-      lastError = `${step.id}: ${out.error}`
-      if (out.kind === 'key') {
-        keyErrors++
-        break
-      }
-      if (out.kind === 'model') markDead(step.id)
-      if (out.kind === 'ratelimit') {
-        keyRest.set(key.slice(-8), Date.now() + out.wait * 1000)
-        break // this account is out of quota for now: the next key takes over
-      }
-      if (out.kind === 'transient' && ++transientOnThisKey >= 2) break
-    }
-  }
-  return { error: lastError, keyErrors }
-}
-
-// ---- Gemini: the strongest free sight. Used first for anything with an
-// image (after Claude), and as one more text fallback after Groq. ----
-const KNOWN_GEMINI = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest']
-let geminiListCache = { ids: null, at: 0 }
-
-async function geminiCandidates(key) {
-  if (geminiListCache.ids && Date.now() - geminiListCache.at < 600000) return geminiListCache.ids
-  try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${key}`, { signal: AbortSignal.timeout(12000) })
-    const j = await r.json().catch(() => ({}))
-    if (!r.ok) return KNOWN_GEMINI
-    const ids = (j.models || [])
-      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-      .map((m) => String(m.name || '').replace(/^models\//, ''))
-      .filter((id) => /^gemini-[\d.]+-flash(-lite)?$/.test(id))
-      .sort((a, b) => parseFloat(b.split('-')[1]) - parseFloat(a.split('-')[1]) || a.length - b.length)
-    const ranked = [...KNOWN_GEMINI.filter((id) => ids.includes(id)), ...ids.filter((id) => !KNOWN_GEMINI.includes(id))]
-    geminiListCache = { ids: ranked.length ? ranked : KNOWN_GEMINI, at: Date.now() }
-    return geminiListCache.ids
-  } catch {
-    return KNOWN_GEMINI
-  }
-}
-
-function toGemini(messages) {
-  return messages.map((m) => {
-    const role = m.role === 'assistant' ? 'model' : 'user'
-    if (!Array.isArray(m.content)) return { role, parts: [{ text: String(m.content ?? '') }] }
-    const parts = m.content
-      .map((p) => {
-        if (p.type === 'image') {
-          const mm = String(p.dataUrl || '').match(/^data:(image\/[\w+.-]+);base64,(.+)$/)
-          return mm ? { inlineData: { mimeType: mm[1], data: mm[2] } } : null
-        }
-        return { text: String(p.text ?? '') }
-      })
-      .filter(Boolean)
-    return { role, parts }
-  })
-}
-
-/**
- * Every Gemini key (each a separate Google account, so a separate free
- * quota), then every model on it. A key that is out of quota rests for as
- * long as Google asks and the next key takes over.
- */
-async function geminiChain(keys, system, messages, maxTokens) {
-  let lastError = 'no Gemini key'
-  for (const key of keys) {
-    let limited = 0
-    for (const model of (await geminiCandidates(key)).filter((id) => !isDead('gemini:' + id))) {
-      let r
-      try {
-        r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          {
-            signal: AbortSignal.timeout(45000),
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: system }] },
-              contents: toGemini(messages),
-              generationConfig: {
-              maxOutputTokens: maxTokens,
-              // 2.5 models "think" before answering by default, which adds
-              // seconds to every screen question; a lecture needs answers now.
-              ...(/-2\.5-/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {})
-            }
-            })
-          }
-        )
-      } catch (err) {
-        lastError = String((err && err.message) || err)
-        continue
-      }
-      const j = await r.json().catch(() => ({}))
-      if (r.ok) {
-        const text = stripThinking(
-          ((j.candidates || [])[0]?.content?.parts || []).map((p) => p.text || '').join('')
-        )
-        if (text) return { text, model }
-        lastError = `${model}: empty answer`
-        continue
-      }
-      const msg = j.error?.message || `HTTP ${r.status}`
-      lastError = `${model}: ${msg}`
-      if ((r.status === 400 || r.status === 403) && /API key|permission|denied/i.test(msg)) break // bad key: next one
-      if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead('gemini:' + model)
-      if (r.status === 429) {
-        // Quota is per model per account: try the next model once, then rest the key.
-        const mm = msg.match(/retry in ([\d.]+)s/i)
-        const wait = mm ? Number(mm[1]) : 60
-        if (++limited >= 2) {
-          keyRest.set(key.slice(-8), Date.now() + Math.min(Math.max(wait, 20), 3600) * 1000)
-          break
-        }
-      }
-    }
-  }
-  return { error: lastError }
-}
-
-async function anthropicOnce(key, system, messages, maxTokens, sink) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    signal: AbortSignal.timeout(50000),
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-5',
-      max_tokens: maxTokens,
-      system,
-      messages: toAnthropic(messages),
-      ...(sink ? { stream: true } : {})
-    })
-  })
-  if (r.ok && sink && r.body) {
-    let text = ''
-    try {
-      text = await drainSse(r.body, (ev) => (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' ? ev.delta.text : ''), sink)
-    } catch (err) {
-      if (!text) return { error: String((err && err.message) || err) }
-    }
-    text = stripThinking(text)
-    return text ? { text } : { error: 'empty answer' }
-  }
-  const j = await r.json().catch(() => ({}))
-  if (!r.ok) return { error: j.error?.message || `HTTP ${r.status}` }
-  const text = stripThinking(
-    (j.content || [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-  )
-  return text ? { text } : { error: 'empty answer' }
-}
+// ---------- the route ----------
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' })
     return
   }
+  const dl = deadline(55000)
+  let streaming = false
   try {
-    const { keys = {}, system = '', messages = [], requireVision = false, fast = false, kind = '', stream = false } = req.body || {}
-    // Streaming: the answer leaves as lines of JSON, {"delta"} as the words
-    // come, then {"done"}; a failure before any word is {"error"}. The
-    // status is 200 either way, since it is sent before the answer is known.
-    let streaming = false
-    let streamedAny = false
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const stream = Boolean(body.stream)
     const sink = stream
       ? (piece) => {
           if (!streaming) {
@@ -509,7 +176,6 @@ export default async function handler(req, res) {
             res.setHeader('X-Accel-Buffering', 'no')
             if (typeof res.flushHeaders === 'function') res.flushHeaders()
           }
-          streamedAny = true
           res.write(JSON.stringify({ delta: piece }) + '\n')
         }
       : null
@@ -518,7 +184,6 @@ export default async function handler(req, res) {
         res.write(JSON.stringify({ done: true, vision: out.vision, model: out.model }) + '\n')
         res.end()
       } else if (stream) {
-        // an answer that came whole (a provider without streaming): one line, then done
         res.status(200)
         res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
         res.write(JSON.stringify({ delta: out.text }) + '\n')
@@ -528,148 +193,145 @@ export default async function handler(req, res) {
         res.status(200).json(out)
       }
     }
-    const fail = (status, body) => {
+    const fail = (status, payload) => {
       if (streaming) {
-        res.write(JSON.stringify({ error: body.error || 'failed', transient: Boolean(body.transient) }) + '\n')
+        res.write(JSON.stringify({ error: payload.error || 'failed', transient: Boolean(payload.transient) }) + '\n')
         res.end()
-      } else {
-        res.status(status).json(body)
-      }
+      } else res.status(status).json(payload)
     }
-    // what a caller may ask for is bounded, so one request cannot run the
-    // function to its limit
-    const maxTokens = Math.min(4000, Math.max(64, Number((req.body || {}).maxTokens) || 1600))
-    const usingOwnKeys = Boolean(keys.anthropicApiKey || keys.groqApiKey)
-    if (!usingOwnKeys) {
-      const ip = String(req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim()
-      if (overLimit(ip)) {
+    const deliver = (out) => {
+      if (out.text !== undefined && !out.error) return finish(out)
+      if (out.missing) return fail(400, { error: 'missing-key' })
+      return fail(502, { error: `Sitca's AI is busy right now — it will try again automatically.`, transient: true })
+    }
+
+    // ---- the public recap page: no account, a recap id, a prompt built here ----
+    const recapId = String(body.recap || '')
+    const eventId = String(body.replayEvent || '')
+    if (recapId || eventId) {
+      const mode = body.mode === 'translate' ? 'translate' : 'ask'
+      const ip = ipOf(req)
+      const target = recapId ? `recap:${recapId}` : `event:${eventId}`
+      if ((await overLimitKey(`chat-public:ip:${ip}`, 20, 200)) || (await overLimitKey(`chat-public:${target}`, 60, 900))) {
         res.status(429).json({ error: 'Slow down a little — try again in a few minutes.' })
         return
       }
-      // a question from a signed-in person counts against their plan
-      if (kind === 'ask') {
-        const may = await allow(tokenOf(req), 'asks')
-        if (!may.ok) {
-          res.status(402).json({ error: may.message, plan: may.plan, limit: 'asks' })
+      const s = await sharedSession(recapId ? 'recap' : 'event', recapId || eventId, dl)
+      if (!s) {
+        res.status(404).json({ error: 'This recap is not shared.' })
+        return
+      }
+      const lang = LANGS.includes(String(body.lang || '')) ? String(body.lang) : 'English'
+      let system
+      let messages
+      let maxTokens
+      if (mode === 'translate') {
+        const lines = Array.isArray(body.lines) ? body.lines.slice(0, 60).map((l) => String(l || '').slice(0, 500)) : []
+        if (lines.length === 0 || lang === 'English') {
+          res.status(400).json({ error: 'Nothing to translate.' })
           return
         }
+        system = `You translate into ${lang}. The user sends numbered lines. Reply with ONLY the translated lines, one per line, keeping the same numbers in the form "N: text". No notes, no extra lines.`
+        messages = [{ role: 'user', content: lines.map((t, i) => `${i + 1}: ${t}`).join('\n') }]
+        maxTokens = 2000
+      } else {
+        const q = String(body.question || '').trim().slice(0, 800)
+        if (!q) {
+          res.status(400).json({ error: 'Ask something first.' })
+          return
+        }
+        const history = (Array.isArray(body.history) ? body.history : [])
+          .slice(-6)
+          .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }))
+        system = recapAskPrompt(s, q, lang)
+        messages = [...history, { role: 'user', content: q }]
+        maxTokens = 700
       }
-    }
-    // API keys are ASCII; strip anything else (smart dashes, stray words,
-    // invisible characters from copy-paste) so headers can never crash.
-    const clean = (s) => String(s || '').replace(/[^\x21-\x7e]/g, '')
-    const anthropicKey = clean(keys.anthropicApiKey) || clean(process.env.ANTHROPIC_API_KEY)
-    const ownGroqKey = clean(keys.groqApiKey)
-    const groqKeys = orderKeys(
-      [
-        ownGroqKey,
-        clean(process.env.GROQ_API_KEY),
-        ...String(process.env.GROQ_API_KEYS || '')
-          .split(/[,\s]+/)
-          .map(clean),
-        ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GROQ_API_KEY_${n}`]))
-      ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
-      ownGroqKey.length > 10 ? ownGroqKey : ''
-    )
-    // Gemini keys rotate across accounts exactly like the Groq keys.
-    const geminiKeys = orderKeys(
-      [
-        clean(keys.geminiApiKey),
-        clean(process.env.GEMINI_API_KEY),
-        ...String(process.env.GEMINI_API_KEYS || '')
-          .split(/[,\s]+/)
-          .map(clean),
-        ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => clean(process.env[`GEMINI_API_KEY_${n}`]))
-      ].filter((k, i, all) => k && k.length > 10 && all.indexOf(k) === i),
-      ''
-    )
-    const geminiKey = geminiKeys.length > 0
-    const withImages = hasImages(messages)
-    const errors = []
-
-    // Only treat the Anthropic field as real when it looks like an Anthropic
-    // key — otherwise stray text there would block the working Groq path.
-    if (anthropicKey.startsWith('sk-')) {
-      // a network fault on the way to Anthropic is one more reason to move
-      // down the chain, never a reason to stop here
-      const out = await anthropicOnce(anthropicKey, system, messages, maxTokens, sink).catch((err) => ({
-        text: '',
-        error: String((err && err.message) || err)
-      }))
-      if (out.text) {
-        finish({ text: out.text, vision: withImages, model: 'claude' })
-        return
-      }
-      if (streamedAny) {
-        fail(502, { error: 'The answer broke off. Ask again.', transient: true })
-        return
-      }
-      errors.push('Anthropic: ' + out.error)
-    }
-
-    // Anything with an image goes to Gemini before Groq: it reads boards,
-    // slides and charts far more reliably than the vision models Groq hosts.
-    if (geminiKey && withImages) {
-      const out = await geminiChain(geminiKeys, system, messages, maxTokens)
-      if (out.text) {
-        finish({ text: out.text, vision: true, model: out.model })
-        return
-      }
-      errors.push('Gemini: ' + out.error)
-    }
-
-    if (groqKeys.length > 0) {
-      const out = await groqChain(groqKeys, system, messages, maxTokens, withImages, requireVision, Boolean(fast), sink)
-      if (out.text) {
-        finish({ text: out.text, vision: out.vision, model: out.model })
-        return
-      }
-      if (streamedAny) {
-        fail(502, { error: 'The answer broke off. Ask again.', transient: true })
-        return
-      }
-      errors.push('Groq: ' + out.error)
-      if (out.keyErrors >= groqKeys.length && errors.length === 1 && !geminiKey) {
-        fail(502, { error: 'Groq: ' + out.error })
-        return
-      }
-    }
-
-    // Text-only requests: Gemini is the last resort when every Groq account is busy.
-    if (geminiKey && !withImages) {
-      const out = await geminiChain(geminiKeys, system, messages, maxTokens)
-      if (out.text) {
-        finish({ text: out.text, vision: false, model: out.model })
-        return
-      }
-      errors.push('Gemini: ' + out.error)
-    }
-
-    if (requireVision) {
-      // No model could see the image: report that honestly instead of failing.
-      finish({ text: '', vision: false })
+      // the free models only: a public page never reaches the costliest provider
+      const out = await answer({ system, messages, maxTokens, fast: true, sink, keys: { anthropic: '', groq: platformKeys('GROQ_API_KEY'), gemini: platformKeys('GEMINI_API_KEY') }, dl })
+      deliver(out)
       return
     }
 
-    if (errors.length === 0) {
-      fail(400, { error: 'missing-key' })
+    // ---- everything else: a signed-in person ----
+    const me = await userOf(tokenOf(req))
+    if (me === UNCHECKED) {
+      res.status(503).json({ error: 'Could not check who you are just now. Try again in a moment.' })
       return
     }
-    fail(502, {
-      error: `Sitca's AI is busy right now — it will try again automatically. (${errors[errors.length - 1]})`,
-      transient: true
+    if (!me) {
+      res.status(401).json({ error: 'Sign in first.' })
+      return
+    }
+    const system = String(body.system || '')
+    if (system.length > MAX_SYSTEM) {
+      res.status(413).json({ error: 'That request is too large.' })
+      return
+    }
+    const messages = tidyMessages(body.messages)
+    if (!messages) {
+      res.status(400).json({ error: 'That request is not one Sitca can answer.' })
+      return
+    }
+    const maxTokens = Math.min(4000, Math.max(64, Number(body.maxTokens) || 1600))
+    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {}
+    const own = { anthropic: realKey(keys.anthropicApiKey), groq: realKey(keys.groqApiKey), gemini: realKey(keys.geminiApiKey) }
+    const usingOwn = Boolean(own.anthropic || own.groq || own.gemini)
+    if (usingOwn) {
+      // their keys, their bill: nothing of the platform's is added
+      if (await overLimitKey(`chat-own:user:${me.id}`, 60, 2000)) {
+        res.status(429).json({ error: 'Slow down a little — try again in a few minutes.' })
+        return
+      }
+      const out = await answer({
+        system,
+        messages,
+        maxTokens,
+        requireVision: Boolean(body.requireVision),
+        fast: Boolean(body.fast),
+        sink,
+        keys: { anthropic: own.anthropic, groq: own.groq ? [own.groq] : [], gemini: own.gemini ? [own.gemini] : [] },
+        ownGroq: own.groq,
+        dl
+      })
+      deliver(out)
+      return
+    }
+    // the platform's keys: limited per person, and a question counts against the plan
+    if (await overLimitKey(`chat:user:${me.id}`, 45, 900)) {
+      res.status(429).json({ error: 'Slow down a little — try again in a few minutes.' })
+      return
+    }
+    if (body.kind === 'ask') {
+      const may = await allow(tokenOf(req), 'asks')
+      if (!may.ok) {
+        res.status(402).json({ error: may.message, plan: may.plan, limit: 'asks' })
+        return
+      }
+    }
+    const out = await answer({
+      system,
+      messages,
+      maxTokens,
+      requireVision: Boolean(body.requireVision),
+      fast: Boolean(body.fast),
+      sink,
+      keys: { anthropic: platformKeys('ANTHROPIC_API_KEY')[0] || '', groq: platformKeys('GROQ_API_KEY'), gemini: platformKeys('GEMINI_API_KEY') },
+      dl
     })
+    deliver(out)
   } catch (err) {
-    if (res.headersSent) {
+    if (streaming || res.headersSent) {
       try {
-        res.write(JSON.stringify({ error: String((err && err.message) || err) }) + '\n')
+        res.write(JSON.stringify({ error: 'The answer broke off. Ask again.' }) + '\n')
         res.end()
       } catch {
         /* gone */
       }
       return
     }
-    res.status(500).json({ error: String((err && err.message) || err) })
+    failSafely(res, err, 'chat')
   }
 }
 

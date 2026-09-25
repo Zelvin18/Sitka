@@ -15,7 +15,8 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { cpSync, existsSync, mkdirSync, readdirSync, copyFileSync } from 'fs'
 
-const OUT = resolve(__dirname, '../extension/dist')
+// the tests build into a folder of their own, never over the extension a browser has loaded
+const OUT = process.env.SITCA_EXT_OUT || resolve(__dirname, '../extension/dist')
 const STATIC = resolve(__dirname, '../extension/static')
 const PUBLIC = resolve(__dirname, 'public')
 /** the pictures the app page needs; the site's films, posters and PNG originals stay on the site */
@@ -41,7 +42,8 @@ export default defineConfig({
       '@renderer': resolve(__dirname, '../src/renderer/src'),
       react: resolve(__dirname, 'node_modules/react'),
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),
-      qrcode: resolve(__dirname, 'node_modules/qrcode')
+      qrcode: resolve(__dirname, 'node_modules/qrcode'),
+      jsqr: resolve(__dirname, 'node_modules/jsqr')
     }
   },
   define: {

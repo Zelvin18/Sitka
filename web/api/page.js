@@ -9,8 +9,7 @@
 //
 // Nothing else changes: the page's own code still runs and draws the recap.
 
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SUPA_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, SITE_ORIGIN } from './_auth.js'
 
 const UUID = /^[0-9a-fA-F-]{16,64}$/
 const esc = (s) =>
@@ -23,10 +22,9 @@ const esc = (s) =>
 export default async function handler(req, res) {
   const kind = String(req.query.kind || 'recap')
   const id = String(req.query.id || '')
-  const file = kind === 'event' ? '/event.html' : kind === 'recap1' ? '/replay.html' : '/replay2.html'
-  const host = req.headers['x-forwarded-host'] || req.headers.host
-  const proto = req.headers['x-forwarded-proto'] || 'https'
-  const origin = `${proto}://${host}`
+  const file = kind === 'event' ? '/event.html' : '/replay2.html'
+  // the site's own address, never the Host header a caller can set
+  const origin = SITE_ORIGIN
 
   // the page itself, from this same deployment
   let html = ''
@@ -35,8 +33,9 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error(`page ${r.status}`)
     html = await r.text()
   } catch (err) {
+    console.error('[page]', String((err && err.message) || err))
     res.status(502).setHeader('content-type', 'text/plain')
-    return res.end('The page could not be fetched: ' + String((err && err.message) || err))
+    return res.end('The page could not be loaded. Try again in a moment.')
   }
 
   const info = UUID.test(id) ? await describe(kind, id) : null
@@ -81,7 +80,7 @@ export default async function handler(req, res) {
   // rest goes straight after <head>, where the fetchers look first
   html = html.replace(/<title>[^<]*<\/title>/i, '')
   html = html.replace(/<meta\s+(?:name="description"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>\s*/gi, '')
-  html = html.replace(/<head>/i, '<head>\n' + meta)
+  html = html.replace(/<head>/i, () => '<head>\n' + meta)
 
   res.setHeader('content-type', 'text/html; charset=utf-8')
   // shared links are fetched by many phones at once: the edge keeps a copy for
@@ -94,9 +93,11 @@ export default async function handler(req, res) {
 async function describe(kind, id) {
   if (!SUPA_URL || !SUPA_ANON) return null
   const headers = { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` }
+  const svc = SUPA_SERVICE ? { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` } : headers
   const get = async (path) => {
     try {
-      const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { headers, signal: AbortSignal.timeout(6000) })
+      // the events table is read with the server's key: its public fields only are used here
+      const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { headers: path.startsWith('events?') ? svc : headers, signal: AbortSignal.timeout(6000) })
       if (!r.ok) return null
       const rows = await r.json()
       return Array.isArray(rows) && rows.length ? rows[0] : null

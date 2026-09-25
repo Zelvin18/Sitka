@@ -11,10 +11,9 @@
 // session's own transcript lines and saves the result.
 
 import { r2Config, presign, r2List } from './_r2.js'
-
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SUPA_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-const UUID = /^[0-9a-fA-F-]{16,64}$/
+import { SUPA_URL, SUPA_ANON, requireUser, failSafely } from './_auth.js'
+import { UUID } from './_share.js'
+import { overLimitKey } from './_limit.js'
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -37,9 +36,11 @@ export default async function handler(req, res) {
   const sessionId = String(body.session || '')
   if (!UUID.test(sessionId)) return res.status(400).json({ error: 'Bad session.' })
 
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  const owner = token ? await userOf(token) : null
-  if (!owner) return res.status(401).json({ error: 'Sign in first.' })
+  const who = await requireUser(req, res)
+  if (!who) return
+  const owner = who.id.toLowerCase()
+  // listening again is the costliest thing Sitca does: a few an hour each
+  if (await overLimitKey(`speakers:user:${owner}`, 3, 20)) return res.status(429).json({ error: 'Slow down a little.' })
 
   try {
     // the whole file, and only the whole file: parts are not one recording
@@ -71,9 +72,8 @@ export default async function handler(req, res) {
       })
     } catch (err) {
       const timeout = err && err.name === 'TimeoutError'
-      return res.status(504).json({
-        error: timeout ? 'too-long' : String((err && err.message) || err)
-      })
+      if (!timeout) console.error('[speakers]', String((err && err.message) || err))
+      return res.status(504).json({ error: timeout ? 'too-long' : 'Listening failed. Try again in a moment.' })
     }
     const text = await r.text()
     let j = null
@@ -83,8 +83,8 @@ export default async function handler(req, res) {
       j = null
     }
     if (!r.ok || !j) {
-      const why = (j && (j.err_msg || j.error || j.message)) || `Listening failed (HTTP ${r.status})`
-      return res.status(r.status === 401 || r.status === 403 ? 502 : 502).json({ error: String(why) })
+      console.error('[speakers]', r.status, (j && (j.err_msg || j.error || j.message)) || '')
+      return res.status(502).json({ error: 'Listening failed. Try again in a moment.' })
     }
     const raw = (j.results && j.results.utterances) || []
     const utterances = raw
@@ -101,20 +101,6 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store')
     return res.status(200).json({ utterances, language, duration })
   } catch (err) {
-    console.error('speakers', err)
-    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
-  }
-}
-
-async function userOf(token) {
-  try {
-    const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON }
-    })
-    if (!r.ok) return null
-    const j = await r.json()
-    return typeof j?.id === 'string' ? j.id : null
-  } catch {
-    return null
+    return failSafely(res, err, 'speakers')
   }
 }

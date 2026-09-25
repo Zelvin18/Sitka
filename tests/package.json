@@ -1,0 +1,13 @@
+{
+  "name": "sitca-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --import tsx ./suites/"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "fake-indexeddb": "^6.2.5",
+    "tsx": "^4.23.15"
+  }
+}

@@ -142,9 +142,11 @@ async function fetchSpeech(text: string, lang = 'en'): Promise<Blob | null> {
   try {
     // the language chooses the voice: English has a quick one, the rest a
     // voice that can say them
+    // the voice is paid for: the app says who is asking
+    const auth = (await (window as unknown as { sitkaAuthHeader?: () => Promise<Record<string, string>> }).sitkaAuthHeader?.()) ?? {}
     const r = await fetch(`${SPEECH_BASE}/api/speak`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ text, lang })
     })
     if (!r.ok) return null
