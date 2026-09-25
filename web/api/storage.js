@@ -188,12 +188,31 @@ async function grantLinks(res, cfg, owner, body, token) {
   if (from === 0 && !(await roomFor(cfg, owner, token))) {
     return res.status(402).json({ error: 'Your plan’s storage is full. Delete a recording or move up a plan to record more.', limit: 'storage' })
   }
+  // Numbers that already hold a piece are not handed out again: the recorder
+  // is told they are taken, with their sizes, so a piece that already landed
+  // (same size) counts as sent and a different one is given a new number.
+  // Nothing already in the cloud is ever written over. A listing that fails
+  // leaves the answer as it was (every number), never blocks the upload.
+  const taken = []
+  const held = new Map()
+  try {
+    for (const o of await r2List(cfg, `${owner}/${session}/`)) {
+      const m = /\/part-(\d+)\.webm$/.exec(o.key)
+      if (m) held.set(Number(m[1]), o.size)
+    }
+  } catch {
+    /* unknown: every number is offered, as before */
+  }
   const links = []
   for (let n = from; n < from + count; n++) {
+    if (held.has(n)) {
+      taken.push({ n, size: held.get(n) })
+      continue
+    }
     const key = `${owner}/${session}/part-${String(n).padStart(4, '0')}.webm`
     links.push({ n, url: presign(cfg, 'PUT', key, GRANT_SECS) })
   }
-  return res.status(200).json({ links, expiresAt: Date.now() + GRANT_SECS * 1000 })
+  return res.status(200).json({ links, taken, expiresAt: Date.now() + GRANT_SECS * 1000 })
 }
 
 async function getLinks(res, cfg, owner, body, token) {

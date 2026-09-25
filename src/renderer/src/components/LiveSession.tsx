@@ -306,13 +306,24 @@ export default function LiveSession({
   // is seen while it can still be fixed, not found in a banner afterwards.
   const [cloudUpTo, setCloudUpTo] = useState<number | null>(null)
   const [cloudTrouble, setCloudTrouble] = useState('')
+  // Whether this device can keep the safety copy: its own state, said when it
+  // is known and kept for the whole recording (a piece going up never hides it).
+  const [deviceNote, setDeviceNote] = useState<{ ok: boolean; why: string } | null>(null)
   useEffect(() => {
     const ok = (e: Event): void => {
-      const d = (e as CustomEvent<{ sessionId: string }>).detail
+      const d = (e as CustomEvent<{ sessionId: string; upToMs?: number | null }>).detail
       if (d?.sessionId !== sessionIdRef.current) return
       setCloudTrouble('')
-      setCloudUpTo(Date.now() - sessionStartRef.current)
+      // "up to" is the end of the last piece with none missing before it,
+      // as the recorder counts it; never simply "now"
+      if (typeof d.upToMs === 'number') setCloudUpTo(d.upToMs)
     }
+    const deviceCopy = (e: Event): void => {
+      const d = (e as CustomEvent<{ sessionId: string; ok: boolean; why?: string }>).detail
+      if (d?.sessionId !== sessionIdRef.current || !d.why) return
+      setDeviceNote({ ok: d.ok, why: d.why })
+    }
+    window.addEventListener('sitka:device-copy', deviceCopy)
     const bad = (e: Event): void => {
       const d = (e as CustomEvent<{ sessionId: string; error: string }>).detail
       if (d?.sessionId !== sessionIdRef.current) return
@@ -323,6 +334,7 @@ export default function LiveSession({
     return () => {
       window.removeEventListener('sitka:upload-ok', ok)
       window.removeEventListener('sitka:upload-trouble', bad)
+      window.removeEventListener('sitka:device-copy', deviceCopy)
     }
   }, [])
   const enableMicNow = useCallback(async (): Promise<void> => {
@@ -3049,9 +3061,16 @@ export default function LiveSession({
         {phase === 'recording' && cloudTrouble && (
           <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
             <span>
-              <strong>The recording is not reaching the cloud.</strong> {cloudTrouble} It is kept safely on this device meanwhile and keeps
-              trying; the transcript and notes are saved as usual.
+              <strong>The recording is not reaching the cloud.</strong> {cloudTrouble}{' '}
+              {deviceNote && !deviceNote.ok
+                ? 'It is held in this tab meanwhile, so keep it open until the recording is in the cloud; the transcript and notes are saved as usual.'
+                : 'It is kept safely on this device meanwhile and keeps trying; the transcript and notes are saved as usual.'}
             </span>
+          </div>
+        )}
+        {phase === 'recording' && deviceNote && !deviceNote.ok && (
+          <div className="notice" style={{ margin: '12px 20px 0' }}>
+            <span>{deviceNote.why}</span>
           </div>
         )}
         {phase === 'recording' && !cloudTrouble && cloudUpTo !== null && (

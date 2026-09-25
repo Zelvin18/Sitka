@@ -49,15 +49,22 @@ interface Cached {
 export interface Store {
   /** True when this deployment stores recordings in R2. */
   ready(): Promise<boolean>
-  upload(key: string, blob: Blob, contentType: string): Promise<{ error?: string }>
+  /** `noOverwrite`: refuse to replace a file already there (answered as `taken`, with its size when known) */
+  upload(key: string, blob: Blob, contentType: string, opts?: { noOverwrite?: boolean; signal?: AbortSignal }): Promise<{ error?: string; taken?: { size: number } }>
   /** A recording's upload links for pieces from..from+count, issued at once (null: none issued, and why). */
-  grant(session: string, from: number, count: number): Promise<{ links: { n: number; url: string }[]; expiresAt: number } | { error: string }>
+  grant(
+    session: string,
+    from: number,
+    count: number
+  ): Promise<{ links: { n: number; url: string }[]; taken: { n: number; size: number }[]; expiresAt: number } | { error: string }>
   /** Send one piece to a link already issued. `expired`: the link is no longer good and a new one is needed. */
-  putTo(url: string, blob: Blob, contentType: string): Promise<{ ok: true } | { error: string; expired?: boolean }>
+  putTo(url: string, blob: Blob, contentType: string, signal?: AbortSignal): Promise<{ ok: true } | { error: string; expired?: boolean }>
   /** Whichever store holds this folder: R2 first, then the older Supabase one. */
   list(prefix: string): Promise<Listing>
   /** One named store only, for clearing a session out of both. */
   listIn(prefix: string, where: Where): Promise<StoreObject[]>
+  /** A listing that answers null when it could not be made, never "empty" in its place. */
+  listStrict(prefix: string, where: Where): Promise<StoreObject[] | null>
   url(key: string, where: Where): Promise<string | null>
   urls(keys: string[], where: Where): Promise<string[]>
   /** Both candidates, best first, for a reader that does not know where it is. */
@@ -80,14 +87,23 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
   const linkCache = new Map<string, Cached>()
   let readyOnce: Promise<boolean> | null = null
 
+  // The answer is kept once it is an answer. A check that failed (no
+  // network, the server's bad moment) is asked again next time: one failed
+  // check once sent every later recording to the wrong store.
   async function ready(): Promise<boolean> {
     if (!readyOnce) {
-      readyOnce = fetch('/api/storage')
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => Boolean(j?.configured && j?.supabase))
-        .catch(() => false)
+      const asking = fetch('/api/storage')
+        .then(async (r) => {
+          if (!r.ok) throw new Error(`storage check ${r.status}`)
+          const j = (await r.json()) as { configured?: boolean; supabase?: boolean }
+          return Boolean(j?.configured && j?.supabase)
+        })
+      readyOnce = asking
+      asking.catch(() => {
+        if (readyOnce === asking) readyOnce = null
+      })
     }
-    return readyOnce
+    return readyOnce.catch(() => false)
   }
 
   async function token(): Promise<string | null> {
@@ -239,6 +255,21 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     }))
   }
 
+  async function listStrict(prefix: string, where: Where): Promise<StoreObject[] | null> {
+    try {
+      if (where === 'r2') {
+        if (!(await ready())) return null
+        const res = await post<{ objects: StoreObject[] }>('list', { prefix })
+        return res ? res.objects ?? [] : null
+      }
+      const { data, error } = await sb.storage.from('recordings').list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+      if (error) return null
+      return (data ?? []).map((f) => ({ name: f.name, size: Number((f.metadata as { size?: number } | null)?.size ?? 0) }))
+    } catch {
+      return null
+    }
+  }
+
   async function list(prefix: string): Promise<Listing> {
     const fresh = await listIn(prefix, 'r2')
     if (fresh.length > 0) return { where: 'r2', objects: fresh }
@@ -296,20 +327,26 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     candidates,
 
     async grant(sessionId, from, count) {
-      const res = await post<{ links: { n: number; url: string }[]; expiresAt: number }>('grant', { session: sessionId, from, count }).catch(() => null)
-      if (res?.links?.length) return res
+      const res = await post<{ links: { n: number; url: string }[]; taken?: { n: number; size: number }[]; expiresAt: number }>('grant', {
+        session: sessionId,
+        from,
+        count
+      }).catch(() => null)
+      if (res && (res.links?.length || res.taken?.length)) return { links: res.links ?? [], taken: res.taken ?? [], expiresAt: res.expiresAt }
       return { error: lastAnswer || 'the server did not answer' }
     },
 
-    async putTo(url, blob, contentType) {
+    async putTo(url, blob, contentType, signal) {
       // three goes, further apart each time; the piece stays on the device
-      // whatever happens here, so a failure costs only a later retry
+      // whatever happens here, so a failure costs only a later retry. Each
+      // has a time limit: a connection that stalls is given up on, not waited on.
       const waits = [0, 1500, 5000]
       let last = ''
       for (const w of waits) {
         if (w) await sleep(w)
+        if (signal?.aborted) return { error: 'the upload took too long' }
         try {
-          const r = await fetch(url, { method: 'PUT', body: blob, headers: { 'content-type': contentType } })
+          const r = await fetch(url, { method: 'PUT', body: blob, headers: { 'content-type': contentType }, signal })
           if (r.ok) return { ok: true as const }
           last = `storage answered ${r.status}`
           // a link past its time, or one signed for another moment: a new one is needed, not a retry
@@ -321,11 +358,17 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       return { error: last || 'the piece did not go up' }
     },
 
-    async upload(key, blob, contentType) {
+    async upload(key, blob, contentType, opts = {}) {
       if (!(await ready())) {
         const { error } = await sb.storage
           .from('recordings')
-          .upload(key, blob, { upsert: true, contentType })
+          .upload(key, blob, { upsert: !opts.noOverwrite, contentType })
+        if (error && opts.noOverwrite && /exist|duplicate|409/i.test(error.message)) {
+          const dir = key.slice(0, key.lastIndexOf('/'))
+          const name = key.slice(key.lastIndexOf('/') + 1)
+          const there = (await listStrict(dir, 'sb'))?.find((o) => o.name === name)
+          return { error: 'already there', taken: { size: there?.size ?? -1 } }
+        }
         return error ? { error: error.message } : {}
       }
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -350,7 +393,8 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
           const r = await fetch(link, {
             method: 'PUT',
             body: blob,
-            headers: { 'content-type': contentType }
+            headers: { 'content-type': contentType },
+            signal: opts.signal
           })
           if (r.ok) return {}
           if (attempt === 1) return { error: `Storage returned ${r.status}.` }
@@ -363,6 +407,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     },
 
     listIn,
+    listStrict,
     list,
     media,
 

@@ -68,3 +68,17 @@ Every run of `node tests/run.mjs`, newest last.
 | 2 | ✓ 17.3 s | ✓ 3.9 s | ✓ 11.0 s | ✓ 101/101 passed | ✓ 8.5 s | ✓ 8.2 s |
 | 3 | ✓ 15.9 s | ✓ 3.8 s | ✓ 11.3 s | ✓ 101/101 passed | ✓ 8.8 s | ✓ 8.1 s |
 
+## 2026-09-25 21:03 UTC · Set 3 quick · PASS 1× · commit f60a020 (with uncommitted changes)
+
+| Run | web types | server types | app types | test suites |
+|---|---|---|---|---|
+| 1 | ✓ 15.2 s | ✓ 3.7 s | ✓ 10.7 s | ✓ 116/116 passed |
+
+## 2026-09-25 21:08 UTC · Set 3 · PASS 3× · commit f60a020 (with uncommitted changes)
+
+| Run | web types | server types | app types | test suites | web build | extension build |
+|---|---|---|---|---|---|---|
+| 1 | ✓ 15.6 s | ✓ 3.7 s | ✓ 11.7 s | ✓ 117/117 passed | ✓ 8.5 s | ✓ 8.3 s |
+| 2 | ✓ 19.1 s | ✓ 3.9 s | ✓ 11.1 s | ✓ 117/117 passed | ✓ 8.1 s | ✓ 8.1 s |
+| 3 | ✓ 16.3 s | ✓ 3.8 s | ✓ 11.4 s | ✓ 117/117 passed | ✓ 8.2 s | ✓ 8.2 s |
+

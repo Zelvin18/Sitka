@@ -74,26 +74,35 @@ remain readable to anyone while it is live (the room is public by link).
 
 ## Set 3 — Recording: nothing lost, and the recorder tells the truth
 
+A new recording engine, `web/src/recorder.ts`, with no knowledge of the page,
+Supabase or R2 (the page hands it an uploader), drilled on IndexedDB with
+every failure below (`tests/suites/recorder.test.mjs`) and checked in a real
+browser. It keeps the device layout the older recorder used, so parts already
+waiting on a device still go up.
+
 | | Audit | Henry | Finding | Fix |
 |---|---|---|---|---|
-| ☐ | — | W1 | Only piece 0 carries the header | The header is saved on its own the moment it exists; playback repairs from it |
-| ☐ | R1 | M3 | Piece numbers from a listing; overwrites | Numbers from a stored counter; uploads refuse to overwrite |
-| ☐ | R2 | — | A failed device read deletes the copy | "Read failed" kept apart from "empty"; unsent pieces never deleted |
-| ☐ | R3 | — | "In the cloud up to" can lie; live failures not retried | Gap-free watermark; live retries with backoff |
-| ☐ | R4 | W4, M1 | Memory-only pieces never retried; memory grows | One retry queue including memory pieces; memory copy dropped once the device copy is confirmed |
-| ☐ | R5, R6 | W5, M15 | Joins with missing pieces, never rebuilt | Join refused while pending or gapped; rebuilt when a late piece lands |
-| ☐ | R7 | M4 | No upload timeout; Stop hangs; whole-backlog reads | Timeouts, ranged reads, two uploads at a time |
-| ☐ | R8 | W2 | Permanent device copy not checked | `persisted()` checked; warned before recording; quota warning |
-| ☐ | R9 | M6, D11 | Session row insert not retried; updates of nothing count as saved | Insert retried; saves detect "no row" and re-insert |
-| ☐ | R10 | X13 | Another device ends a live recording | Heartbeat; only a silent session is closed, after 10 minutes |
-| ☐ | R11 | — | Two tabs split pieces differently | Piece record written when formed; one uploader per session (Web Locks) |
-| ☐ | R13 | W3 | One failed storage check sends everything to Supabase | Failures not cached; the store fixed per session |
-| ☐ | R14 | W10 | Delete incomplete, races uploads | Tombstone first; uploads check it; batched deletes |
-| ☐ | R17 | — | Device-copy warning vanishes | Separate state |
-| ☐ | R18 | W11, W12 | Wall-clock duration, same numbers, stale grants, cached failed open, cut-short tail | Handled in the engine rework |
-| ☐ | — | M2 | Recovery sweep loads every chunk | Sweeps by keys only |
-| ☐ | — | X9 | Recording needs the network to start | Recording starts under a local id; the row is created in the background |
-| ☐ | — | W13 | Text backups in 5 MB localStorage | Backups in IndexedDB |
+| ☑ | — | W1 | Only piece 0 carries the header | The first piece is kept on its own and sent as `init.bin`; a recording whose part 0 is lost plays from it |
+| ☑ | R1 | M3 | Piece numbers from a listing; overwrites | A counter on the device; the server names numbers already taken (with sizes): the same size counts as sent, a different one gets a new number; nothing is written over |
+| ☑ | R2 | — | A failed device read deletes the copy | A read that fails is a failure and is retried; a copy goes only after the cloud confirms |
+| ☑ | R3 | — | "In the cloud up to" can lie; live failures not retried | "Up to" is the end of the last part with no gap before it; failed parts are retried during the recording with growing pauses |
+| ☑ | R4 | W4, M1 | Memory-only pieces never retried; memory grows | One queue for device and memory parts; memory is let go once the device confirms its copy |
+| ☑ | R5, R6 | W5, M15 | Joins with missing pieces, never rebuilt | No join while parts are on a device, pending elsewhere, or missing; a late part makes the file again |
+| ☑ | R7 | M4 | No upload timeout; Stop hangs; whole-backlog reads | Time limit per upload by size; ending waits a bounded time; parts read by key range; two uploads at a time |
+| ☑ | R8 | W2 | Permanent device copy not checked | `persist()`/`persisted()` and free space checked at the start; said when the copy is not promised or space is short |
+| ☑ | R9 | M6, D11 | Session row insert not retried; updates of nothing count as saved | The row is written in the background until it lands; a save that finds no row writes the row from the page's copy |
+| ☑ | R10 | X13 | Another device ends a live recording | The recording touches its row every minute; another device closes a session only after ten minutes of silence, and never one held by a tab (Web Locks) |
+| ☑ | R11 | — | Two tabs split pieces differently | The part record is written when the part is formed; one tab holds each recording's lock |
+| ☑ | R13 | W3 | One failed storage check sends everything to Supabase | A failed check is asked again; a recording started in R2 never falls back |
+| ☑ | R14 | W10 | Delete incomplete, races uploads | Marked deleted first (nothing more goes up, the device copy goes); the cloud is cleared, and cleared again 20 s later |
+| ☑ | R17 | — | Device-copy warning vanishes | Its own state on the recording page, kept for the whole recording |
+| ☑ | R18 | W11, W12 | Same numbers, stale grants, cached failed open, cut-short tail | Counter; grants renewed before they lapse; the device store is opened again after a failure; the recorder's late last piece becomes its own part |
+| ☑ | — | M2 | Recovery sweep loads every chunk | By keys only, and one read for the last piece's time |
+| ☑ | — | X9 | Recording needs the network to start | The engine starts first; the plan check waits at most 2.5 s; the row is written in the background |
+| ☑ | — | W13 | Text backups in 5 MB localStorage | Backups in IndexedDB; older ones in localStorage still read |
+
+Tests: 15 drills, plus an API test for taken numbers; passed 3x with both
+builds (`tests/RESULTS.md`, "Set 3").
 
 ## Set 4 — Sessions, sync and the library
 

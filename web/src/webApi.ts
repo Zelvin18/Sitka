@@ -42,6 +42,7 @@ import { fixWebmDuration } from '../../src/shared/webmDuration'
 import { mediaType } from '../../src/shared/progressive'
 import { defragmentMp4, fragmentIndex, isFragmentedMp4 } from '../../src/shared/mp4'
 import { createStore, type Where } from './store'
+import { DEVICE_DATABASES, RecordingEngine, device, sniff, type Uploader } from './recorder'
 import { readRecap } from './recapRead'
 import type {
   AiStreamEvent,
@@ -644,6 +645,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // length written in, so any player, on any phone, can play it natively and
   // start within a second or two. Runs once; a second call is a no-op.
   const consolidating = new Set<string>()
+  /** recordings with a missing part, said once each */
+  const gapSaid = new Set<string>()
   const JOIN_MAX_BYTES = 700 * 1024 * 1024
   /**
    * The recording's fragment index, written beside its parts as index.json:
@@ -703,11 +706,29 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     try {
       const d = cache.get(id) ?? (await loadSession(id))
       if (!d || d.meta.whole || d.meta.readOnly || d.meta.sample) return
-      if ((await localParts(id)).length > 0) return // not all in the cloud yet
+      // Only a complete recording is joined: nothing still on this device,
+      // nothing still on its way from another, and no piece missing between
+      // the first and the last. Until then the parts play as they are, and
+      // a part that lands late gets the file made again (settle).
+      if ((await engine.localPartNos(id)).length > 0) return
+      if (d.meta.recordingPending) return
       // Joining happens in this page's memory: the parts, then the rewrite.
       // Past a certain size that is more than a browser page should hold,
       // and the parts play as a stream anyway; the join is left undone.
       const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string; size?: number }[] }))
+      const numbers = listing.objects
+        .map((f) => /^part-(\d+)\.webm$/.exec(f.name))
+        .filter((m): m is RegExpExecArray => Boolean(m))
+        .map((m) => Number(m[1]))
+        .sort((a, b) => a - b)
+      const made = await engine.partsMade(id)
+      if (numbers.some((n, i) => n !== i) || (made !== null && numbers.length < made)) {
+        if (!gapSaid.has(id)) {
+          gapSaid.add(id)
+          reportError(location.pathname, `recording not joined: parts ${numbers.join(',')} of ${made ?? '?'} in the cloud (${id})`)
+        }
+        return
+      }
       const total = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).reduce((n, f) => n + Number(f.size ?? 0), 0)
       if (total > JOIN_MAX_BYTES) {
         console.info('[sitka] recording left as parts: too large to join here', Math.round(total / 1e6), 'MB')
@@ -1214,7 +1235,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const id = e.data?.id
       if (!id) return
       // a page recording this very session keeps its copy: it is the one writing it
-      if (!recBuf.has(id)) cache.delete(id)
+      if (!engine.isLive(id)) cache.delete(id)
       allCache = null
       if (e.data.meta) emitSession(e.data.meta)
     }
@@ -1247,7 +1268,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const c = cache.get(id)
     if (c) return c
     const { data } = await sb.from('sessions').select('*').eq('id', id).single()
-    const row = (data as Row | null) ?? readBackups().find((b) => b.id === id) ?? null
+    const row = (data as Row | null) ?? (await readBackups()).find((b) => b.id === id) ?? null
     if (!row) {
       // Not mine: it may be shared with me through an organisation space.
       // That path returns transcript, notes, study and slides — never the
@@ -1278,29 +1299,34 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // Local safety net: if the database refuses a write, keep the session's text
   // (meta, transcript, chat, notes) in this browser so it still shows up.
   const BACKUP_PREFIX = 'sitka-backup-'
+  // A session's text, kept on this device when the database could not be
+  // written: in IndexedDB (room for a long lecture's transcript), with
+  // localStorage only as the last resort. Older backups in localStorage are
+  // still read.
   function backupSession(id: string): void {
     const d = cache.get(id)
     if (!d) return
-    try {
-      localStorage.setItem(
-        BACKUP_PREFIX + id,
-        JSON.stringify({
-          id,
-          meta: d.meta,
-          transcript: d.segments,
-          chat: d.chat,
-          notes: d.notes,
-          study: d.study,
-          marks: d.marks,
-          report: d.report,
-          thumb: null
-        })
-      )
-    } catch {
-      /* storage full — nothing more we can do locally */
+    const row = {
+      id,
+      meta: d.meta,
+      transcript: d.segments,
+      chat: d.chat,
+      notes: d.notes,
+      study: d.study,
+      marks: d.marks,
+      report: d.report,
+      thumb: null
     }
+    void device.putBackup(row).then((kept) => {
+      if (kept) return
+      try {
+        localStorage.setItem(BACKUP_PREFIX + id, JSON.stringify(row))
+      } catch {
+        /* storage full — nothing more we can do locally */
+      }
+    })
   }
-  function readBackups(): Row[] {
+  async function readBackups(): Promise<Row[]> {
     const out: Row[] = []
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -1312,7 +1338,18 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     } catch {
       /* ignore */
     }
+    const kept = await device.getBackups<Row>().catch(() => [] as Row[])
+    const seen = new Set(out.filter(Boolean).map((r) => r.id))
+    for (const r of kept) if (r && !seen.has(r.id)) out.push(r)
     return out.filter(Boolean)
+  }
+  function dropBackup(id: string): void {
+    try {
+      localStorage.removeItem(BACKUP_PREFIX + id)
+    } catch {
+      /* ignore */
+    }
+    void device.deleteBackup(id)
   }
 
   // A phone changing from Wi-Fi to data, or a lift, drops requests for a few
@@ -1325,18 +1362,66 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   const dropAllCache = (): void => {
     allCache = null
   }
+  /** sessions this page created: a save that finds no row writes the row instead */
+  const createdHere = new Set<string>()
+  /** the first write of a session's row, still under way */
+  const rowReady = new Map<string, Promise<boolean>>()
+  /**
+   * The session's whole row, from this page's copy: its first write, and the
+   * one a later save makes when it finds the first never landed. Tried again
+   * until it lands; the text is kept on this device meanwhile.
+   */
+  async function insertRow(id: string): Promise<boolean> {
+    const delays = [0, 1500, 4000, 10000, 30000]
+    let lastError = ''
+    for (const d of delays) {
+      if (d) await wait(d)
+      const c = cache.get(id)
+      if (!c) return false
+      const { error } = await sb.from('sessions').insert({
+        id,
+        owner: user.id,
+        meta: c.meta,
+        transcript: c.segments,
+        chat: c.chat,
+        notes: c.notes,
+        study: c.study,
+        marks: c.marks,
+        report: c.report,
+        ...(c.meta.spaceId ? { space_id: c.meta.spaceId } : {})
+      })
+      if (!error || /duplicate|already exists|23505/i.test(error.message)) return true
+      lastError = error.message
+      if (!isNetworkError(lastError)) break
+    }
+    storageProblem(lastError)
+    backupSession(id)
+    return false
+  }
   async function patchSession(id: string, patch: Record<string, unknown>): Promise<void> {
     dropAllCache()
+    // a row still being written for the first time is waited for (briefly)
+    const first = rowReady.get(id)
+    if (first) await Promise.race([first, wait(5000)])
     const delays = [0, 1200, 3000, 7000]
     let lastError = ''
     for (const d of delays) {
       if (d) await wait(d)
       try {
-        const { error } = await sb
+        const { data, error } = await sb
           .from('sessions')
           .update({ ...patch, updated_at: new Date().toISOString() })
           .eq('id', id)
-        if (!error) return
+          .select('id')
+        if (!error) {
+          // A save that matched no row saved nothing. For a session made on
+          // this page, that means its first write never landed: the whole row
+          // is written now from this page's copy.
+          if ((data?.length ?? 0) > 0 || !createdHere.has(id)) return
+          if (await insertRow(id)) return
+          lastError = 'the session row could not be written'
+          break
+        }
         lastError = error.message
         if (!isNetworkError(lastError)) break
       } catch (err) {
@@ -1348,124 +1433,24 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     backupSession(id)
   }
 
-  // ---------- the recording never leaves the device until the cloud has it ----------
-  // Every chunk the recorder produces is written to IndexedDB first. Chunks are
-  // grouped into ~8MB parts that upload in order during the recording; a part
-  // is only forgotten locally once the cloud confirms it. Anything that fails
-  // (offline, a closed tab, a storage error) retries on its own, and a session
-  // cut off mid-way is recovered on the next visit.
-  interface LocalChunk {
-    sessionId: string
-    seq: number
-    at: number
-    buf: ArrayBuffer
-  }
-  interface LocalPart {
-    sessionId: string
-    partNo: number
-    fromSeq: number
-    toSeq: number
-  }
-  const DB_NAME = 'sitka-recordings'
-  let dbPromise: Promise<IDBDatabase | null> | null = null
-  function openDb(): Promise<IDBDatabase | null> {
-    if (dbPromise) return dbPromise
-    dbPromise = new Promise((resolve) => {
-      try {
-        const req = indexedDB.open(DB_NAME, 1)
-        req.onupgradeneeded = () => {
-          const db = req.result
-          db.createObjectStore('chunks', { keyPath: ['sessionId', 'seq'] }).createIndex('bySession', 'sessionId')
-          db.createObjectStore('parts', { keyPath: ['sessionId', 'partNo'] }).createIndex('bySession', 'sessionId')
-        }
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => resolve(null)
-        req.onblocked = () => resolve(null)
-      } catch {
-        resolve(null)
-      }
-    })
-    return dbPromise
-  }
-  async function idb<T>(
-    store: 'chunks' | 'parts',
-    mode: IDBTransactionMode,
-    run: (s: IDBObjectStore) => IDBRequest<T> | void
-  ): Promise<T | undefined> {
-    const db = await openDb()
-    if (!db) return undefined
-    return new Promise((resolve) => {
-      try {
-        const tx = db.transaction(store, mode)
-        const req = run(tx.objectStore(store))
-        let out: T | undefined
-        if (req) req.onsuccess = () => (out = req.result)
-        tx.oncomplete = () => resolve(out)
-        tx.onerror = () => resolve(undefined)
-        tx.onabort = () => resolve(undefined)
-      } catch {
-        resolve(undefined)
-      }
-    })
-  }
-  const localChunks = async (sessionId: string): Promise<LocalChunk[]> =>
-    ((await idb<LocalChunk[]>('chunks', 'readonly', (s) => s.index('bySession').getAll(sessionId))) ?? []).sort(
-      (a, b) => a.seq - b.seq
-    )
-  const localParts = async (sessionId: string): Promise<LocalPart[]> =>
-    ((await idb<LocalPart[]>('parts', 'readonly', (s) => s.index('bySession').getAll(sessionId))) ?? []).sort(
-      (a, b) => a.partNo - b.partNo
-    )
-  const allLocalParts = async (): Promise<LocalPart[]> =>
-    (await idb<LocalPart[]>('parts', 'readonly', (s) => s.getAll())) ?? []
-  async function forgetPart(p: LocalPart): Promise<void> {
-    await idb('chunks', 'readwrite', (s) => {
-      s.delete(IDBKeyRange.bound([p.sessionId, p.fromSeq], [p.sessionId, p.toSeq]))
-    })
-    await idb('parts', 'readwrite', (s) => {
-      s.delete([p.sessionId, p.partNo])
-    })
-  }
-  async function forgetSession(sessionId: string): Promise<void> {
-    await idb('chunks', 'readwrite', (s) => {
-      s.delete(IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]))
-    })
-    await idb('parts', 'readwrite', (s) => {
-      s.delete(IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]))
-    })
-  }
-
-  interface RecBuf {
-    parts: number
-    seq: number
-    chunks: { seq: number; buf: ArrayBuffer }[]
-    bytes: number
-    thumbDone: boolean
-    chain: Promise<void>
-    /** 'video/mp4' or 'video/webm', read off the first chunk */
-    kind?: string
-  }
-  const recBuf = new Map<string, RecBuf>()
-  // A piece goes up about every twenty seconds of video: at most that much is
-  // ever only on the device, and a slow connection sends small things well.
-  const PART_BYTES = 3 * 1024 * 1024
-  let recordingState: { id: string; startedAt: number } | null = null
-  /** parts whose data lives only in memory because IndexedDB was unavailable */
-  const memParts = new Map<string, ArrayBuffer[]>()
+  // ---------- the recording: every piece reaches the cloud, or stays here until it does ----------
+  // The engine (recorder.ts) keeps each piece on this device the moment it is
+  // made, forms parts by a counter, sends them with retries and time limits,
+  // and says truthfully how far the recording is up. This page gives it the
+  // way to the cloud and turns what it says into what people see.
   /** sessions whose upload has failed at least once since it last succeeded */
   const uploadTrouble = new Set<string>()
   /** the cloud's last word on a failed upload, per session, for the page to show */
   const lastUploadError = new Map<string, string>()
+  let recordingState: { id: string; startedAt: number } | null = null
 
-  // ---- upload links, issued once for the whole recording ----
-  // A recording asks for its links at the start — one per piece, for the
-  // next hour or so — and then sends every piece straight to storage with
-  // them. Asking permission before each piece was a door that could close
-  // mid-session (it did, for forty-five minutes); with the links in hand,
-  // nothing between the recorder and the cloud can hold it back.
+  // ---- upload links, issued a batch at a time ----
+  // A recording asks for its links at the start, one per piece, and sends
+  // every piece straight to storage with them. The server also names any
+  // number the cloud already holds, which is never written over.
   // the server gives at most 60 at a time (links for three hours); the next batch is asked for with 30 still in hand
   const GRANT_COUNT = 60
-  const grants = new Map<string, { links: Map<number, string>; top: number; until: number }>()
+  const grants = new Map<string, { links: Map<number, string>; taken: Map<number, number>; top: number; until: number }>()
   const granting = new Map<string, Promise<void>>()
   async function askGrant(sessionId: string, from: number): Promise<void> {
     const running = granting.get(sessionId)
@@ -1476,54 +1461,38 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         lastUploadError.set(sessionId, `upload links not issued: ${g.error}`)
         return
       }
-      const cur = grants.get(sessionId) ?? { links: new Map<number, string>(), top: -1, until: 0 }
+      const cur = grants.get(sessionId) ?? { links: new Map<number, string>(), taken: new Map<number, number>(), top: -1, until: 0 }
       for (const l of g.links) cur.links.set(l.n, l.url)
-      cur.top = Math.max(cur.top, ...g.links.map((l) => l.n))
+      for (const t of g.taken) cur.taken.set(t.n, t.size)
+      cur.top = Math.max(cur.top, ...g.links.map((l) => l.n), ...g.taken.map((t) => t.n))
       cur.until = g.expiresAt
       grants.set(sessionId, cur)
     })().finally(() => granting.delete(sessionId))
     granting.set(sessionId, run)
     return run
   }
-  /** The link for one piece: from the grant in hand, asking for more when it runs low or runs out. */
-  async function linkFor(sessionId: string, partNo: number): Promise<string | null> {
+  /** The link for one piece, or word that its number is taken (with the size there). */
+  async function linkFor(sessionId: string, partNo: number): Promise<{ url: string } | { taken: number } | null> {
     let g = grants.get(sessionId)
     // ten minutes' margin on the links' three hours: a link is never used at its last second
     if (g && g.until - Date.now() < 600000) {
       grants.delete(sessionId)
       g = undefined
     }
-    if (!g || !g.links.has(partNo)) {
+    if (!g || (!g.links.has(partNo) && !g.taken.has(partNo))) {
       await askGrant(sessionId, partNo)
       g = grants.get(sessionId)
     }
     // running low: the next batch is fetched ahead, while this one still serves
     if (g && g.top - partNo < 30) void askGrant(sessionId, g.top + 1)
-    return g?.links.get(partNo) ?? null
+    if (g?.taken.has(partNo)) return { taken: g.taken.get(partNo) ?? -1 }
+    const url = g?.links.get(partNo)
+    return url ? { url } : null
   }
-  /** The safety copy on this device may not be thrown away by the browser to make room. */
-  async function keepDeviceCopy(): Promise<void> {
-    try {
-      if (navigator.storage?.persisted && (await navigator.storage.persisted())) return
-      await navigator.storage?.persist?.()
-    } catch {
-      /* an older browser: the copy is kept as before */
-    }
-  }
-  /** sessions already told that this device could not keep a copy (said once) */
-  const deviceCopyWarned = new Set<string>()
   /** said on the recording page, while it can still be acted on */
   const sayUploadTrouble = (sessionId: string, error: string): void => {
     window.dispatchEvent(new CustomEvent('sitka:upload-trouble', { detail: { sessionId, error } }))
   }
-  // Closing the tab while a recording is still going up would strand the last
-  // parts on this device. The browser asks first, the way it does mid-session.
-  window.addEventListener('beforeunload', (e) => {
-    if (recordingState || memParts.size > 0) {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-  })
 
   function videoPath(id: string): string {
     return `${user.id}/${id}.webm`
@@ -1531,151 +1500,140 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   function partPath(id: string, n: number): string {
     return `${user.id}/${id}/part-${String(n).padStart(4, '0')}.webm`
   }
-  const partKey = (id: string, n: number): string => `${id}:${n}`
-
-  /** Upload one part from local storage (or memory). True once the cloud has it. */
-  async function uploadPart(p: LocalPart): Promise<boolean> {
-    const chunks = (await localChunks(p.sessionId)).filter((c) => c.seq >= p.fromSeq && c.seq <= p.toSeq)
-    // The device's store and this page's memory both hold the part; whichever
-    // is complete is sent. A store that kept the first chunk but lost the
-    // rest (a write that failed quietly) must never send a header alone.
-    const mem = memParts.get(partKey(p.sessionId, p.partNo)) ?? []
-    const expected = p.toSeq - p.fromSeq + 1
-    let bufs: ArrayBuffer[]
-    if (chunks.length >= expected) bufs = chunks.map((c) => c.buf)
-    else if (mem.length >= chunks.length) bufs = mem
-    else bufs = chunks.map((c) => c.buf)
-    if (chunks.length > 0 && chunks.length < expected) {
-      reportError(location.pathname, `part ${p.partNo} of ${p.sessionId}: the device's store held ${chunks.length} of ${expected} chunks; sent ${bufs === mem ? 'from memory' : 'what it had'}`)
-    }
-    if (bufs.length === 0) {
-      await forgetPart(p) // nothing to send: the record is stale
-      return true
-    }
-    // labelled by what the recording is (MP4 or WebM): phones refuse a file
-    // whose label lies about its format. Only the first part carries the
-    // header, so the session remembers the kind for the rest.
-    const sniffed = mediaType(new Uint8Array(bufs[0].slice(0, 12)))
-    const kind =
-      sniffed !== 'application/octet-stream'
-        ? sniffed
-        : recBuf.get(p.sessionId)?.kind ??
-          cache.get(p.sessionId)?.meta.mime ??
-          (await loadSession(p.sessionId))?.meta.mime ??
-          'video/webm'
-    const blob = new Blob(bufs, { type: kind })
-    // With a link issued at the start, the piece goes straight up; a link
-    // past its time is replaced once. Only a deployment without the
-    // recording store, or a grant that could not be had, asks piece by piece.
-    let error: string | undefined
-    const url = (await store.ready()) ? await linkFor(p.sessionId, p.partNo) : null
-    if (url) {
-      let sent = await store.putTo(url, blob, kind)
-      if ('error' in sent && sent.expired) {
-        grants.delete(p.sessionId)
-        const fresh = await linkFor(p.sessionId, p.partNo)
-        sent = fresh ? await store.putTo(fresh, blob, kind) : sent
-      }
-      if ('error' in sent) error = sent.error
-    } else {
-      error = (await store.upload(partPath(p.sessionId, p.partNo), blob, kind)).error
-    }
-    if (error) {
-      console.error('Sitca: part upload failed', p.sessionId, p.partNo, error)
-      // the recorder, if it is on screen, says so while there is still time to act
-      window.dispatchEvent(new CustomEvent('sitka:upload-trouble', { detail: { sessionId: p.sessionId, error } }))
-      lastUploadError.set(p.sessionId, error.slice(0, 160))
-      // said once per session, so a blocked network shows up in the operations view
-      if (!uploadTrouble.has(p.sessionId)) {
-        uploadTrouble.add(p.sessionId)
-        track('upload_error', { reason: error.slice(0, 120), part: p.partNo })
-        reportError(location.pathname, 'Recording upload failed: ' + error)
-      }
-      return false
-    }
-    uploadTrouble.delete(p.sessionId)
-    window.dispatchEvent(new CustomEvent('sitka:upload-ok', { detail: { sessionId: p.sessionId, partNo: p.partNo } }))
-    const b = recBuf.get(p.sessionId)
-    if (p.partNo === 0 && (!b || !b.thumbDone)) {
-      if (b) b.thumbDone = true
-      const thumb = await makeThumb(blob)
-      if (thumb) await patchSession(p.sessionId, { thumb })
-    }
-    memParts.delete(partKey(p.sessionId, p.partNo))
-    await forgetPart(p)
-    return true
-  }
-
-  function flushPart(id: string, force: boolean): void {
-    const b = recBuf.get(id)
-    if (!b || b.chunks.length === 0) return
-    if (!force && b.bytes < PART_BYTES) return
-    const chunks = b.chunks
-    const partNo = b.parts
-    const part: LocalPart = { sessionId: id, partNo, fromSeq: chunks[0].seq, toSeq: chunks[chunks.length - 1].seq }
-    b.chunks = []
-    b.bytes = 0
-    b.parts++
-    memParts.set(partKey(id, partNo), chunks.map((c) => c.buf))
-    b.chain = b.chain.then(async () => {
-      await idb('parts', 'readwrite', (s) => {
-        s.put(part)
-      })
-      const ok = await uploadPart(part).catch(() => false)
-      if (!ok) schedulePendingUploads()
-    })
-  }
-
-  // ---- retry anything the cloud does not have yet ----
-  let pendingTimer: number | null = null
-  let pendingBusy = false
-  function schedulePendingUploads(delayMs = 20000): void {
-    if (pendingTimer !== null) return
-    pendingTimer = window.setTimeout(() => {
-      pendingTimer = null
-      void retryPendingUploads()
-    }, delayMs)
-  }
-  /** Returns how many parts are still waiting. */
-  async function retryPendingUploads(onlySession?: string): Promise<number> {
-    if (pendingBusy) return -1
-    pendingBusy = true
-    let left = 0
-    try {
-      const parts = (await allLocalParts()).filter((p) => !onlySession || p.sessionId === onlySession)
-      const active = recordingState?.id
-      for (const p of parts) {
-        // the live recording's own chain handles its parts; only retry finished ones,
-        // and never touch a session another tab is recording right now
-        if (p.sessionId === active || liveInAnotherTab(p.sessionId)) continue
-        const ok = navigator.onLine ? await uploadPart(p).catch(() => false) : false
-        if (!ok) left++
-      }
-      // sessions that were waiting on uploads: tell them when they are complete
-      const done = new Set(parts.map((p) => p.sessionId))
-      for (const sid of done) {
-        if (sid === active) continue
-        const remaining = (await localParts(sid)).length
-        const d = cache.get(sid) ?? (await loadSession(sid))
-        if (d && !d.meta.readOnly && Boolean(d.meta.recordingPending) !== remaining > 0) {
-          d.meta.recordingPending = remaining > 0 ? true : undefined
-          if (!remaining) delete d.meta.recordingPending
-          await patchSession(sid, { meta: d.meta })
-          emitSession(d.meta)
-        }
-      }
-    } finally {
-      pendingBusy = false
-    }
-    if (left > 0) schedulePendingUploads(60000)
-    return left
-  }
-  window.addEventListener('online', () => schedulePendingUploads(1500))
 
   /**
-   * A session left in "recording" by a closed tab or a crash: close it out
-   * from what the device kept, then upload and analyse it like any other.
+   * Where a session's recording goes. Fixed when it starts: a recording begun
+   * in the recording store never falls back to the older one because one
+   * check failed (null: the store could not be reached, the piece waits).
    */
+  async function storeFor(sessionId: string): Promise<Where | null> {
+    const m = cache.get(sessionId)?.meta ?? (await loadSession(sessionId))?.meta
+    if (m?.store === 'r2') return (await store.ready()) ? 'r2' : null
+    if (m?.store === 'sb') return 'sb'
+    return (await store.ready()) ? 'r2' : 'sb'
+  }
+
+  const recUploader: Uploader = {
+    async put(sessionId, partNo, blob, kind, signal) {
+      const where = await storeFor(sessionId)
+      if (!where) return { error: 'The recording store could not be reached. The piece waits on this device.' }
+      if (where === 'sb') {
+        const r = await store.upload(partPath(sessionId, partNo), blob, kind, { noOverwrite: true, signal })
+        if (r.taken) return { error: 'already there', taken: r.taken }
+        return r.error ? { error: r.error } : { ok: true }
+      }
+      const link = await linkFor(sessionId, partNo)
+      if (link && 'taken' in link) return { error: 'already there', taken: { size: link.taken } }
+      if (!link) return { error: lastUploadError.get(sessionId) ?? 'Upload links could not be issued yet.' }
+      let sent = await store.putTo(link.url, blob, kind, signal)
+      if ('error' in sent && sent.expired) {
+        grants.delete(sessionId)
+        const fresh = await linkFor(sessionId, partNo)
+        if (fresh && 'taken' in fresh) return { error: 'already there', taken: { size: fresh.taken } }
+        sent = fresh ? await store.putTo(fresh.url, blob, kind, signal) : sent
+      }
+      return 'error' in sent ? { error: sent.error } : { ok: true }
+    },
+    async putHeader(sessionId, blob, kind, signal) {
+      const r = await store.upload(`${user.id}/${sessionId}/init.bin`, blob, kind, { signal })
+      return r.error ? { error: r.error } : { ok: true }
+    },
+    async cloudParts(sessionId) {
+      const where = await storeFor(sessionId)
+      if (!where) return null
+      const objs = await store.listStrict(`${user.id}/${sessionId}`, where)
+      if (!objs) return null
+      const out: number[] = []
+      for (const o of objs) {
+        const m = /^part-(\d+)\.webm$/.exec(o.name)
+        if (m) out.push(Number(m[1]))
+      }
+      return out
+    }
+  }
+
+  const engine = new RecordingEngine({
+    uploader: recUploader,
+    events: {
+      uploaded: ({ sessionId, partNo, upToMs }) => {
+        uploadTrouble.delete(sessionId)
+        // "up to": the end of the last piece with nothing missing before it
+        window.dispatchEvent(new CustomEvent('sitka:upload-ok', { detail: { sessionId, partNo, upToMs } }))
+        if (partNo === 0) void thumbFromHeader(sessionId)
+        if (!engine.isLive(sessionId)) void settle(sessionId)
+      },
+      trouble: ({ sessionId, error }) => {
+        console.error('Sitca: part upload failed', sessionId, error)
+        lastUploadError.set(sessionId, error.slice(0, 160))
+        sayUploadTrouble(sessionId, error)
+        // said once per session, so a blocked network shows up in the operations view
+        if (!uploadTrouble.has(sessionId)) {
+          uploadTrouble.add(sessionId)
+          track('upload_error', { reason: error.slice(0, 120) })
+          reportError(location.pathname, 'Recording upload failed: ' + error)
+        }
+      },
+      // whether this device can keep the safety copy: its own state, never
+      // wiped by a piece going up (the page keeps it until the recording ends)
+      deviceCopy: (d) => window.dispatchEvent(new CustomEvent('sitka:device-copy', { detail: d })),
+      report: (m) => reportError(location.pathname, m)
+    }
+  })
+
+  // Closing the tab while a recording is still going up would strand the last
+  // parts on this device. The browser asks first, the way it does mid-session.
+  window.addEventListener('beforeunload', (e) => {
+    if (recordingState || engine.busy()) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+  })
+
+  /** The session's picture, from the recording's first seconds (kept on this device as its header). */
+  async function thumbFromHeader(sessionId: string): Promise<void> {
+    const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+    if (!d || d.meta.audioOnly || d.meta.readOnly || d.meta.sample) return
+    const { data } = await sb.from('sessions').select('thumb').eq('id', sessionId).maybeSingle()
+    if ((data as { thumb?: string | null } | null)?.thumb) return
+    const h = await engine.header(sessionId)
+    if (!h) return
+    const thumb = await makeThumb(new Blob([h.buf], { type: h.kind }))
+    if (thumb) await patchSession(sessionId, { thumb })
+  }
+
+  /**
+   * A session no longer recording here whose parts have gone up: its row says
+   * so, and the whole file is made (again, when a late part has just landed).
+   */
+  const settling = new Set<string>()
+  async function settle(sessionId: string): Promise<void> {
+    if (settling.has(sessionId) || engine.isLive(sessionId)) return
+    settling.add(sessionId)
+    try {
+      if ((await engine.pending(sessionId)) > 0) return
+      const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+      if (!d || d.meta.readOnly || d.meta.sample || d.meta.status === 'recording') return
+      if (d.meta.recordingPending || d.meta.uploadError) {
+        delete d.meta.recordingPending
+        delete d.meta.uploadError
+        await patchSession(sessionId, { meta: d.meta })
+        emitSession(d.meta)
+        tellOthers(sessionId, d.meta)
+      }
+      if (!d.meta.whole) void consolidateRecording(sessionId).then(() => speakersQuietly(sessionId))
+    } finally {
+      settling.delete(sessionId)
+    }
+  }
+
+  /** Everything this device holds that the cloud lacks, sent again. Returns what is left of one session. */
+  async function retryPendingUploads(onlySession?: string): Promise<number> {
+    const touched = await engine.resume()
+    for (const sid of touched) if (!onlySession || sid === onlySession) void engine.waitFor(sid, 120000).then(() => settle(sid))
+    return onlySession ? engine.pending(onlySession) : 0
+  }
+  window.addEventListener('online', () => void retryPendingUploads())
+
   /** True while another tab of this browser is recording this session. */
   function liveInAnotherTab(sessionId: string): boolean {
     try {
@@ -1689,52 +1647,58 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  // ---- a recording in progress says so every minute ----
+  // Another device closes a session left "recording" only after ten minutes
+  // of silence from it. The recording page touches its row every minute, so
+  // a quiet stretch of a lecture is never mistaken for a crash.
+  const beats = new Map<string, number>()
+  function startBeat(sessionId: string): void {
+    if (beats.has(sessionId)) return
+    beats.set(
+      sessionId,
+      window.setInterval(() => {
+        if (!engine.isLive(sessionId)) {
+          window.clearInterval(beats.get(sessionId))
+          beats.delete(sessionId)
+          return
+        }
+        void sb.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId).then(() => undefined, () => undefined)
+      }, 60000)
+    )
+  }
+  const SILENT_BEFORE_CLOSING = 10 * 60000
+
+  /**
+   * A session left in "recording" by a closed tab or a crash: close it out
+   * from what the device kept, then upload and analyse it like any other.
+   */
   async function recoverInterrupted(): Promise<void> {
     try {
       const rows = await allSessions()
       for (const r of rows) {
-        if (r.meta.status !== 'recording' || r.id === recordingState?.id) continue
-        // one this very page is recording right now (its heartbeat may not be up yet)
-        if (recBuf.has(r.id)) continue
+        if (r.meta.status !== 'recording' || r.id === recordingState?.id || engine.isLive(r.id)) continue
         // A session that is live in another tab is not interrupted. Recovering
         // it from here once wrote its last minutes over its first ones and
         // called it finished while it was still going.
-        if (liveInAnotherTab(r.id)) continue
+        if (liveInAnotherTab(r.id) || (await engine.heldElsewhere(r.id))) continue
         // Live somewhere this page cannot see (the extension's engine, another
-        // device): its row is written every few seconds while it records, so
-        // a row touched in the last two minutes is left alone.
+        // device): its row is touched every minute while it records, so only
+        // ten minutes of silence count as a recording that stopped.
         const touched = r.updated_at ? Date.now() - new Date(r.updated_at).getTime() : Infinity
-        if (touched < 120000) continue
-        const chunks = await localChunks(r.id)
-        const lastAt = chunks.length ? chunks[chunks.length - 1].at : 0
+        if (touched < SILENT_BEFORE_CLOSING) continue
+        const last = await device.lastChunk(r.id)
+        const lastAt = last.ok && last.value ? last.value.at : 0
         if (lastAt && Date.now() - lastAt < 90000) continue // still being written to
-        const parts = await localParts(r.id)
-        // chunks that never made it into a part become the final part —
-        // numbered after everything the cloud already holds, never over it
-        const covered = new Set<number>()
-        for (const p of parts) for (let s = p.fromSeq; s <= p.toSeq; s++) covered.add(s)
-        const loose = chunks.filter((c) => !covered.has(c.seq))
-        if (loose.length > 0) {
-          let maxNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) : -1
-          const listing = await store.list(`${user.id}/${r.id}`)
-          for (const f of listing.objects) {
-            const m = /^part-(\d+)\.webm$/.exec(f.name)
-            if (m) maxNo = Math.max(maxNo, Number(m[1]))
-          }
-          const partNo = maxNo + 1
-          await idb('parts', 'readwrite', (s) => {
-            s.put({ sessionId: r.id, partNo, fromSeq: loose[0].seq, toSeq: loose[loose.length - 1].seq } as LocalPart)
-          })
-        }
         const d = await loadSession(r.id)
         if (!d) continue
         d.meta.status = 'complete'
         if (!d.meta.durationMs || d.meta.durationMs <= 0) {
           d.meta.durationMs = lastAt > d.meta.createdAt ? lastAt - d.meta.createdAt : 0
         }
-        // pending only when this device still holds parts the cloud lacks;
-        // a session whose every part had landed is simply complete
-        if ((await localParts(r.id)).length > 0) d.meta.recordingPending = true
+        // pieces that never became a part become one, numbered after all the rest
+        await engine.sweepLoose(90000)
+        // pending only when this device still holds parts the cloud lacks
+        if ((await engine.pending(r.id)) > 0) d.meta.recordingPending = true
         else delete d.meta.recordingPending
         await patchSession(r.id, { meta: d.meta })
         emitSession(d.meta)
@@ -1747,13 +1711,6 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
-  /**
-   * Chunks on this device that never became a part, for sessions no longer
-   * marked as recording: a session closed out from another page (a laptop
-   * tab, a phone) while this page, the one that recorded it, was gone. The
-   * row says complete, so the loop above never looks; the film is still
-   * here. It goes up as one more part, and the whole file is made again.
-   */
   /**
    * Sessions that finished but never got their summary: the newest few are
    * written up quietly in the background. A page that was closed before the
@@ -1781,40 +1738,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     }
   }
 
+  /**
+   * Pieces on this device that never became a part, for sessions no longer
+   * recording here: they go up as one more part, and the whole file is made
+   * again. Found by the device's keys alone (no recording bytes are read).
+   */
   async function sweepLooseChunks(): Promise<void> {
-    const all = (await idb<LocalChunk[]>('chunks', 'readonly', (s) => s.getAll())) ?? []
-    const bySession = new Map<string, LocalChunk[]>()
-    for (const c of all) {
-      const list = bySession.get(c.sessionId) ?? []
-      list.push(c)
-      bySession.set(c.sessionId, list)
-    }
-    for (const [sid, chunks] of bySession) {
-      if (recBuf.has(sid) || sid === recordingState?.id || liveInAnotherTab(sid)) continue
-      chunks.sort((a, b) => a.seq - b.seq)
-      if (Date.now() - chunks[chunks.length - 1].at < 90000) continue
-      const parts = await localParts(sid)
-      const covered = new Set<number>()
-      for (const p of parts) for (let q = p.fromSeq; q <= p.toSeq; q++) covered.add(q)
-      const loose = chunks.filter((c) => !covered.has(c.seq))
-      if (loose.length === 0) continue
+    for (const sid of await engine.sweepLoose(90000)) {
       const d = cache.get(sid) ?? (await loadSession(sid))
       if (!d || d.meta.status === 'recording' || d.meta.readOnly || d.meta.sample) continue
-      let maxNo = parts.length ? Math.max(...parts.map((p) => p.partNo)) : -1
-      const listing = await store.list(`${user.id}/${sid}`).catch(() => ({ objects: [] as { name: string }[] }))
-      for (const f of listing.objects) {
-        const m = /^part-(\d+)\.webm$/.exec(f.name)
-        if (m) maxNo = Math.max(maxNo, Number(m[1]))
-      }
-      const partNo = maxNo + 1
-      await idb('parts', 'readwrite', (st) => {
-        st.put({ sessionId: sid, partNo, fromSeq: loose[0].seq, toSeq: loose[loose.length - 1].seq } as LocalPart)
-      })
-      reportError(location.pathname, `loose recording pieces found for ${sid}: ${loose.length} chunks become part ${partNo}`)
-      if (d.meta.whole) {
-        d.meta.whole = false
-        await patchSession(sid, { meta: d.meta })
-      }
+      d.meta.whole = false
       d.meta.recordingPending = true
       await patchSession(sid, { meta: d.meta })
     }
@@ -2841,16 +2774,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const rows = ((data as Row[]) || []).slice()
     // merge local backups the database never received; drop ones it now has
     const have = new Set(rows.map((r) => r.id))
-    for (const b of readBackups()) {
-      if (have.has(b.id)) {
-        try {
-          localStorage.removeItem(BACKUP_PREFIX + b.id)
-        } catch {
-          /* ignore */
-        }
-      } else {
-        rows.push(b)
-      }
+    for (const b of await readBackups()) {
+      if (have.has(b.id)) dropBackup(b.id)
+      else rows.push(b)
     }
     allCache = { at: Date.now(), rows }
     return rows
@@ -3004,7 +2930,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       try {
         localStorage.clear()
         sessionStorage.clear()
-        indexedDB.deleteDatabase(DB_NAME)
+        for (const name of DEVICE_DATABASES) indexedDB.deleteDatabase(name)
       } catch {
         /* ignore */
       }
@@ -3266,8 +3192,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     createSession: async (title, kind, hosted, agenda, eventId, space, audioOnly, spaceId) => {
-      // the plan's month: a session past its hours or its storage does not begin
-      const u = await myUsage().catch(() => null)
+      // the plan's month: a session past its hours or its storage does not
+      // begin. Asked, but a slow or absent network never holds the start up.
+      const u = await Promise.race([myUsage().catch(() => null), sleep(2500).then(() => null)])
       // the page draws a card from these, with what to do; the words are for anywhere that only shows text
       if (u && overPlanLimit(u, 'hours')) throw Object.assign(new Error(limitMessage(u, 'hours')), { limit: 'hours', usage: u })
       if (u && overPlanLimit(u, 'storage')) throw Object.assign(new Error(limitMessage(u, 'storage')), { limit: 'storage', usage: u })
@@ -3287,16 +3214,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         spaceId: spaceId || undefined,
         recordedOn: whereThisIs()
       }
-      const { error } = await sb.from('sessions').insert({
-        id: meta.id,
-        owner: user.id,
-        meta,
-        transcript: [],
-        chat: [],
-        marks: [],
-        ...(spaceId ? { space_id: spaceId } : {})
-      })
-      if (error) storageProblem(error.message)
+      // where the recording goes, fixed for the session: the recording store
+      // when this deployment has one (asked briefly; unknown leaves it to the upload)
+      if (await Promise.race([store.ready(), sleep(1500).then(() => false)])) meta.store = 'r2'
       cache.set(meta.id, {
         meta,
         segments: [],
@@ -3306,21 +3226,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         marks: [],
         report: null
       })
-      if (error) backupSession(meta.id)
-      recBuf.set(meta.id, {
-        parts: 0,
-        seq: 0,
-        chunks: [],
-        bytes: 0,
-        thumbDone: false,
-        chain: Promise.resolve()
-      })
-      // Before the first piece exists: the device may keep its safety copy
-      // for good, and the links for the recording's pieces are in hand, so
-      // the first piece goes up the moment it is made.
-      void keepDeviceCopy()
+      // The recording is safe from its first piece, whatever the network is
+      // doing; the row is written in the background, and again until it is.
+      await engine.begin(meta.id, meta.createdAt)
+      createdHere.add(meta.id)
+      rowReady.set(meta.id, insertRow(meta.id))
+      startBeat(meta.id)
+      // the links for the recording's pieces, in hand before the first piece is made
       void (async () => {
-        if (!(await store.ready())) return
+        if (meta.store !== 'r2' && !(await store.ready())) return
         await askGrant(meta.id, 0)
         if (!grants.get(meta.id)) sayUploadTrouble(meta.id, lastUploadError.get(meta.id) ?? 'Upload links could not be issued yet.')
       })()
@@ -3388,7 +3302,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       if (error) storageProblem(error.message)
       const rows = ((data as { id: string; meta: SessionMeta }[]) || []).map((r) => r.meta)
       const have = new Set(rows.map((m) => m.id))
-      for (const b of readBackups()) if (!have.has(b.id)) rows.push(b.meta)
+      for (const b of await readBackups()) if (!have.has(b.id)) rows.push(b.meta)
       // one old-style banner moves out per listing; the rest follow on later listings
       const old = rows.find((m) => m.banner && m.banner.startsWith('data:'))
       if (old) moveBannerOut(old)
@@ -3438,6 +3352,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         savedOwners.delete(id)
         return
       }
+      // First, the recording is marked deleted on this device: no piece of it
+      // goes up from now on, and its device copy is cleared.
+      await engine.forget(id)
       // A hosted event's recap dies with its session: the page closes and the
       // public copy of the recording, if one was made, is removed. The parts
       // below go too, so the recap's own player has nothing left to read.
@@ -3455,23 +3372,27 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       await sb.from('recaps').delete().eq('id', id).eq('owner', user.id).then(() => undefined, () => undefined)
       await sb.from('sessions').delete().eq('id', id)
       cache.delete(id)
-      await forgetSession(id)
       await sb.storage.from('stage').remove([bannerPath(id)]).catch(() => undefined)
       // A session started before the move to Cloudflare can have left files in
       // both stores. Clear both, so nothing survives its session and keeps
       // costing: the parts, the whole file, and the frames read off the screen.
-      for (const where of ['r2', 'sb'] as Where[]) {
-        const parts = await store.listIn(`${user.id}/${id}`, where)
-        const slides = await store.listIn(`${user.id}/${id}-slides`, where)
-        await store.remove(
-          [
-            ...parts.map((f) => `${user.id}/${id}/${f.name}`),
-            ...slides.map((f) => `${user.id}/${id}-slides/${f.name}`),
-            videoPath(id)
-          ],
-          where
-        )
+      const clear = async (): Promise<void> => {
+        for (const where of ['r2', 'sb'] as Where[]) {
+          const parts = await store.listIn(`${user.id}/${id}`, where)
+          const slides = await store.listIn(`${user.id}/${id}-slides`, where)
+          await store.remove(
+            [
+              ...parts.map((f) => `${user.id}/${id}/${f.name}`),
+              ...slides.map((f) => `${user.id}/${id}-slides/${f.name}`),
+              videoPath(id)
+            ],
+            where
+          )
+        }
       }
+      await clear()
+      // and once more a little later, for a piece that was already on its way
+      window.setTimeout(() => void clear().catch(() => undefined), 20000)
     },
 
     // ---------- session materials ----------
@@ -3773,56 +3694,29 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
 
     appendChunk: async (id, chunk) => {
-      let b = recBuf.get(id)
-      if (!b) {
-        // A piece after the session closed: Chrome's MP4 recorder holds its
-        // fragments back for seconds and hands the last of them over late,
-        // and for a short session those are the whole picture. It still
-        // belongs to the recording: it goes up as one more part, and the
-        // whole file, if one was already made, is made again with it.
+      // A piece for a session not recording here (the recorder's last piece
+      // arriving after the end) belongs to it only when the session is ours.
+      if (!engine.isLive(id)) {
         const d = cache.get(id) ?? (await loadSession(id))
         if (!d || d.meta.readOnly || d.meta.sample) return
-        const listing = await store.list(`${user.id}/${id}`).catch(() => ({ objects: [] as { name: string }[] }))
-        const have = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).length
-        // a number of its own, past any the session used, so it never reads as an earlier chunk
-        const seq = 1_000_000 + have * 1000 + (Date.now() % 1000)
-        b = { parts: have, seq: seq + 1, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve(), kind: d.meta.mime }
-        recBuf.set(id, b)
-        await idb('chunks', 'readwrite', (st) => {
-          st.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk)
-        })
-        b.chunks.push({ seq, buf: chunk })
-        b.bytes += chunk.byteLength
-        flushPart(id, true)
-        await b.chain
-        recBuf.delete(id)
-        reportError(location.pathname, `late recording piece kept (${id}, ${Math.round(chunk.byteLength / 1024)} KB as part ${have})`)
-        if (d.meta.whole) {
-          d.meta.whole = false
-          await patchSession(id, { meta: d.meta })
-          void consolidateRecording(id)
+      }
+      // the first piece says which format the recorder chose; the session keeps it
+      const d = cache.get(id)
+      if (d && !d.meta.mime) {
+        const kind = sniff(new Uint8Array(chunk.slice(0, 12)))
+        if (kind !== 'application/octet-stream') d.meta.mime = kind
+      }
+      const r = await engine.add(id, chunk)
+      if (r.late) {
+        // Chrome's MP4 recorder hands its last fragments over late, and for a
+        // short session those are the whole picture: the piece went up as one
+        // more part, and the whole file, if one was made, is made again with it.
+        const dd = cache.get(id) ?? (await loadSession(id))
+        if (dd && dd.meta.whole) {
+          dd.meta.whole = false
+          await patchSession(id, { meta: dd.meta })
         }
-        return
       }
-      const seq = b.seq++
-      if (seq === 0) {
-        // the first chunk says which format the recorder chose; the session keeps it
-        b.kind = mediaType(new Uint8Array(chunk.slice(0, 12)))
-        const d = cache.get(id)
-        if (d && b.kind !== 'application/octet-stream') d.meta.mime = b.kind
-      }
-      // The device keeps it first; the cloud gets it next. A copy the device
-      // could not keep is said at once, never discovered afterwards: the
-      // piece still goes up from memory, but the tab must stay open for it.
-      const kept = await idb('chunks', 'readwrite', (s) => s.put({ sessionId: id, seq, at: Date.now(), buf: chunk } as LocalChunk))
-      if (kept === undefined && !deviceCopyWarned.has(id)) {
-        deviceCopyWarned.add(id)
-        reportError(location.pathname, `device copy not kept for ${id} (IndexedDB write failed) · ${navigator.userAgent.slice(0, 60)}`)
-        sayUploadTrouble(id, 'This device could not keep a safety copy, so keep this tab open until the recording is in the cloud.')
-      }
-      b.chunks.push({ seq, buf: chunk })
-      b.bytes += chunk.byteLength
-      flushPart(id, false)
     },
 
     retryUploads: async (sessionId: string) => {
@@ -3830,18 +3724,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // engine recorded it) or another device: this page can only speak for
       // what it holds, and says so, so the page never offers a button that
       // has nothing to send
-      const held =
-        (await localParts(sessionId)).length > 0 ||
-        (await localChunks(sessionId)).length > 0 ||
-        [...memParts.keys()].some((k) => k.startsWith(sessionId + ':'))
+      const keys = await device.chunkKeysOf(sessionId)
+      const held = (await engine.localPartNos(sessionId)).length > 0 || (keys.ok && keys.value.length > 0)
       if (!held) {
         const d = cache.get(sessionId) ?? (await loadSession(sessionId))
         return { pending: d?.meta.recordingPending ? 1 : 0, here: false }
       }
       // loose pieces that never became a part are made into one first
       await sweepLooseChunks().catch(() => undefined)
-      const left = await retryPendingUploads(sessionId)
-      const pending = left < 0 ? (await localParts(sessionId)).length : left
+      await retryPendingUploads(sessionId)
+      await engine.waitFor(sessionId, 60000)
+      const pending = await engine.pending(sessionId)
       // nothing left on this device: the flag comes off the row too, so the
       // notice does not return on the next open
       if (pending === 0) {
@@ -3913,7 +3806,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         .sort()
       if (names.length === 0) return []
       // parts still on this device (not uploaded yet) mean the cloud is incomplete: stitch instead
-      if ((await localParts(id)).length > 0) return []
+      if ((await engine.localPartNos(id)).length > 0) return []
+      // the first part lost: the header, kept apart, goes first so the rest can play
+      if (names[0] !== 'part-0000.webm' && listing.objects.some((f) => f.name === 'init.bin')) names.unshift('init.bin')
       const urls = (await store.urls(names.map((n) => `${user.id}/${id}/${n}`), listing.where)).filter(
         (u) => Boolean(u)
       )
@@ -3929,7 +3824,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const listing = await store.list(`${user.id}/${id}`)
       const objs = listing.objects.filter((f) => /^part-\d+\.webm$/.test(f.name)).sort((a, b) => (a.name < b.name ? -1 : 1))
       if (objs.length === 0) return []
-      if ((await localParts(id)).length > 0) return []
+      if ((await engine.localPartNos(id)).length > 0) return []
+      const init = listing.objects.find((f) => f.name === 'init.bin')
+      if (objs[0].name !== 'part-0000.webm' && init) objs.unshift(init)
       const urls = await store.urls(objs.map((o) => `${user.id}/${id}/${o.name}`), listing.where)
       const out = objs.map((o, i) => ({ url: urls[i] ?? '', size: Number(o.size ?? 0) }))
       return out.every((p) => p.url && p.size > 0) ? out : []
@@ -3949,10 +3846,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const m = /^part-(\d+)\.webm$/.exec(f.name)
         if (m) cloud.set(Number(m[1]), f.name)
       }
-      const local = await localParts(id)
-      const localBy = new Map(local.map((p) => [p.partNo, p]))
-      const chunks = local.length > 0 ? await localChunks(id) : []
-      const partNos = [...new Set([...cloud.keys(), ...localBy.keys()])].sort((a, b) => a - b)
+      const localNos = await engine.localPartNos(id)
+      const partNos = [...new Set([...cloud.keys(), ...localNos])].sort((a, b) => a - b)
       if (partNos.length > 0) {
         const buffers: ArrayBuffer[] = []
         for (const n of partNos) {
@@ -3964,12 +3859,17 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
               continue
             }
           }
-          const p = localBy.get(n)
-          if (p) {
-            for (const c of chunks) if (c.seq >= p.fromSeq && c.seq <= p.toSeq) buffers.push(c.buf)
-            const mem = memParts.get(partKey(id, n))
-            if (mem && !chunks.some((c) => c.seq >= p.fromSeq && c.seq <= p.toSeq)) buffers.push(...mem)
+          if (localNos.includes(n)) {
+            const bufs = await engine.deviceBytes(id, n)
+            if (bufs) buffers.push(...bufs)
           }
+        }
+        // the first part lost everywhere: its header, kept apart, goes first so the rest can play
+        if (buffers.length > 0 && partNos[0] !== 0) {
+          const head = listing.objects.some((f) => f.name === 'init.bin')
+            ? await fetchObject(`${user.id}/${id}/init.bin`, listing.where)
+            : ((await engine.header(id))?.buf ?? null)
+          if (head) buffers.unshift(head)
         }
         const total = buffers.reduce((n, b) => n + b.byteLength, 0)
         if (total > 0) {
@@ -4061,7 +3961,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     prepareSession: async (id: string) => (await loadSession(id))?.meta ?? null,
     refreshSession: async (id: string) => {
       // past the cache: for a page waiting on what another page is writing
-      if (!recBuf.has(id)) cache.delete(id)
+      if (!engine.isLive(id)) cache.delete(id)
       allCache = null
       return (await loadSession(id))?.meta ?? null
     },
@@ -4160,12 +4060,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const meta = await api.createSession(SAMPLE_TITLE, 'lecture', false)
       meta.audioOnly = true
       meta.sample = true
-      recBuf.delete(meta.id)
+      // a sample has no recording: nothing of it is kept or sent
+      await engine.forget(meta.id)
       const d = cache.get(meta.id)
       if (d) d.segments = sampleSegments()
       await patchSession(meta.id, { meta, transcript: sampleSegments() })
       // Finalize like a real session: names it, summarises, extracts memory.
-      recBuf.set(meta.id, { parts: 0, seq: 0, chunks: [], bytes: 0, thumbDone: true, chain: Promise.resolve() })
       return api.finalizeSession(meta.id, sampleDurationMs())
     },
 
@@ -4192,11 +4092,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // on its way" while the last parts go up. On a slow connection that
       // upload can take many minutes; nobody looking at the session (this
       // page, the library, a phone) should see it as still live meanwhile.
-      const b = recBuf.get(id)
-      if (b) {
-        flushPart(id, true)
-        d.meta.recordingPending = true
-      }
+      const live = engine.isLive(id)
+      if (live) d.meta.recordingPending = true
       await patchSession(id, { meta: d.meta })
       backupSession(id) // belt-and-braces: text survives even if the row write above failed
       emitSession(d.meta)
@@ -4214,23 +4111,12 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       // recording is still going up, so they are there when it lands
       if (d.segments.length > 2) void analyzeWebSession(id)
 
-      // Then the tail of the recording, and every part landing.
-      if (b) {
-        await b.chain
-        recBuf.delete(id)
+      // Then the tail of the recording, and every part landing (waited on for
+      // a bounded time: Stop never hangs on a slow connection).
+      if (live) {
         // Anything the cloud refused stays on this device and keeps retrying;
         // the session says so until the last part lands.
-        let left = await retryPendingUploads(id)
-        if (left < 0) {
-          // another retry was already running: wait for it rather than trust a
-          // count that misses parts kept only in memory (a phone whose store
-          // would not open), which is how a failed upload once passed unseen
-          for (let i = 0; i < 60 && pendingBusy; i++) await sleep(500)
-          left = await retryPendingUploads(id)
-          if (left < 0) left = (await localParts(id)).length
-        }
-        // parts that never made it into the device's store are pending too
-        for (const key of memParts.keys()) if (key.startsWith(id + ':')) left++
+        const { left } = await engine.end(id, 30000)
         if (left > 0) {
           d.meta.recordingPending = true
           const why = lastUploadError.get(id)
@@ -5882,12 +5768,11 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   // What must not be interrupted. The summary belongs here: the engine used
   // to be closed a minute after a session ended, in the middle of writing it.
   ;(window as unknown as { sitkaBusy?: () => Promise<boolean> }).sitkaBusy = async () =>
-    recBuf.size > 0 ||
-    memParts.size > 0 ||
+    engine.busy() ||
     consolidating.size > 0 ||
     analysisRuns.size > 0 ||
-    pendingBusy ||
-    (await allLocalParts()).length > 0
+    // parts on this device still to send (a device that cannot be read counts as busy)
+    (await device.allParts().then((r) => (r.ok ? r.value.length > 0 : true)))
 
   // Close out anything a crash left open, and finish uploads the cloud is missing.
   // Once soon after opening, and once more two minutes on, for a session whose

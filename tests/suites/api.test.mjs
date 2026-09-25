@@ -401,6 +401,16 @@ test('S12/A5: upload links: signed in, own session, a small batch, a few hours',
   assert.ok(res.body.links.every((l) => l.url.includes(`/${USERS.a.id}/${s}/part-`)))
 })
 
+test('R1/M3: numbers already holding a piece are never handed out again; they come back as taken, with sizes', async () => {
+  const s = uuid()
+  w.r2.set(`${USERS.a.id}/${s}/part-0000.webm`, Buffer.alloc(3000))
+  w.r2.set(`${USERS.a.id}/${s}/part-0002.webm`, Buffer.alloc(5000))
+  const res = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'grant', session: s, from: 0, count: 5 } }))
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(res.body.links.map((l) => l.n), [1, 3, 4])
+  assert.deepEqual(res.body.taken, [{ n: 0, size: 3000 }, { n: 2, size: 5000 }])
+})
+
 test('X1: upload links are refused for a session that belongs to someone else', async () => {
   const s = uuid()
   w.tables.sessions.push({ id: s, owner: USERS.b.id })
