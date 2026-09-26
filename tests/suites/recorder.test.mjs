@@ -417,3 +417,60 @@ test('re-audit N35: "in the cloud up to" counts from the first piece, not from w
   // four pieces of three seconds: about twelve seconds, never seventy-two
   assert.ok(last.upToMs <= 15000, `said up to ${last.upToMs} ms`)
 })
+
+test('re-audit N36: a crash between numbering a part and recording it leaves no gap', async () => {
+  const id = sid()
+  // what a tab left behind: pieces 0..2, the counter past part 0, part 0 planned but never recorded
+  for (let i = 0; i < 3; i++) await device.putChunk({ sessionId: id, seq: i, at: Date.now() - 600000, buf: piece(i, 1000) })
+  await device.putSession({ sessionId: id, nextPart: 1, nextSeq: 3, startedAt: Date.now() - 700000, done: [], planned: { partNo: 0, fromSeq: 0, toSeq: 2 } })
+  const up = cloud()
+  const { e } = engine(up)
+  await e.resume({ olderThanMs: 1000 })
+  assert.ok(await waitFor(() => up.numbers(id).length === 1))
+  assert.deepEqual(up.numbers(id), [0], 'the pieces took a new number, leaving part 0 missing for good')
+})
+
+test('re-audit R9: a piece handed over while the recording ends is not lost', async () => {
+  const up = cloud()
+  const { e } = engine(up)
+  const id = sid()
+  await record(e, id, 4)
+  const ending = e.end(id, 5000)
+  // the recorder's last piece, arriving as Stop is being handled
+  await e.add(id, piece(99, 500000))
+  await ending
+  await e.waitFor(id, 5000)
+  const total = [...up.parts.entries()].filter(([k]) => k.startsWith(id)).reduce((n, [, s]) => n + s, 0)
+  assert.equal(total, 4 * MB + 500000)
+})
+
+test('re-audit N24: a header the device would not keep is still sent; one never sent goes on reopening; one done with is cleared', async () => {
+  // the device refuses the header
+  const put = device.putHeader
+  device.putHeader = async () => false
+  try {
+    const up = cloud()
+    const { e } = engine(up)
+    const id = sid()
+    await record(e, id, 2)
+    await e.end(id, 5000)
+    assert.ok(await waitFor(() => up.headers.has(id)), 'a header the device could not keep was never sent')
+  } finally {
+    device.putHeader = put
+  }
+  // a header kept but never sent (the tab closed while offline) goes when the app opens again
+  const id2 = sid()
+  await device.putHeader(id2, piece(0, 2000), 'video/webm')
+  await device.putSession({ sessionId: id2, nextPart: 0, nextSeq: 0, startedAt: Date.now(), done: [] })
+  const up2 = cloud()
+  const { e: e2 } = engine(up2)
+  await e2.resume()
+  assert.ok(await waitFor(() => up2.headers.has(id2)))
+  // a recording wholly up, done with for over an hour: its header is cleared
+  const id3 = sid()
+  await device.putHeader(id3, piece(0, 2000), 'video/webm')
+  await device.putSession({ sessionId: id3, nextPart: 1, nextSeq: 1, startedAt: Date.now() - 7200000, lastAt: Date.now() - 7200000, done: [[0, 1]], headerUp: true, ended: true })
+  await e2.resume()
+  const h = await device.getHeader(id3)
+  assert.equal(h.value, null, 'the header of a finished recording was kept for good')
+})

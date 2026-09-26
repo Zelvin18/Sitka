@@ -35,7 +35,8 @@ export async function usageOf(token, fresh = false) {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/my_usage`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, apikey: SUPA_ANON, 'Content-Type': 'application/json' },
-      body: '{}'
+      body: '{}',
+      signal: AbortSignal.timeout(5000)
     })
     if (!r.ok) return null
     const usage = await r.json()
@@ -95,11 +96,12 @@ function monthStart() {
   const d = new Date()
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
-async function aiCharsUsed(userId) {
+/** This month's count of one kind on the server's meter; null when it cannot be read. */
+async function usedThisMonth(userId, kind) {
   if (!SUPA_URL || !SUPA_SERVICE) return null
   try {
     const r = await fetch(
-      `${SUPA_URL}/rest/v1/usage_meter?select=n&user_id=eq.${encodeURIComponent(userId)}&kind=eq.aic&day=gte.${monthStart()}`,
+      `${SUPA_URL}/rest/v1/usage_meter?select=n&user_id=eq.${encodeURIComponent(userId)}&kind=eq.${encodeURIComponent(kind)}&day=gte.${monthStart()}`,
       { headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` }, signal: AbortSignal.timeout(4000) }
     )
     if (!r.ok) return null
@@ -118,7 +120,7 @@ async function aiCharsUsed(userId) {
 export async function allowAi(token, userId, chars) {
   let u = await usageOf(token)
   if (!u) u = await usageOf(token, true)
-  const used = await aiCharsUsed(userId)
+  const used = await usedThisMonth(userId, 'aic')
   if (!u || used === null) {
     return { ok: false, transient: true, message: 'Your plan could not be checked just now. Try again in a moment.' }
   }
@@ -135,10 +137,30 @@ export async function allowAi(token, userId, chars) {
 }
 
 /**
+ * May this account have a recording listened to again (voices told apart)?
+ * The costliest thing Sitca does, so it has its own allowance: as many hours
+ * a month as the plan records, counted by what the service actually heard.
+ */
+export async function allowListen(token, userId) {
+  let u = await usageOf(token)
+  if (!u) u = await usageOf(token, true)
+  const used = await usedThisMonth(userId, 'dg')
+  if (!u || used === null) {
+    return { ok: false, transient: true, message: 'Your plan could not be checked just now. Try again in a moment.' }
+  }
+  const plan = LIMITS[u.plan] ? u.plan : 'free'
+  const hours = LIMITS[plan].hours
+  if (hours > 0 && used >= hours * 3600) {
+    return { ok: false, plan, message: `You’ve had ${hours} hours of recordings listened to again this month, the ${NAMES[plan]} plan’s share. ${upgradeLine(plan)}` }
+  }
+  return { ok: true }
+}
+
+/**
  * The server's own count of what costs money, in a table only it writes
  * (public.usage_meter): 'ask' for a question to the AI, 'ai' for the app's
  * other AI work, 'aic' for the characters sent to the AI, 'stt' for seconds
- * of audio transcribed. Never throws; a
+ * of audio transcribed, 'dg' for seconds of recording listened to again. Never throws; a
  * count that cannot be written is not worth failing the request over.
  */
 export async function meter(userId, kind, amount = 1) {

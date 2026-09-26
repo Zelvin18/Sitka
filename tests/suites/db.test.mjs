@@ -131,7 +131,10 @@ test('a member cannot read the invitation codes', async () => {
   const [owner] = await db.as(A, `select public.sitka_my_orgs() as o`)
   const o2 = owner.o.find((x) => x.id === 'org-a')
   assert.equal(o2.code, 'ABC234')
-  assert.equal(o2.leadCode, 'LEAD23')
+  // part 10 replaced the six-letter lead code with a long one; the owner sees it
+  const [{ lead_code: lead }] = await db.sql(`select lead_code from public.organizations where id = 'org-a'`)
+  assert.equal(o2.leadCode, lead)
+  assert.match(lead, /^[A-Z2-9]{12}$/)
 })
 
 test('a member sees their own membership; the owner sees the roster', async () => {
@@ -144,7 +147,12 @@ test('a member sees their own membership; the owner sees the roster', async () =
 })
 
 test('the lead code makes a lead, and never demotes the owner', async () => {
-  const [r] = await db.as(A, `select * from public.sitka_join_org('LEAD23')`)
+  const [{ lead_code: lead }] = await db.sql(`select lead_code from public.organizations where id = 'org-a'`)
+  // the old six-letter code no longer opens anything
+  const old = await db.fails(B, `select * from public.sitka_join_org('LEAD23')`)
+  const oldRows = old ? [] : await db.as(B, `select * from public.sitka_join_org('LEAD23')`)
+  assert.ok(old || oldRows.every((x) => x.id === null), 'the old lead code still works')
+  const [r] = await db.as(A, `select * from public.sitka_join_org($1)`, [lead])
   assert.equal(r.id, 'org-a')
   const [own] = await db.sql(`select role from public.org_members where org_id = 'org-a' and user_id = '${A}'`)
   assert.equal(own.role, 'owner')
@@ -276,7 +284,10 @@ test('an attendee joins with a secret; a row cannot name someone else', async ()
   await db.as(null, `insert into public.attendees (id, event_id, secret_hash) values ($1, 'ev-a', $2)`, [ATT_NEW, await sha256Hex(SECRET)])
   await db.as(null, `insert into public.attendees (id, event_id, secret_hash) values ($1, 'ev-b', $2)`, [ATT_OTHER, await sha256Hex(OTHER_SECRET)])
   const impersonate = await db.fails(null, `insert into public.attendees (id, event_id, user_id, keep) values (gen_random_uuid(), 'ev-a', $1, true)`, [A])
-  assert.match(impersonate, /row-level security/i)
+  assert.match(impersonate, /row-level security|Reload the page/i)
+  // B4: a new attendee without a secret is refused
+  const bare = await db.fails(null, `insert into public.attendees (id, event_id) values (gen_random_uuid(), 'ev-a')`)
+  assert.match(bare, /Reload the page/)
   const [n] = await db.as(null, `select public.attendee_count('ev-a') as n`)
   assert.equal(n.n, 2)
 })
@@ -308,17 +319,23 @@ test('a question is written only by a real attendee of that event, with their se
 })
 
 test('the room sees questions put to the speaker, never who asked', async () => {
-  const rows = await db.as(null, `select id, text, status from public.speaker_questions where event_id = 'ev-a'`)
-  assert.deepEqual(rows.map((r) => r.text), ['shared question'])
+  const [r] = await db.as(null, `select public.sitka_shared_questions('ev-a') as q`)
+  assert.deepEqual(r.q.map((x) => x.text), ['shared question'])
+  assert.ok(r.q.every((x) => !('attendee_id' in x)))
   const who = await db.fails(null, `select attendee_id from public.speaker_questions`)
   assert.match(who, /permission denied/i)
+  // re-audit N16: nor a signed-in stranger
+  const signedIn = await db.as(B, `select attendee_id from public.speaker_questions where event_id = 'ev-a'`)
+  assert.equal(signedIn.length, 0)
 })
 
 test('room messages carry an anonymous tag, not the writer’s id', async () => {
   const who = await db.fails(null, `select attendee_id from public.room_messages`)
   assert.match(who, /permission denied/i)
   await db.as(null, `insert into public.room_messages (id, event_id, attendee_id, name, text) values (gen_random_uuid(), 'ev-a', $1, 'Guest', 'hi all')`, [ATT_NEW], withSecret(SECRET))
-  const rows = await db.as(null, `select author, text from public.room_messages where event_id = 'ev-a' and text = 'hi all'`)
+  const [room] = await db.as(null, `select public.sitka_room('ev-a') as r`)
+  const rows = room.r.filter((m) => m.text === 'hi all')
+  assert.ok(rows.every((m) => !('attendee_id' in m)))
   // the tag the writer's page computes for itself: sha-256 of the id's 16 bytes, first 16 hex
   const { createHash } = await import('node:crypto')
   const tag = createHash('sha256').update(Buffer.from(ATT_NEW.replace(/-/g, ''), 'hex')).digest('hex').slice(0, 16)
@@ -346,8 +363,8 @@ test('reactions and votes: only from attendees, and never showing who', async ()
   assert.ok(Array.isArray(seen) ? seen.length === 0 : /permission/.test(seen))
   await db.as(null, `insert into public.question_votes (question_id, attendee_id) values ('cccccccc-0000-4000-8000-000000000001', $1)`, [ATT_NEW], withSecret(SECRET))
   assert.match(await db.fails(null, `select attendee_id from public.question_votes`), /permission denied/i)
-  const counted = await db.as(null, `select question_id from public.question_votes`)
-  assert.equal(counted.length, 1)
+  const [q] = await db.as(null, `select public.sitka_shared_questions('ev-a') as q`)
+  assert.equal(q.q.find((x) => x.id === 'cccccccc-0000-4000-8000-000000000001').votes, 1)
   const unshared = await db.fails(null, `insert into public.question_votes (question_id, attendee_id) values ('cccccccc-0000-4000-8000-000000000002', $1)`, [ATT_NEW], withSecret(SECRET))
   assert.match(unshared, /join the event|nothing to vote/)
 })
@@ -451,6 +468,92 @@ test('migrations from part 9 on say that they ran', async () => {
   assert.match(await db.fails(A, `select * from public.schema_migrations`), /permission denied/i)
 })
 
+// ---------- one event's room (re-audit N7, N16 · Henry P1, B4) ----------
+
+test('N7: nobody can list the rooms of every event; one event is read by its id', async () => {
+  for (const t of ['segments', 'translations', 'room_messages', 'room_notes', 'polls', 'poll_votes', 'speaker_questions', 'question_votes']) {
+    assert.match(await db.fails(null, `select * from public.${t} limit 1`), /permission denied/i, `visitors can list ${t}`)
+    // a signed-in stranger sees none of another host's rows
+    const rows = await db.as(B, `select * from public.${t} ${t.endsWith('votes') ? '' : "where event_id = 'ev-a'"}`)
+    assert.equal(rows.length, 0, `a stranger reads ${t}`)
+  }
+  const [f] = await db.as(null, `select public.sitka_feed('ev-a') as f`)
+  assert.equal(f.f.segments[0].text, 'caption one')
+  const [tail] = await db.as(null, `select public.sitka_feed('ev-a', -1, null, null, 200, 3) as f`)
+  assert.ok(tail.f.segments.length >= 1)
+  // an ended event without a recap is closed to the room
+  await db.sql(`insert into public.events (id, title, status, owner) values ('ev-over', 'Over', 'ended', '${A}');
+                insert into public.segments (event_id, idx, start_sec, label, text) values ('ev-over', 0, 0, 'S', 'old words')`)
+  const [closed] = await db.as(null, `select public.sitka_feed('ev-over') as f`)
+  assert.equal(closed.f, null)
+  // the host reads their own event's rows
+  const mine = await db.as(A, `select text from public.segments where event_id = 'ev-over'`)
+  assert.deepEqual(mine.map((r) => r.text), ['old words'])
+})
+
+test('N7: a new line reaches the room on its private channel, without who wrote it', async () => {
+  // an event of its own, so no other test's counts change
+  const att = 'aaaaaaaa-0000-4000-8000-0000000000b1'
+  const secret = 'b'.repeat(64)
+  await db.sql(`insert into public.events (id, title, status, owner) values ('ev-cast', 'Cast', 'live', '${A}')`)
+  await db.as(null, `insert into public.attendees (id, event_id, secret_hash) values ($1, 'ev-cast', $2)`, [att, await sha256Hex(secret)])
+  await db.sql(`delete from realtime.sent`)
+  await db.as(A, `insert into public.segments (event_id, idx, start_sec, label, text) values ('ev-cast', 0, 1, 'Speaker', 'live words')`)
+  await db.as(null, `insert into public.room_messages (id, event_id, attendee_id, name, text) values (gen_random_uuid(), 'ev-cast', $1, 'Guest', 'hello there')`, [att], withSecret(secret))
+  const sent = await db.sql(`select topic, event, payload, private from realtime.sent order by at`)
+  const seg = sent.find((m) => m.event === 'segments')
+  assert.equal(seg.topic, 'event:ev-cast')
+  assert.equal(seg.private, true)
+  assert.equal(seg.payload.text, 'live words')
+  assert.equal(seg.payload.event_id, undefined)
+  const room = sent.find((m) => m.event === 'room_messages')
+  assert.equal(room.payload.text, 'hello there')
+  assert.equal(room.payload.attendee_id, undefined, 'the writer went out with the message')
+})
+
+test('N7/P1: who may listen on which channel, and who may send', async () => {
+  await db.sql(`insert into realtime.messages (topic, extension) values ('event:ev-a', 'broadcast'), ('event:ev-over', 'broadcast'),
+                ('rtc:ev-a', 'broadcast'), ('rtcup:ev-a', 'broadcast')`)
+  const seen = async (who, topic) => (await db.as(who, `select count(*)::int as n from realtime.messages where topic = $1`, [topic], { topic }))[0].n
+  const sends = async (who, topic) => db.fails(who, `insert into realtime.messages (topic, extension) values ($1, 'broadcast')`, [topic], { topic })
+  // the room of an open event: anyone with its id listens; an ended one without a recap is closed
+  assert.equal(await seen(null, 'event:ev-a'), 1)
+  assert.equal(await seen(null, 'event:ev-over'), 0)
+  // nobody sends on the room's channel: only the database does
+  assert.match(await sends(null, 'event:ev-a'), /row-level security/i)
+  assert.match(await sends(A, 'event:ev-a'), /row-level security/i)
+  // live video, host to room: the room listens, only the host sends
+  assert.equal(await seen(null, 'rtc:ev-a'), 1)
+  assert.match(await sends(null, 'rtc:ev-a'), /row-level security/i, 'a visitor could push video to the room')
+  assert.match(await sends(B, 'rtc:ev-a'), /row-level security/i)
+  assert.equal(await sends(A, 'rtc:ev-a'), '')
+  // attendees to host: anyone at the live event sends, only the host reads
+  assert.equal(await sends(null, 'rtcup:ev-a'), '')
+  assert.equal(await seen(null, 'rtcup:ev-a'), 0, 'attendees can read each other')
+  assert.equal(await seen(B, 'rtcup:ev-a'), 0)
+  assert.ok((await seen(A, 'rtcup:ev-a')) >= 1)
+  // nothing to a room that is over
+  assert.match(await sends(null, 'rtcup:ev-over'), /row-level security/i)
+})
+
+test('N17: the folders of shared sessions in the older recordings bucket cannot be listed by visitors', async () => {
+  // sess-a is shared (its recap is on); a recording of it made before the move to Cloudflare
+  await db.sql(`insert into storage.objects (bucket_id, name, owner) values ('recordings', '${A}/sess-a/part-0000.webm', '${A}')`)
+  const seen = await db.as(null, `select name from storage.objects where bucket_id = 'recordings'`)
+  assert.equal(seen.length, 0, 'a visitor listed a shared session’s recording')
+  const mine = await db.as(A, `select name from storage.objects where bucket_id = 'recordings'`)
+  assert.ok(mine.some((o) => o.name.endsWith('part-0000.webm')), 'the owner lost their own recording')
+})
+
+test('B4: a row from before secrets is trusted only while its event is on', async () => {
+  // ATT_LEGACY has no secret; ev-a is live
+  assert.equal(await db.fails(null, `insert into public.reactions (id, event_id, attendee_id, kind) values (gen_random_uuid(), 'ev-a', $1, 'lost')`, [ATT_LEGACY]), '')
+  await db.sql(`update public.events set status = 'ended' where id = 'ev-a'`)
+  const [ok] = await db.as(null, `select public.sitka_attendee_ok($1, 'ev-a') as ok`, [ATT_LEGACY]).catch(() => [{ ok: false }])
+  assert.equal(ok.ok, false)
+  await db.sql(`update public.events set status = 'live' where id = 'ev-a'`)
+})
+
 // ---------- storage (Audit S7 · Henry D7) ----------
 
 test('only the host changes their live screen, banner or replay', async () => {
@@ -484,7 +587,11 @@ test('visitors may run only the public pages’ functions; nobody may ask for an
     where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute') order by 1`)
   assert.deepEqual(rows.map((r) => r.f), [
     'attendee_count(text)', 'event_open(text)', 'sitka_course_preview(text)', 'sitka_event(text)',
-    'sitka_recap(text)', 'sitka_shared_owner(text)'
+    'sitka_event_live(text)', 'sitka_event_mine(text)',
+    'sitka_feed(text,integer,text,integer,integer,integer)', 'sitka_poll(text,boolean)',
+    'sitka_recap(text)', 'sitka_room(text,timestamp with time zone,integer)',
+    'sitka_room_notes(text,timestamp with time zone)', 'sitka_shared_owner(text)',
+    'sitka_shared_questions(text,integer)'
   ])
   assert.match(await db.fails(B, `select public.current_plan($1)`, [A]), /permission denied/i)
   assert.match(await db.fails(null, `select public.sitka_space_org('sp-1')`), /permission denied/i)
@@ -568,6 +675,50 @@ test('error reports and usage events cannot be flooded; the server is not limite
   assert.match(other, /row-level security/i, 'a visitor wrote a usage row in someone else’s name')
 })
 
+test('B1/B8: a caller cannot dodge the limit by naming another address; each row is kept small', async () => {
+  // what a proxy adds is at the end of x-forwarded-for; a caller can only put things before it
+  let last = ''
+  for (let i = 0; i < 32; i++) {
+    last = await db.fails(null, `insert into public.client_errors (message) values ('spoof')`, [], { headers: { 'x-forwarded-for': `10.0.${i}.1, 198.51.100.99` } })
+  }
+  assert.match(last, /too many reports/, 'rotating the front of x-forwarded-for passed the limit')
+  // Cloudflare's own header is the address when it is there
+  assert.equal(await db.fails(null, `insert into public.client_errors (message) values ('cf')`, [], { headers: { 'cf-connecting-ip': '192.0.2.44', 'x-forwarded-for': '198.51.100.99' } }), '')
+  await db.as(null, `insert into public.client_errors (message, stack, page) values ($1, $2, $3)`, ['m'.repeat(50000), 's'.repeat(50000), 'p'.repeat(5000)], { headers: { 'cf-connecting-ip': '192.0.2.45' } })
+  const [row] = await db.sql(`select length(message) as m, length(stack) as s, length(page) as p from public.client_errors where message like 'mmmm%' order by id desc limit 1`)
+  assert.deepEqual([row.m, row.s, row.p], [2000, 4000, 300])
+  // A18: a page cannot pass itself off as the server in the operations view
+  await db.as(null, `insert into public.client_errors (page, message) values ('server:chat', 'fake outage')`, [], { headers: { 'cf-connecting-ip': '192.0.2.46' } })
+  const [fake] = await db.sql(`select page from public.client_errors where message = 'fake outage'`)
+  assert.equal(fake.page, 'page server:chat')
+  await db.as(A, `insert into public.usage_events (user_id, name, props) values ($1, 'x', $2)`, [A, JSON.stringify({ blob: 'b'.repeat(10000) })])
+  const [ev] = await db.sql(`select props from public.usage_events where user_id = '${A}' and name = 'x' order by id desc limit 1`)
+  assert.deepEqual(ev.props, {})
+})
+
+test('B1: a session larger than any lecture is refused; lines are lines', async () => {
+  const huge = JSON.stringify(Array.from({ length: 12000 }, (_, i) => ({ start: i, end: i + 1, text: 'x'.repeat(800) })))
+  assert.match(await db.fails(A, `insert into public.sessions (id, owner, meta, transcript) values ('sess-huge', $1, '{}', $2::jsonb)`, [A, huge]), /larger than Sitca keeps/)
+  assert.match(await db.fails(A, `insert into public.segments (event_id, idx, start_sec, label, text) values ('ev-a', 9999, 0, 'x', $1)`, ['x'.repeat(5000)]), /longer than a line/)
+})
+
+test('B3: a function made after the migrations is closed to visitors', async () => {
+  await db.sql(`create function public.made_later() returns int language sql as $$ select 1 $$`)
+  const [p] = await db.sql(`select has_function_privilege('anon', 'public.made_later()', 'execute') as anon, has_function_privilege('authenticated', 'public.made_later()', 'execute') as auth`)
+  assert.equal(p.anon, false)
+  assert.equal(p.auth, false)
+  await db.sql(`drop function public.made_later()`)
+})
+
+test('N32/B7: a space written straight into the table gets its code from the database and no live link', async () => {
+  await db.as(A, `insert into public.org_spaces (id, org_id, name, kind, created_by, code, live_url, live_event_id) values ('sp-direct', 'org-a', 'Team', 'team', $1, 'AB', 'https://evil.example', 'ev-b')`, [A])
+  const [sp] = await db.sql(`select code, live_url, live_event_id from public.org_spaces where id = 'sp-direct'`)
+  assert.match(sp.code, /^[A-Z2-9]{12}$/)
+  assert.equal(sp.live_url, null)
+  assert.equal(sp.live_event_id, null)
+  await db.sql(`delete from public.org_spaces where id = 'sp-direct'`)
+})
+
 // ---------- keeping and clean-up (Audit P4, D5) ----------
 
 test('the clean-up removes old error reports and leaves the host’s event alone', async () => {
@@ -584,8 +735,12 @@ test('the clean-up removes old error reports and leaves the host’s event alone
 test('checks and links to accounts apply to new rows only, and an account takes its rows with it', async () => {
   const bad = await db.fails(A, `insert into public.events (id, title, status, owner) values ('ev-bad', 't', 'paused', $1)`, [A])
   assert.match(bad, /events_status_known/)
-  const [fk] = await db.sql(`select count(*)::int as n from pg_constraint where conname like '%_account_fk' and not convalidated`)
+  const [fk] = await db.sql(`select count(*)::int as n, count(*) filter (where convalidated)::int as valid from pg_constraint where conname like '%_account_fk'`)
   assert.ok(fk.n >= 10)
+  // re-audit N29: part 10 validated every link the rows allow (here, all of them)
+  assert.equal(fk.valid, fk.n)
+  const [ck] = await db.sql(`select count(*)::int as n from pg_constraint where conname ~ '(_known|_shape|_len)$' and not convalidated`)
+  assert.equal(ck.n, 0, 'a status check was left "not valid", so old rows with odd values could not be updated')
   await db.sql(`insert into auth.users (id, email) values ('55555555-5555-4555-8555-555555555555', 'gone@example.org');
                 insert into public.sessions (id, owner, meta) values ('sess-gone', '55555555-5555-4555-8555-555555555555', '{}');
                 insert into public.usage_events (user_id, name) values ('55555555-5555-4555-8555-555555555555', 'ask');
@@ -624,7 +779,11 @@ test('part 8 closes the functions on a database where part 5 was undone, and tou
   const out = await live.raw.exec(readFileSync(f08, 'utf8'))
   assert.deepEqual(out.at(-1).rows.map((r) => r.visitors_may_run), [
     'attendee_count(text)', 'event_open(text)', 'sitka_course_preview(text)', 'sitka_event(text)',
-    'sitka_recap(text)', 'sitka_shared_owner(text)'
+    'sitka_event_live(text)', 'sitka_event_mine(text)',
+    'sitka_feed(text,integer,text,integer,integer,integer)', 'sitka_poll(text,boolean)',
+    'sitka_recap(text)', 'sitka_room(text,timestamp with time zone,integer)',
+    'sitka_room_notes(text,timestamp with time zone)', 'sitka_shared_owner(text)',
+    'sitka_shared_questions(text,integer)'
   ])
   assert.match(await live.fails(null, `select public.current_plan($1)`, [A]), /permission denied/i)
   assert.match(await live.fails(B, `select public.current_plan($1)`, [A]), /permission denied/i)

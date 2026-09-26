@@ -68,7 +68,16 @@ begin
     'public.sitka_event(text)',               -- one event's public fields
     'public.sitka_recap(text)',               -- one shared recap
     'public.sitka_shared_owner(text)',        -- rules on a shared recording
-    'public.sitka_course_preview(text)'       -- what a course invitation says
+    'public.sitka_course_preview(text)',      -- what a course invitation says
+    -- (from part 11, once it has run: one event's room, read by its id; kept
+    -- here so that running this file again never closes them)
+    'public.sitka_feed(text,integer,text,integer,integer,integer)',
+    'public.sitka_room(text,timestamp with time zone,integer)',
+    'public.sitka_room_notes(text,timestamp with time zone)',
+    'public.sitka_poll(text,boolean)',
+    'public.sitka_shared_questions(text,integer)',
+    'public.sitka_event_live(text)',
+    'public.sitka_event_mine(text)'
   ] loop
     if to_regprocedure(f) is not null then
       execute format('grant execute on function %s to anon, authenticated', f);
@@ -109,7 +118,9 @@ end $$;
 
 -- ---------- the result: every function of ours a visitor may run ----------
 -- Expect six rows: attendee_count, event_open, sitka_course_preview,
--- sitka_event, sitka_recap, sitka_shared_owner.
+-- sitka_event, sitka_recap, sitka_shared_owner; and, once part 11 has run,
+-- seven more for the event's room (sitka_feed, sitka_room, sitka_room_notes,
+-- sitka_poll, sitka_shared_questions, sitka_event_live, sitka_event_mine).
 select p.oid::regprocedure::text as visitors_may_run
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'

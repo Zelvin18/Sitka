@@ -101,6 +101,12 @@ interface SessionRec {
   ended?: boolean
   /** set when the session is deleted: nothing of it goes up again */
   tombstone?: number
+  /**
+   * The part being formed, saved with the counter in one write: the part's
+   * own record lives in the other store, and a crash between the two once
+   * left a number taken and never used (a gap that stopped the join for good).
+   */
+  planned?: { partNo: number; fromSeq: number; toSeq: number }
 }
 
 type Read<T> = { ok: true; value: T } | { ok: false }
@@ -253,6 +259,11 @@ export const device = {
     return r.ok ? { ok: true, value: r.value ?? null } : r
   },
   deleteHeader: async (sessionId: string): Promise<boolean> => (await metaDb.run('headers', 'readwrite', (s) => s.delete(sessionId))).ok,
+  /** the sessions whose headers this device keeps (keys only: no bytes read) */
+  headerIds: async (): Promise<Read<string[]>> => {
+    const r = await metaDb.run<IDBValidKey[]>('headers', 'readonly', (s) => s.getAllKeys())
+    return r.ok ? { ok: true, value: (r.value ?? []).map(String) } : { ok: false }
+  },
   // text backups of a session, when the database could not be written (kept here, not in localStorage's 5 MB)
   putBackup: async (row: { id: string }): Promise<boolean> => (await metaDb.run('backups', 'readwrite', (s) => s.put(row))).ok,
   getBackups: async <T>(): Promise<T[]> => {
@@ -315,6 +326,11 @@ export class RecordingEngine {
   private running = new Set<string>()
   /** uploads on their way, by session, so a delete can stop them */
   private inFlight = new Map<string, Set<AbortController>>()
+  /** headers the device could not keep, held until they are sent */
+  private heldHeaders = new Map<string, { buf: ArrayBuffer; kind: string }>()
+  /** bytes held in memory (the device could not keep them), and the last warning given */
+  private heldWarnedAt = 0
+  private lastRewrite = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private idle: (() => void)[] = []
 
@@ -451,6 +467,21 @@ export class RecordingEngine {
       this.ev.deviceCopy?.({ sessionId, ok: false, why: 'This device could not keep a safety copy, so keep this tab open until the recording is in the cloud.' })
       this.say(`device copy not kept for ${sessionId} (IndexedDB write failed)`)
     }
+    // held in this tab only: said again as it grows, every 100 MB
+    const held = this.heldBytes()
+    if (held >= this.heldWarnedAt + 100 * 1024 * 1024) {
+      this.heldWarnedAt = held
+      this.ev.deviceCopy?.({
+        sessionId,
+        ok: false,
+        why: `${Math.round(held / (1024 * 1024))} MB of the recording is held in this tab only (the device has no room for it). Keep the tab open and online until it is in the cloud.`
+      })
+    }
+    // the device taking pieces again: what memory holds is written back to it
+    if (kept && this.mem.size > 0 && this.now() - this.lastRewrite > 30000) {
+      this.lastRewrite = this.now()
+      void this.rewriteHeld()
+    }
     if (live.bytes >= this.partBytes) await this.form(sessionId)
     return { late: false }
   }
@@ -458,8 +489,31 @@ export class RecordingEngine {
   /** The header: every player needs it, and the first part alone carried it. */
   private async keepHeader(sessionId: string, buf: ArrayBuffer, kind: string): Promise<void> {
     const copy = buf.slice(0)
-    await device.putHeader(sessionId, copy, kind)
+    // held in memory as well when the device will not keep it, so it is sent all the same
+    if (!(await device.putHeader(sessionId, copy, kind))) this.heldHeaders.set(sessionId, { buf: copy, kind })
     this.enqueue(sessionId, -1)
+  }
+
+  private heldBytes(): number {
+    let n = 0
+    for (const m of this.mem.values()) for (const b of m.bufs) n += b.byteLength
+    return n
+  }
+
+  /** Parts held in memory, written to the device now that it takes writes again (then let go). */
+  private async rewriteHeld(): Promise<void> {
+    for (const [k, m] of [...this.mem]) {
+      if (this.running.has(k)) continue
+      const { part, bufs } = m
+      if (bufs.length !== part.toSeq - part.fromSeq + 1) continue
+      let ok = true
+      for (let i = 0; i < bufs.length && ok; i++) {
+        ok = await device.putChunk({ sessionId: part.sessionId, seq: part.fromSeq + i, at: part.lastAt ?? this.now(), buf: bufs[i] })
+      }
+      if (ok) ok = await device.putPart(part)
+      if (ok && this.mem.get(k) === m) this.mem.delete(k)
+    }
+    if (this.mem.size === 0) this.heldWarnedAt = 0
   }
 
   /** The gathered pieces become the next part: numbered from the counter, recorded at once. */
@@ -471,10 +525,15 @@ export class RecordingEngine {
     live.bytes = 0
     const partNo = live.rec.nextPart++
     const part: PartRec = { sessionId, partNo, fromSeq: chunks[0].seq, toSeq: chunks[chunks.length - 1].seq, lastAt: chunks[chunks.length - 1].at }
+    live.rec.planned = { partNo, fromSeq: part.fromSeq, toSeq: part.toSeq }
     void this.save(live.rec)
     live.forming = live.forming.then(async () => {
       const kept = await Promise.all(chunks.map((c) => c.write))
       const recorded = await device.putPart(part)
+      if (recorded && live.rec.planned?.partNo === partNo) {
+        delete live.rec.planned
+        void this.save(live.rec)
+      }
       // memory holds only what the device could not: the rest is let go now
       if (!recorded || kept.some((k) => !k)) this.mem.set(this.key(sessionId, partNo), { part, bufs: chunks.map((c) => c.buf) })
       this.enqueue(sessionId, partNo)
@@ -506,8 +565,13 @@ export class RecordingEngine {
   async end(sessionId: string, waitMs = 30000): Promise<{ left: number }> {
     const live = this.live.get(sessionId)
     if (live) {
-      await this.form(sessionId)
-      await live.forming
+      // a piece handed over while the tail is being formed joins it: formed
+      // again until nothing is waiting (a piece that came in between once
+      // stayed in the live list and was lost when the recording closed)
+      do {
+        await this.form(sessionId)
+        await live.forming
+      } while (live.pending.length > 0)
       live.rec.ended = true
       await this.save(live.rec)
       this.live.delete(sessionId)
@@ -520,7 +584,10 @@ export class RecordingEngine {
   /** Parts of this session not yet in the cloud (on the device or held in memory). */
   async pending(sessionId: string): Promise<number> {
     const parts = await device.partsOf(sessionId)
-    const nos = new Set<number>(parts.ok ? parts.value.map((p) => p.partNo) : [])
+    // a device that could not be read is not "nothing left": that once let
+    // "still uploading" be cleared while parts were still here
+    if (!parts.ok) return Math.max(1, [...this.mem.keys()].filter((k) => k.startsWith(sessionId + ':')).length)
+    const nos = new Set<number>(parts.value.map((p) => p.partNo))
     for (const [k, m] of this.mem) if (k.startsWith(sessionId + ':')) nos.add(m.part.partNo)
     const live = this.live.get(sessionId)
     return nos.size + (live && live.pending.length > 0 ? 1 : 0)
@@ -626,15 +693,17 @@ export class RecordingEngine {
     if (partNo === -1) {
       if (rec?.headerUp) return
       const h = await device.getHeader(sessionId)
-      if (!h.ok) return this.retryLater(job, 'the device could not be read')
-      if (!h.value) return
-      const r = await this.up.putHeader(sessionId, new Blob([h.value.buf], { type: h.value.kind }), h.value.kind, signalFor(h.value.buf.byteLength))
+      const header = (h.ok && h.value) || this.heldHeaders.get(sessionId) || null
+      if (!header && !h.ok) return this.retryLater(job, 'the device could not be read')
+      if (!header) return
+      const r = await this.up.putHeader(sessionId, new Blob([header.buf], { type: header.kind }), header.kind, signalFor(header.buf.byteLength))
       if ('error' in r && r.deleted) return this.forget(sessionId)
       if ('error' in r && !r.taken) return this.retryLater(job, r.error)
       if (rec) {
         rec.headerUp = true
         await this.save(rec)
       }
+      this.heldHeaders.delete(sessionId)
       return
     }
 
@@ -767,12 +836,38 @@ export class RecordingEngine {
       }
     }
     for (const sid of await this.sweepLoose(opts.olderThanMs ?? 90000)) touched.add(sid)
+    await this.tidyHeaders(touched)
     for (const [k, m] of this.mem) {
       touched.add(m.part.sessionId)
       this.enqueue(m.part.sessionId, m.part.partNo)
       void k
     }
     return [...touched]
+  }
+
+  /**
+   * Headers kept on this device: one never sent (the tab closed while
+   * offline) is sent now; one whose recording is wholly in the cloud, and
+   * done with for an hour, is cleared (they once piled up for good).
+   */
+  private async tidyHeaders(touched: Set<string>): Promise<void> {
+    const ids = await device.headerIds()
+    if (!ids.ok) return
+    for (const sid of ids.value) {
+      if (this.live.has(sid) || (await this.heldElsewhere(sid))) continue
+      const rec = await this.rec(sid)
+      if (rec?.tombstone) {
+        await device.deleteHeader(sid)
+        continue
+      }
+      if (!rec?.headerUp) {
+        touched.add(sid)
+        this.enqueue(sid, -1)
+        continue
+      }
+      const settled = !rec.lastAt || this.now() - rec.lastAt > 3600000
+      if (settled && (await this.pending(sid)) === 0) await device.deleteHeader(sid)
+    }
   }
 
   /**
@@ -816,7 +911,11 @@ export class RecordingEngine {
       }
       if (run.length) runs.push(run)
       for (const r of runs) {
-        const partNo = rec.nextPart++
+        // the part a crash interrupted keeps the number it was given
+        const plan = rec.planned
+        const planned = plan && r[0] >= plan.fromSeq && r[r.length - 1] <= plan.toSeq ? plan.partNo : null
+        const partNo = planned ?? rec.nextPart++
+        if (planned !== null) delete rec.planned
         await this.save(rec)
         await device.putPart({ sessionId: sid, partNo, fromSeq: r[0], toSeq: r[r.length - 1], lastAt: last.value?.at })
         this.say(`loose recording pieces found for ${sid}: ${r.length} become part ${partNo}`)
@@ -867,7 +966,9 @@ export class RecordingEngine {
   /** Part numbers this device still holds for a session. */
   async localPartNos(sessionId: string): Promise<number[]> {
     const parts = await device.partsOf(sessionId)
-    const nos = new Set<number>(parts.ok ? parts.value.map((p) => p.partNo) : [])
+    // unreadable: said as "something is here" (-1), so nothing is joined on a guess
+    if (!parts.ok) return [-1]
+    const nos = new Set<number>(parts.value.map((p) => p.partNo))
     for (const m of this.mem.values()) if (m.part.sessionId === sessionId) nos.add(m.part.partNo)
     return [...nos].sort((a, b) => a - b)
   }

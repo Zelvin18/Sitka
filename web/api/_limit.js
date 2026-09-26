@@ -16,13 +16,24 @@ function memoryHit(key, perMinute, perHour) {
   const now = Date.now()
   const hits = (memory.get(key) || []).filter((t) => now - t < 3600000)
   hits.push(now)
+  memory.delete(key)
   memory.set(key, hits)
-  if (memory.size > 5000) memory.clear()
+  // Past 5,000 keys the oldest go, not all of them: clearing everything let
+  // a flood of made-up keys wipe every count on the instance.
+  if (memory.size > 5000) {
+    let n = 1000
+    for (const k of memory.keys()) {
+      if (n-- <= 0) break
+      memory.delete(k)
+    }
+  }
   const lastMinute = hits.filter((t) => now - t < 60000).length
   return hits.length > perHour || lastMinute > perMinute
 }
 
-let durable = Boolean(SUPA_URL && SUPA_SERVICE)
+const hasDb = Boolean(SUPA_URL && SUPA_SERVICE)
+/** when the database last said it has no counter: asked again after five minutes, not never */
+let noCounterSince = 0
 
 /**
  * True when `key` is over its limit. Counts this call either way.
@@ -30,7 +41,7 @@ let durable = Boolean(SUPA_URL && SUPA_SERVICE)
  */
 export async function overLimitKey(key, perMinute, perHour) {
   const k = String(key).slice(0, 160)
-  if (durable) {
+  if (hasDb && Date.now() - noCounterSince > 300000) {
     try {
       const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_rate_hit`, {
         method: 'POST',
@@ -39,13 +50,14 @@ export async function overLimitKey(key, perMinute, perHour) {
         signal: AbortSignal.timeout(2500)
       })
       if (r.status === 404) {
-        // the database has not got the function yet: memory from now on
-        durable = false
+        // the database has not got the function yet: memory for a while
+        noCounterSince = Date.now()
       } else if (r.ok) {
-        const over = await r.json()
+        const over = await r.json().catch(() => null)
         // the memory count is kept too, so an instance that loses the database mid-flood still holds
-        memoryHit(k, perMinute, perHour)
-        return over === true
+        const local = memoryHit(k, perMinute, perHour)
+        // an answer that is not a plain yes or no is not taken as "no": memory decides
+        return over === true || (over !== false && local)
       }
     } catch {
       /* the database blinked: memory for this one */

@@ -50,6 +50,8 @@ interface Cached {
 export interface Store {
   /** True when this deployment stores recordings in R2. */
   ready(): Promise<boolean>
+  /** the same, but null when it could not be asked (not the same as "not set up") */
+  known(): Promise<boolean | null>
   /** `noOverwrite`: refuse to replace a file already there (answered as `taken`, with its size when known) */
   upload(key: string, blob: Blob, contentType: string, opts?: { noOverwrite?: boolean; signal?: AbortSignal }): Promise<{ error?: string; taken?: { size: number } }>
   /** A recording's upload links for pieces from..from+count, issued at once (null: none issued, and why). */
@@ -105,6 +107,10 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       })
     }
     return readyOnce.catch(() => false)
+  }
+  async function known(): Promise<boolean | null> {
+    await ready()
+    return readyOnce ? readyOnce.catch(() => null) : null
   }
 
   async function token(): Promise<string | null> {
@@ -300,7 +306,8 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
       const parts = res.parts ?? []
       const sizes = parts.map((p) => Number(p.size ?? 0))
       return {
-        where: 'r2',
+        // the server reads the older Supabase bucket too, after the same check
+        where: res.where === 'sb' ? 'sb' : 'r2',
         whole: res.whole,
         wholeSize: res.wholeSize,
         parts: parts.map((p) => p.url),
@@ -308,6 +315,9 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
         hls: res.hls ?? null
       }
     }
+    // A server from before it read the older bucket itself: the page asks
+    // Supabase directly, as it did (the bucket answers only the owner now).
+    if (res && res.where === 'none') return { where: 'none', whole: null, parts: [] }
     const dir = `${owner}/${session}`
     const objects = await listIn(dir, 'sb')
     const names = objects
@@ -326,6 +336,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
 
   return {
     ready,
+    known,
     urls,
     url,
     candidates,
@@ -440,8 +451,13 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     async remove(keys, where) {
       if (keys.length === 0) return
       for (const k of keys) linkCache.delete(k)
-      if (where === 'r2') await post('del', { keys })
-      else await sb.storage.from('recordings').remove(keys)
+      // in batches: the server takes so many keys at a time, and a very long
+      // recording asked all at once was once refused and nothing deleted
+      for (let i = 0; i < keys.length; i += 500) {
+        const batch = keys.slice(i, i + 500)
+        if (where === 'r2') await post('del', { keys: batch })
+        else await sb.storage.from('recordings').remove(batch)
+      }
     }
   }
 }

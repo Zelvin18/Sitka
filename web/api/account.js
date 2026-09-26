@@ -115,6 +115,10 @@ export default async function handler(req, res) {
     }
     await step('usage', () => del(`usage_events?user_id=eq.${id}`))
     await step('errors', () => del(`client_errors?user_id=eq.${id}`))
+    // the server's own count of what they used, and the record of what they
+    // deleted (made just now, as their sessions went)
+    await step('usage counts', () => del(`usage_meter?user_id=eq.${id}`))
+    await step('deleted-session records', () => del(`deleted_sessions?owner=eq.${id}`))
 
     // ---- the account itself: last, and only when everything before it went ----
     if (failures.length) {
@@ -148,12 +152,17 @@ async function rows(path) {
   return Array.isArray(j) ? j : []
 }
 
-/** A table this deployment never made (or a column it never added) is not a failure. */
+/**
+ * A table this deployment never made (or a column it never added) is not a
+ * failure. Known by the database's own error code, never by words in the
+ * message: a loose match once let a real failure pass as "absent".
+ */
+const ABSENT_CODES = new Set(['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205'])
 const absent = async (r) => {
   if (r.status === 404) return true
   if (r.status !== 400) return false
-  const t = await r.text().catch(() => '')
-  return /does not exist|could not find|column/i.test(t)
+  const j = await r.json().catch(() => null)
+  return Boolean(j && ABSENT_CODES.has(String(j.code || '')))
 }
 
 async function del(path) {

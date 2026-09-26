@@ -113,7 +113,9 @@ export async function r2Fetch(cfg, method, key, query = {}) {
       'x-amz-content-sha256': hash,
       'x-amz-date': amz,
       Authorization: `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${sig}`
-    }
+    },
+    // a request to storage that hangs is given up on, inside the function's own minute
+    signal: AbortSignal.timeout(15000)
   })
 }
 

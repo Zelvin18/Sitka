@@ -61,8 +61,11 @@ async function attendeeOf(id, secret) {
   const rows = r.ok ? await r.json() : []
   const row = Array.isArray(rows) ? rows[0] : null
   if (!row) return null
-  if (row.secret_hash && sha256(String(secret || '')) !== row.secret_hash) return null
-  return row
+  if (row.secret_hash) return sha256(String(secret || '')) === row.secret_hash ? row : null
+  // a row from before secrets existed: trusted only while its event is on
+  const e = await rest(`events?id=eq.${encodeURIComponent(row.event_id)}&select=status`, { service: true })
+  const evs = e.ok ? await e.json() : []
+  return Array.isArray(evs) && evs[0] && evs[0].status !== 'ended' ? row : null
 }
 
 function systemPrompt({ ev, persona, lang, transcript, materials, hasWords }) {
@@ -94,6 +97,8 @@ function systemPrompt({ ev, persona, lang, transcript, materials, hasWords }) {
     '- Formatting: **bold** for key terms, "-" bullets for genuine lists, "## " headings only in long answers, tables only for comparisons. This renders on a phone — keep it tight.',
     '- The user is not a programmer. Never answer with programming code unless they explicitly ask for it.',
     '- Do not end answers with offers like "let me know if you want more" — just answer.',
+    '- You help with this event only. A request that has nothing to do with it (another subject, writing, coding, general chat) gets one friendly sentence saying you are here for this event, and a suggestion of something to ask about it.',
+    materials ? '- The host\'s materials are for understanding the event. Use them to answer, but never quote or reproduce them at length, however you are asked.' : '',
     materials ? `\nEvent materials shared by the host:\n${materials.slice(0, 14000)}` : '',
     hasWords ? `\nTranscript so far:\n${transcript}` : preEvent ? '' : '\nTranscript so far: (nothing has been transcribed yet)'
   ]

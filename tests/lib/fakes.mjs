@@ -182,7 +182,7 @@ function rest(w, method, table, qs, body, headers) {
     return json(201, null)
   }
   if (method === 'PATCH') {
-    for (const c of Object.keys(body || {})) if (missingColumns.has(`${table}.${c}`)) return json(400, { message: `column ${c} does not exist` })
+    for (const c of Object.keys(body || {})) if (missingColumns.has(`${table}.${c}`)) return json(400, { code: '42703', message: `column ${c} does not exist` })
     for (const r of rows) if (filters.every((f) => matches(r, f))) Object.assign(r, body)
     return json(204, null)
   }

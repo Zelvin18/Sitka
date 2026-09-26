@@ -11,13 +11,28 @@
 // cannot be used to send anyone's text to the owner's inbox.
 
 import { overLimitKey } from './_limit.js'
-import { UNCHECKED, userOf, tokenOf, ipOf } from './_auth.js'
+import { UNCHECKED, userOf, tokenOf, ipOf, SUPA_URL, SUPA_ANON } from './_auth.js'
 
 const RESEND_KEY = process.env.RESEND_API_KEY || ''
 const TO = process.env.ADMIN_EMAIL || ''
 // Resend lets a new account send from this address to its own inbox before a domain is verified
 const FROM = process.env.NOTIFY_FROM || 'Sitca <onboarding@resend.dev>'
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+/** Is this a recap that exists and is shared? (sitka_recap answers for shared ones only) */
+async function recapShared(id) {
+  if (!SUPA_URL || !SUPA_ANON) return false
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/sitka_recap?p_id=${encodeURIComponent(id)}`, {
+      headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` },
+      signal: AbortSignal.timeout(4000)
+    })
+    const rc = r.ok ? await r.json().catch(() => null) : null
+    return Boolean(rc && rc.enabled !== false)
+  } catch {
+    return false
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -47,6 +62,8 @@ export default async function handler(req, res) {
     // the one report an anonymous page may make, in words chosen here
     if (await overLimitKey(`notify:ip:${ipOf(req)}`, 2, 6)) return res.status(429).json({ error: 'Slow down a little.' })
     if (await overLimitKey(`notify:recap:${body.recap}`, 2, 6)) return res.status(429).json({ error: 'Slow down a little.' })
+    // only about a recap that exists and is shared: a made-up id sends nothing
+    if (!(await recapShared(String(body.recap)))) return res.status(404).json({ error: 'No such recap.' })
     user = 'a recap visitor'
     const detail = /^[\w .:\-[\]()/]{0,160}$/.test(String(body.detail || '')) ? String(body.detail) : ''
     lines = [`A shared recap was slow to start: /r/${body.recap}${detail ? ` (${detail})` : ''}`]
@@ -56,7 +73,8 @@ export default async function handler(req, res) {
   }
   if (lines.length === 0) return res.status(400).json({ error: 'nothing to say' })
   if (!RESEND_KEY || !TO) return res.status(200).json({ ok: false, reason: 'not-configured' })
-  const ua = String(body.ua || '').slice(0, 160)
+  // the browser as the request says it, never words the caller chose for the mail
+  const ua = String(req.headers['user-agent'] || '').replace(/[^ -~]/g, '').slice(0, 160)
 
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const subject = `Sitca: ${lines.length === 1 ? 'a fault' : `${lines.length} faults`} for ${user}`

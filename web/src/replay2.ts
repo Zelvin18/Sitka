@@ -4,6 +4,7 @@ import './pageboot'
  * with the recording, chapters that fill as it plays, the summary as a lead,
  * the words as paragraphs lit while they are spoken, and Sitca in a dock.
  */
+import { roomReader } from './room'
 import { createClient } from '@supabase/supabase-js'
 import { patientFetch } from './patientFetch'
 import { md, parseTs as parseChipTs } from './mdlite'
@@ -129,12 +130,16 @@ async function loadEvent(): Promise<Loaded | null> {
     video?: boolean | 'parts'
   } | null
   if (!data || !r?.enabled) return null
-  const { data: segs } = await sb
-    .from('segments')
-    .select('idx,start_sec,text')
-    .eq('event_id', pageId)
-    .order('idx', { ascending: true })
-  const lines = ((segs ?? []) as { start_sec: number; text: string }[])
+  // the event's words, a thousand lines at a time, through the room's reader
+  const reader = roomReader(sb, pageId)
+  const segs: { idx: number; start_sec?: number; text: string }[] = []
+  for (let after = -1, i = 0; i < 20; i++) {
+    const page = (await reader.feed({ after, limit: 1000 })).segments
+    segs.push(...page)
+    if (page.length < 1000) break
+    after = page[page.length - 1].idx
+  }
+  const lines = (segs as { start_sec: number; text: string }[])
     .map((s) => ({ sec: Number(s.start_sec), text: String(s.text || '').trim() }))
     .filter((l) => l.text && !/^[\s.。…,\-–—]*$/.test(l.text))
   return {

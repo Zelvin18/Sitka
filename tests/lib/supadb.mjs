@@ -110,6 +110,24 @@ end $$;
 
 create publication supabase_realtime;
 
+-- Realtime's broadcast authorisation, as far as the rules see it: the
+-- messages table its policies are written on (row-level security already on,
+-- owned by another role, as on Supabase), the topic being joined (set by a
+-- test as realtime.topic), and send() recording what the database broadcast.
+create schema realtime;
+create role supabase_realtime_admin nologin;
+create table realtime.messages (id bigserial primary key, topic text, extension text, payload jsonb, event text, private boolean, inserted_at timestamptz default now());
+alter table realtime.messages enable row level security;
+create function realtime.topic() returns text language sql stable as $$ select nullif(current_setting('realtime.topic', true), '') $$;
+create table realtime.sent (topic text, event text, payload jsonb, private boolean, at timestamptz default now());
+create function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void
+language sql security definer as $$ insert into realtime.sent (topic, event, payload, private) values (topic, event, payload, private) $$;
+alter table realtime.messages owner to supabase_realtime_admin;
+grant usage on schema realtime to anon, authenticated, service_role;
+grant select, insert on realtime.messages to anon, authenticated;
+grant usage, select on sequence realtime.messages_id_seq to anon, authenticated;
+grant execute on function realtime.topic() to anon, authenticated;
+
 -- Supabase's default grants
 grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
@@ -177,7 +195,7 @@ function wrap(db) {
      * server, a uuid = that signed-in person. Returns the rows; throws the
      * database's error as it would reach the app.
      */
-    async as(who, text, params = [], { headers = {} } = {}) {
+    async as(who, text, params = [], { headers = {}, topic = '' } = {}) {
       const role = who === null ? 'anon' : who === 'service' ? 'service_role' : 'authenticated'
       const claims = who === null ? { role: 'anon' } : who === 'service' ? { role: 'service_role' } : { role: 'authenticated', sub: who }
       return db.transaction(async (tx) => {
@@ -187,6 +205,8 @@ function wrap(db) {
                   set_config('request.jwt.claim.role', $3, true), set_config('request.headers', $4, true)`,
           [JSON.stringify(claims), claims.sub || '', claims.role, JSON.stringify(lowerKeys(headers))]
         )
+        // the Realtime channel being joined, as realtime.topic() reports it to the rules
+        if (topic) await tx.query(`select set_config('realtime.topic', $1, true)`, [topic])
         return (await tx.query(text, params)).rows
       })
     },

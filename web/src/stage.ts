@@ -6,6 +6,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
+import { liveRoom, roomReader } from './room'
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -14,6 +15,8 @@ const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false } })
 const el = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 const m = /\/s\/([^/?#]+)/.exec(location.pathname)
 const eventId = m ? m[1] : ''
+/** this event's room, read by its id only */
+const room = roomReader(sb, eventId)
 const capLang = new URLSearchParams(location.search).get('lang')
 
 interface EventRow {
@@ -139,13 +142,10 @@ let pollTimer: number | null = null
 let pollCloseTimer: number | null = null
 async function refreshPollBars(): Promise<void> {
   if (!activePoll) return
-  const { data } = await sb.from('poll_votes').select('choice').eq('poll_id', activePoll.id)
-  const counts = activePoll.options.map(() => 0)
-  for (const v of data ?? []) {
-    const i = Number(v.choice)
-    if (i >= 0 && i < counts.length) counts[i]++
-  }
-  const total = (data ?? []).length
+  const p = await room.poll()
+  if (!activePoll || !p || p.id !== activePoll.id) return
+  const counts = activePoll.options.map((_, i) => Number(p.tally?.[String(i)] ?? 0))
+  const total = counts.reduce((n, c) => n + c, 0)
   const wrap = el('tkopts')
   if (wrap.children.length !== activePoll.options.length) {
     wrap.innerHTML = ''
@@ -240,44 +240,22 @@ async function boot(): Promise<void> {
   void refreshCount()
 
   // caption backlog: only the tail — the stage shows "now", not history
-  const { data: segs } = await sb
-    .from('segments')
-    .select('idx,text')
-    .eq('event_id', eventId)
-    .order('idx', { ascending: false })
-    .limit(3)
-  for (const s of ((segs ?? []) as SegRow[]).reverse()) {
+  const tail = await room.feed({ tail: 3 })
+  for (const s of tail.segments as SegRow[]) {
     originals.set(s.idx, s.text)
     considerSeg(s.idx)
   }
   if (capLang) {
-    const { data: tr } = await sb
-      .from('translations')
-      .select('idx,text')
-      .eq('event_id', eventId)
-      .eq('lang', capLang)
-    for (const t of tr ?? []) translations.set(t.idx as number, t.text as string)
+    const first = tail.segments.length ? tail.segments[0].idx - 1 : -1
+    const tr = await room.feed({ after: first, lang: capLang, afterTr: first, limit: 50 })
+    for (const t of tr.translations) translations.set(t.idx, t.text)
   }
-  const { data: openPoll } = await sb
-    .from('polls')
-    .select('id,question,options,status')
-    .eq('event_id', eventId)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false })
-    .limit(1)
-  if (openPoll && openPoll.length > 0 && ev.status === 'live') {
-    setStagePoll(openPoll[0] as PollRow)
-  }
+  const openPoll = (await room.poll(true)) as PollRow | null
+  if (openPoll && ev.status === 'live') setStagePoll(openPoll)
 
-  // One channel per table: the server refuses a whole channel when it will
-  // not serve one of its tables, which once left the projector with no
-  // captions at all. The event row is not on the live link; its start and
-  // end are asked for below.
-  const live = <T>(table: string, event: 'INSERT' | '*', on: (row: T) => void): void => {
-    sb.channel(`stage-${table}-${eventId}`)
-      .on('postgres_changes', { event, schema: 'public', table, filter: 'event_id=eq.' + eventId }, (payload) => on(payload.new as T))
-      .subscribe()
-  }
+  // New lines arrive on the event's private channel (only the database sends
+  // on it); the event row is not on it, and its start and end are asked for
+  // below.
   const takeSeg = (s: SegRow, late = false): void => {
     if (originals.has(s.idx)) return
     originals.set(s.idx, s.text)
@@ -298,12 +276,14 @@ async function boot(): Promise<void> {
     if (n.created_at && n.created_at > notesSince) notesSince = n.created_at
     showStageNote(n.text)
   }
-  live<SegRow>('segments', 'INSERT', (s) => takeSeg(s))
-  live<{ lang: string; idx: number; text: string }>('translations', 'INSERT', takeTranslation)
-  live<PollRow | null>('polls', '*', (p) => {
-    if (p && p.id) setStagePoll(p)
+  liveRoom(sb, eventId, 'stage', {
+    segments: (row) => takeSeg(row as SegRow),
+    translations: takeTranslation,
+    polls: (p) => {
+      if (p && p.id) setStagePoll(p as PollRow)
+    },
+    room_notes: takeNote
   })
-  live<{ id?: string; text: string; created_at?: string }>('room_notes', 'INSERT', takeNote)
 
   // The safety net: while live, the captions, translations and notes the
   // live link missed (a dropped socket, a refused table) are asked for.
@@ -314,39 +294,16 @@ async function boot(): Promise<void> {
     if (catching || !ev || ev.status !== 'live') return
     catching = true
     try {
-      const { data: segs } = await sb
-        .from('segments')
-        .select('idx,text')
-        .eq('event_id', eventId)
-        .gt('idx', lastIdx)
-        .order('idx', { ascending: true })
-        .limit(60)
-      const rows = (segs ?? []) as SegRow[]
+      const f = await room.feed({ after: lastIdx, lang: capLang, afterTr: lastTrIdx, limit: 60 })
+      const rows = f.segments as SegRow[]
       // a long gap: only the tail is worth showing on a projector
       for (const s of rows.slice(-3)) takeSeg(s, true)
       for (const s of rows) lastIdx = Math.max(lastIdx, s.idx)
-      if (capLang) {
-        const { data: tr } = await sb
-          .from('translations')
-          .select('idx,text')
-          .eq('event_id', eventId)
-          .eq('lang', capLang)
-          .gt('idx', lastTrIdx)
-          .order('idx', { ascending: true })
-          .limit(60)
-        for (const t of (tr ?? []) as { idx: number; text: string }[]) {
-          lastTrIdx = Math.max(lastTrIdx, t.idx)
-          takeTranslation(t)
-        }
+      for (const t of f.translations) {
+        lastTrIdx = Math.max(lastTrIdx, t.idx)
+        takeTranslation(t)
       }
-      const { data: notes } = await sb
-        .from('room_notes')
-        .select('id,text,created_at')
-        .eq('event_id', eventId)
-        .gt('created_at', notesSince)
-        .order('created_at', { ascending: true })
-        .limit(5)
-      for (const n of (notes ?? []) as { id: string; text: string; created_at: string }[]) takeNote(n)
+      for (const n of await room.notes(notesSince)) takeNote(n)
     } catch {
       /* the next tick tries again */
     } finally {

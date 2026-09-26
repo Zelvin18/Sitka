@@ -153,34 +153,43 @@ owner rows and orphaned recaps; four engine drills (deleted elsewhere, delete
 stops uploads, no `AbortSignal.timeout`, "up to" from the first piece), each
 checked to fail without its fix.
 
-### Part 2 — live events (open)
+### Part 2 — live events
 
 | | Re-audit | Henry 2 | Finding | Fix |
 |---|---|---|---|---|
-| ☐ | N7 | — | Captions, chat and questions of every open event can be listed | Read through functions that take an event id; table reads revoked from visitors; live push by Realtime Broadcast |
-| ☐ | — | P1 | The live-video signalling channel is public | Private Realtime channels; only the host sends offers |
-| ☐ | N16 | B5, D6 | Signed-in users see who asked each shared speaker question | Shared-question policy for visitors only |
-| ☐ | — | B4, P3 | Attendee rows without a secret are trusted | The hash required on new rows; old rows only while their event is open |
-| ☐ | N18 | P10, D10, B8 | Events filled or locked out; limits keyed on a spoofable header | Joins through the API; caps from the host's plan; keys on the account or the real client address |
-| ☐ | N13, N28 | N5, P5, P6, P7 | Recap chat and attendee questions as free general AI; host materials quotable | Answers kept to the recap; translation by line number, cached; budgets per recap charged to the owner |
-| ☐ | N14 (rest) | N7 | Speaker detection unmetered | Plan gate and metering by duration |
+| ☑ | N7 | — | Captions, chat and questions of every open event can be listed | Visitors read one event's room through functions that take its id (`sitka_feed`, `sitka_room`, `sitka_room_notes`, `sitka_poll`, `sitka_shared_questions`); the tables are closed to them (column grants too); new lines reach the room on the event's private channel `event:<id>`, which only the database sends on (migration 11; `web/src/room.ts`) |
+| ☑ | — | P1 | The live-video signalling channel is public | Two private channels: the host sends on `rtc:<id>` (only the host may), phones answer on `rtcup:<id>` (only the host reads); phones use a random id per page, never their attendee id; the older shared channel is answered too until everyone is on the new pages |
+| ☑ | N16 | B5, D6 | Signed-in users see who asked each shared speaker question | Signed-in people read only their own events' rows; the room's view carries no attendee ids |
+| ☑ | — | B4, P3 | Attendee rows without a secret are trusted | A new attendee must carry a secret; rows from before secrets count only while their event is on (database and API) |
+| ◐ | N18 | P10, D10, B8 | Events filled or locked out; limits keyed on a spoofable header | Callers told apart by Cloudflare's header or the address the proxies added (never one a script names). Joining through the API with a bot check is still open (needs a Turnstile or similar account) |
+| ◐ | N13, N28 | N5, P5, P6, P7 | Recap chat and attendee questions as free general AI; host materials quotable; translation of any text | Answers kept to the session (off-topic asks declined in a sentence); no client-sent answers passed on; translation of the recap's own words only; materials used, never reproduced; questions and translation limited apart. A daily budget per recap charged to its owner is still open (the public page uses the free models) |
+| ☑ | N14 (rest) | N7 | Speaker detection unmetered | A monthly listening allowance per plan (the plan's hours), counted by what Deepgram heard; one recording at most twice an hour |
 
-### Part 3 — database operations and loose ends (open)
+### Part 3 — database operations and loose ends
 
 | | Re-audit | Henry 2 | Finding | Fix |
 |---|---|---|---|---|
-| ☐ | — | B1 | Anonymous rows can fill the free database | Size caps, a global hourly ceiling, caps on transcript size |
-| ☐ | — | B3 | Functions made later are open to visitors by default | Revoked globally for the owner role |
-| ☐ | N29 | — | "Not valid" checks block updates of old rows | Violations counted and corrected, then validated |
-| ☐ | N31 | — | Migrations not safe to re-run one at a time | Re-grants inside 02; policies dropped by name; every owner listed |
-| ☐ | N32 | D2, D16 | Old short codes still work; leads insert spaces directly | Codes rotated; space inserts through the checked function |
-| ☐ | N34 | A7, A14, A15, N9, N10, N12, N13 | API loose ends | Deadlines everywhere, tickets with their own secret and a maximum life, limiter fails closed, account deletion complete |
-| ☐ | N23 | — | Deleting a very long recording deletes nothing; late uploads leave orphans | Deleted in batches on the server |
-| ☐ | N24, N26, N36 | R4–R6, R9 | Engine gaps: header kept on failure, memory cap, same-size collision, counter and part in one transaction, permanent errors | As the reports say |
-| ☐ | N25 | R4 | One recording split between the two stores when the check was slow | Store fixed on the first answer for the session |
-| ☐ | N19 | W5, W6, M12 | Long recordings never joined; joining in the browser | A server media job (Set 5) |
+| ☑ | — | B1 | Anonymous rows can fill the free database | Error reports and usage events kept small, with a ceiling for all visitors together; a session's text and a caption line have sizes (migration 10) |
+| ☑ | — | B8 | Rate-limit keys spoofable through `x-forwarded-for` | Cloudflare's header, then the last address the proxies added |
+| ☑ | — | B3 | Functions made later are open to visitors by default | The grant to everyone taken away for the role that makes them |
+| ☑ | N29 | — | "Not valid" checks block updates of old rows | Odd values put right, then every check validated where the rows allow |
+| ◐ | N31 | — | Migrations not safe to re-run one at a time | Part 8 keeps the later parts' functions open when run again; parts 2 and 5 are still run once, in order (see the README) |
+| ◐ | N32 | D2, D16, B7 | Short codes; leads insert spaces directly | Six-letter lead codes replaced by long ones; a space written straight into the table gets its code from the database and no live link. Six-letter member and course codes still work (printed invitations), limited per account |
+| ◐ | N34 | A14, A15, A18, N9, N10, N12 | API loose ends | Every outgoing request has a time limit; the limiter no longer forgets after one 404 or empties under a flood; tickets have a maximum life; the error mail only about a shared recap, with the request's own browser; account deletion also removes usage counts and deleted-session records, and knows a missing table by its error code; a page cannot pass as the server in the operations view. Still open: a dedicated `PLAYBACK_SECRET` (set it in Vercel) and a share version in tickets |
+| ☑ | N23 | — | Deleting a very long recording deletes nothing; late uploads leave orphans | Deleted in batches of 500; uploads under way are aborted and the server refuses a deleted session's files |
+| ◐ | N24, N26, N36 | R5, R9 | Engine gaps | A header the device refuses is held and sent; one never sent goes on reopening; finished ones are cleared; memory is warned about every 100 MB and written back to the device when it can; the part being formed is saved with the counter (no gap after a crash); a piece arriving during Stop is kept; an unreadable device counts as pending. Still open: two different pieces of the same size under one number, and permanent errors retried at the slowest pace for ever |
+| ☑ | N25 | R4 | One recording split between the two stores | The store is fixed for the session on the first clear answer and saved with it |
+| ☑ | N17 | — | Shared sessions listable through the older recordings bucket | The visitor rule is gone; the server reads a shared recording there itself, after checking the share |
+| ☐ | N19 | W5, W6, M12, R6 | Long recordings never joined; joining in the browser; lost parts leave a gap | A server media job (Set 5) |
 | ⊘ | N38 | A17 | Vercel Hobby: 12 of 12 functions | Vercel Pro before charging |
 | ⊘ | — | (backups) | Backups incomplete; no restore | Supabase Pro with point-in-time recovery |
+
+Tests: 146, passed 3x with both builds (`tests/RESULTS.md`, "Re-audit parts 2 and 3"),
+including the database's channel rules on a stand-in for Supabase's
+`realtime.messages`, and three engine drills checked to fail without their
+fixes. Checked against the live database before part 11 runs: every read
+falls back to the older way and the room's channel falls back to the
+per-table feed.
 
 ## Set 4 — Sessions, sync and the library
 

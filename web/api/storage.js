@@ -328,6 +328,13 @@ async function mediaLinks(res, cfg, owner, body, token) {
     .map((o) => ({ url: presign(cfg, 'GET', o.key, READ_SECS), size: o.size, n: Number(/part-(\d+)\.webm$/.exec(o.key)[1]) }))
   const indexed = objects.some((o) => o.key === `${ownerId}/${sessionId}/index.json`)
   const ticket = makeTicket(ownerId, sessionId, READ_SECS)
+  // A recording made before the move to Cloudflare lives in Supabase storage:
+  // read here, with the server's key, after the same check. Visitors can no
+  // longer list that bucket themselves (every shared folder was listable).
+  if (!whole && parts.length === 0) {
+    const older = await supabaseMedia(ownerId, sessionId).catch(() => null)
+    if (older) return res.status(200).json({ ...older, expiresIn: READ_SECS })
+  }
   return res.status(200).json({
     where: whole || parts.length > 0 ? 'r2' : 'none',
     whole,
@@ -338,6 +345,39 @@ async function mediaLinks(res, cfg, owner, body, token) {
     hls: indexed && parts.length > 0 && ticket ? `/api/storage?op=hls&owner=${ownerId}&session=${sessionId}&ticket=${encodeURIComponent(ticket)}` : null,
     expiresIn: READ_SECS
   })
+}
+
+/** One recording in the older Supabase bucket: its whole file and parts, as short-lived links; null when there is none. */
+async function supabaseMedia(ownerId, sessionId) {
+  if (!SUPA_URL || !SUPA_SERVICE) return null
+  const headers = { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}`, 'Content-Type': 'application/json' }
+  const dir = `${ownerId}/${sessionId}`
+  const listed = await fetch(`${SUPA_URL}/storage/v1/object/list/recordings`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ prefix: dir, limit: 1000, offset: 0 }),
+    signal: AbortSignal.timeout(8000)
+  })
+  const items = listed.ok ? await listed.json().catch(() => []) : []
+  const partObjs = (Array.isArray(items) ? items : [])
+    .filter((o) => o && /^part-\d+\.webm$/.test(String(o.name)))
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+  const paths = [`${dir}.webm`, ...partObjs.map((o) => `${dir}/${o.name}`)]
+  const signed = await fetch(`${SUPA_URL}/storage/v1/object/sign/recordings`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ expiresIn: READ_SECS, paths }),
+    signal: AbortSignal.timeout(8000)
+  })
+  const links = signed.ok ? await signed.json().catch(() => []) : []
+  const urlOf = (path) => {
+    const l = (Array.isArray(links) ? links : []).find((x) => x && x.path === path && !x.error && x.signedURL)
+    return l ? `${SUPA_URL}/storage/v1${l.signedURL}` : null
+  }
+  const whole = urlOf(`${dir}.webm`)
+  const parts = partObjs.map((o) => ({ url: urlOf(`${dir}/${o.name}`), size: Number(o.metadata?.size ?? 0) })).filter((p) => p.url)
+  if (!whole && parts.length === 0) return null
+  return { where: 'sb', whole, parts, partNumbers: parts.map((_, i) => i), hls: null }
 }
 
 /**

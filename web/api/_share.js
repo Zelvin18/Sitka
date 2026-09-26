@@ -117,6 +117,9 @@ export function keyShape(key) {
 
 const ticketKey = () => process.env.PLAYBACK_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.SUPABASE_SERVICE_KEY || ''
 
+/** the longest a ticket is made for, and so the longest one is honoured */
+const TICKET_MAX_MS = 3 * 3600 * 1000
+
 export function makeTicket(owner, session, secs = 7200) {
   const key = ticketKey()
   if (!key) return ''
@@ -130,7 +133,8 @@ export function checkTicket(ticket, owner, session) {
   const key = ticketKey()
   const [expStr, sig] = String(ticket || '').split('.')
   const exp = Number(expStr)
-  if (!key || !sig || !Number.isFinite(exp) || exp * 1000 < Date.now()) return false
+  // never a ticket for longer than tickets are made: one dated years ahead is refused
+  if (!key || !sig || !Number.isFinite(exp) || exp * 1000 < Date.now() || exp * 1000 > Date.now() + TICKET_MAX_MS) return false
   const want = createHmac('sha256', key).update(`${owner.toLowerCase()}.${session.toLowerCase()}.${exp}`).digest('base64url')
   const a = Buffer.from(sig)
   const b = Buffer.from(want)

@@ -10,7 +10,7 @@ with checks (ord, "check", item, detail) as (
   -- 1. which migrations have run (from part 9 on)
   select 1, 'migration ran', name, ran_at::text from public.schema_migrations
 
-  -- 2. functions visitors can run (expect exactly six)
+  -- 2. functions visitors can run (expect six; thirteen once part 11 has run)
   union all
   select 2, 'visitors may run', p.oid::regprocedure::text, 'owner ' || pg_get_userbyid(p.proowner)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace

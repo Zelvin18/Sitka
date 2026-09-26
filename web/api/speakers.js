@@ -11,7 +11,8 @@
 // session's own transcript lines and saves the result.
 
 import { r2Config, presign, r2List } from './_r2.js'
-import { SUPA_URL, SUPA_ANON, requireUser, failSafely } from './_auth.js'
+import { SUPA_URL, SUPA_ANON, requireUser, failSafely, tokenOf } from './_auth.js'
+import { allowListen, meter } from './_plan.js'
 import { UUID } from './_share.js'
 import { overLimitKey } from './_limit.js'
 
@@ -39,8 +40,13 @@ export default async function handler(req, res) {
   const who = await requireUser(req, res)
   if (!who) return
   const owner = who.id.toLowerCase()
-  // listening again is the costliest thing Sitca does: a few an hour each
-  if (await overLimitKey(`speakers:user:${owner}`, 3, 20)) return res.status(429).json({ error: 'Slow down a little.' })
+  // listening again is the costliest thing Sitca does: a few an hour each,
+  // one recording at most twice an hour, and within the plan's allowance
+  if ((await overLimitKey(`speakers:user:${owner}`, 3, 20)) || (await overLimitKey(`speakers:session:${sessionId}`, 2, 2))) {
+    return res.status(429).json({ error: 'Slow down a little.' })
+  }
+  const may = await allowListen(tokenOf(req), owner)
+  if (!may.ok) return res.status(may.transient ? 503 : 402).json({ error: may.message, plan: may.plan, limit: 'listen' })
 
   try {
     // the whole file, and only the whole file: parts are not one recording
@@ -98,6 +104,8 @@ export default async function handler(req, res) {
     const channel = j.results && j.results.channels && j.results.channels[0]
     const language = (channel && channel.detected_language) || null
     const duration = Number(j.metadata && j.metadata.duration) || null
+    // counted by what the service heard (it bills by the same)
+    await meter(owner, 'dg', Math.ceil(duration || whole.size / 16000))
     res.setHeader('Cache-Control', 'no-store')
     return res.status(200).json({ utterances, language, duration })
   } catch (err) {

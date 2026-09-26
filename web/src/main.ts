@@ -2,6 +2,7 @@ import './pageboot'
 import { timeoutSignal } from '../../src/shared/timeout'
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { patientFetch } from './patientFetch'
+import { liveRoom, roomReader } from './room'
 import { downloadBytes, fileName, notesPdf, withoutTimes } from './notesFile'
 import './style.css'
 import { installFocusGuard } from '../../src/shared/focusGuard'
@@ -51,6 +52,8 @@ void whoAmI()
 // ---------- event id from /e/<id> or ?e=<id> ----------
 const pathMatch = /\/e\/([^/?#]+)/.exec(location.pathname)
 const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(location.search).get('e') || ''
+/** this event's room, read by its id only */
+const room = roomReader(sb, eventId)
 // ---------- keeping the event, for someone with an account ----------
 const keptKey = () => 'sitca-kept-' + eventId
 const askedKey = () => 'sitca-keep-asked-' + eventId
@@ -219,21 +222,9 @@ async function authorTag(id: string): Promise<string> {
   const d = await crypto.subtle.digest('SHA-256', bytes)
   return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, '0')).join('').slice(0, 16)
 }
-// The room is read by its anonymous tags; a database without them yet is
-// read the older way.
-let roomCols = 'id,author,name,host,text,created_at'
+// The room is read by its anonymous tags, through this event's own reader.
 async function roomRows(since: string | null, limit: number): Promise<RoomRow[]> {
-  const run = (cols: string) => {
-    let q = sb.from('room_messages').select(cols).eq('event_id', eventId)
-    if (since !== null) q = q.gt('created_at', since || '1970-01-01')
-    return q.order('created_at', { ascending: true }).limit(limit)
-  }
-  let r = await run(roomCols)
-  if (r.error && /author/i.test(r.error.message)) {
-    roomCols = 'id,attendee_id,name,host,text,created_at'
-    r = await run(roomCols)
-  }
-  return (r.data ?? []) as unknown as RoomRow[]
+  return (await room.room(since, limit)) as RoomRow[]
 }
 // Realtime delivers instantly; this quiet poll guarantees nothing is ever
 // missed even when the live connection drops for a moment.
@@ -1034,11 +1025,19 @@ el('stagevideo').onclick = openStageFull
 // frames keep flowing underneath, so a phone that cannot connect (or a room
 // too large for direct connections) still sees the screen, a second behind.
 let rtcPc: RTCPeerConnection | null = null
-let rtcChannel: RealtimeChannel | null = null
+/** where the host's offers arrive (rtc:<event>), and where this phone answers (rtcup:<event>) */
+let rtcIn: RealtimeChannel | null = null
+let rtcOut: RealtimeChannel | null = null
 let rtcWantTimer: number | null = null
 const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+// This phone's name on the video channel: made fresh for the page, never the
+// attendee's own id (the host's offers name it, and the room can see them).
+const rtcId = crypto.randomUUID()
+function rtcSend(event: string, payload: Record<string, unknown>): void {
+  void rtcOut?.send({ type: 'broadcast', event, payload })
+}
 function rtcWant(): void {
-  void rtcChannel?.send({ type: 'broadcast', event: 'want', payload: { id: attId } })
+  rtcSend('want', { id: rtcId })
 }
 function rtcMark(on: boolean): void {
   const card = el('stagecard')
@@ -1059,12 +1058,7 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   const pc = new RTCPeerConnection(RTC_CONFIG)
   rtcPc = pc
   pc.onicecandidate = (e) => {
-    if (e.candidate)
-      void rtcChannel?.send({
-        type: 'broadcast',
-        event: 'ice',
-        payload: { id: attId, from: 'attendee', candidate: e.candidate.toJSON() }
-      })
+    if (e.candidate) rtcSend('ice', { id: rtcId, from: 'attendee', candidate: e.candidate.toJSON() })
   }
   const early: RTCIceCandidateInit[] = []
   let offered = false
@@ -1118,33 +1112,43 @@ async function rtcAccept(sdp: RTCSessionDescriptionInit): Promise<void> {
   for (const c of early.splice(0)) void pc.addIceCandidate(c).catch(() => undefined)
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
-  void rtcChannel?.send({ type: 'broadcast', event: 'answer', payload: { id: attId, sdp: pc.localDescription } })
+  rtcSend('answer', { id: rtcId, sdp: pc.localDescription })
 }
 /** how a host candidate reaches the connection being set up (kept until the offer is in) */
 let rtcAddIce: ((c: RTCIceCandidateInit) => void) | null = null
 /** when the last offer arrived: a connection still being made is left to finish */
 let rtcOfferedAt = 0
+/**
+ * Live video's signalling. Two private channels: the host's offers arrive on
+ * rtc:<event>, which only the host may send on, and this phone answers on
+ * rtcup:<event>, which only the host may read. Until the database has those
+ * rules (or where they are refused) the older shared channel is used.
+ */
 function startRtc(): void {
-  if (rtcChannel || !attId || typeof RTCPeerConnection === 'undefined') return
-  const ch = sb.channel('rtc-' + eventId, { config: { broadcast: { self: false } } })
-  rtcChannel = ch
-  ch.on('broadcast', { event: 'offer' }, ({ payload }) => {
-    const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
-    if (p.id === attId) void rtcAccept(p.sdp).catch(() => rtcMark(false))
-  })
-  ch.on('broadcast', { event: 'ice' }, ({ payload }) => {
-    const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
-    if (p.id === attId && p.from === 'host' && rtcPc) {
-      if (rtcAddIce) rtcAddIce(p.candidate)
-      else void rtcPc.addIceCandidate(p.candidate).catch(() => undefined)
-    }
-  })
-  ch.on('broadcast', { event: 'bye' }, () => {
-    rtcPc?.close()
-    rtcPc = null
-    rtcMark(false)
-    hearGone()
-  })
+  if (rtcIn || !attId || typeof RTCPeerConnection === 'undefined') return
+  const wire = (ch: RealtimeChannel): void => {
+    ch.on('broadcast', { event: 'offer' }, ({ payload }) => {
+      const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
+      if (p.id === rtcId) void rtcAccept(p.sdp).catch(() => rtcMark(false))
+    })
+    ch.on('broadcast', { event: 'ice' }, ({ payload }) => {
+      const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
+      if (p.id === rtcId && p.from === 'host' && rtcPc) {
+        if (rtcAddIce) rtcAddIce(p.candidate)
+        else void rtcPc.addIceCandidate(p.candidate).catch(() => undefined)
+      }
+    })
+    ch.on('broadcast', { event: 'bye' }, () => {
+      rtcPc?.close()
+      rtcPc = null
+      rtcMark(false)
+      hearGone()
+    })
+    // the host arriving after us says "here": we ask again at once
+    ch.on('broadcast', { event: 'here' }, () => {
+      if (needsAsk()) rtcWant()
+    })
+  }
   // not connected, and not in the middle of connecting either: a connection
   // still being made (the phone's network can take ten seconds) is left to
   // finish rather than torn down by a fresh ask
@@ -1155,19 +1159,49 @@ function startRtc(): void {
     const making = (st === 'new' || st === 'connecting') && Date.now() - rtcOfferedAt < 12000
     return !making
   }
-  // the host arriving after us says "here": we ask again at once
-  ch.on('broadcast', { event: 'here' }, () => {
-    if (needsAsk()) rtcWant()
-  })
-  ch.subscribe((status) => {
-    if (status !== 'SUBSCRIBED') return
+  const asking = (): void => {
     rtcWant()
     if (rtcWantTimer) clearInterval(rtcWantTimer)
     // asked again every few seconds until the picture is here
     rtcWantTimer = window.setInterval(() => {
       if (needsAsk()) rtcWant()
     }, 4000)
-  })
+  }
+  // the older shared channel: one for both ways
+  let fellBack = false
+  const fallBack = (): void => {
+    if (fellBack || !rtcIn) return
+    fellBack = true
+    for (const ch of [rtcIn, rtcOut]) if (ch) void sb.removeChannel(ch)
+    const ch = sb.channel('rtc-' + eventId, { config: { broadcast: { self: false } } })
+    rtcIn = ch
+    rtcOut = ch
+    wire(ch)
+    ch.subscribe((status) => {
+      if (status === 'SUBSCRIBED') asking()
+    })
+  }
+  const inCh = sb.channel('rtc:' + eventId, { config: { private: true, broadcast: { self: false } } })
+  const outCh = sb.channel('rtcup:' + eventId, { config: { private: true, broadcast: { self: false } } })
+  rtcIn = inCh
+  rtcOut = outCh
+  wire(inCh)
+  const joined = new Set<string>()
+  const onStatus = (which: string) => (status: string): void => {
+    if (fellBack) return
+    if (status === 'SUBSCRIBED') {
+      joined.add(which)
+      if (joined.size === 2) asking()
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      fallBack()
+    }
+  }
+  inCh.subscribe(onStatus('in'))
+  outCh.subscribe(onStatus('out'))
+  // a private join that never answers is not waited on for ever
+  window.setTimeout(() => {
+    if (!fellBack && joined.size < 2) fallBack()
+  }, 12000)
 }
 // A live picture must never sit behind a play button. Some phones refuse
 // autoplay (low power mode, a slow first frame), so the element is started
@@ -1253,10 +1287,9 @@ function stopRtc(): void {
     clearInterval(rtcWantTimer)
     rtcWantTimer = null
   }
-  if (rtcChannel) {
-    void sb.removeChannel(rtcChannel)
-    rtcChannel = null
-  }
+  for (const ch of new Set([rtcIn, rtcOut])) if (ch) void sb.removeChannel(ch)
+  rtcIn = null
+  rtcOut = null
 }
 el('stageclose').onclick = () => el('stagefull').classList.add('hidden')
 el('stagefull').onclick = (e) => {
@@ -1410,13 +1443,10 @@ function renderPoll(counts?: number[], total?: number): void {
 }
 async function refreshPollResults(): Promise<void> {
   if (!activePoll) return
-  const { data } = await sb.from('poll_votes').select('choice').eq('poll_id', activePoll.id)
-  const counts = activePoll.options.map(() => 0)
-  for (const v of data ?? []) {
-    const i = Number(v.choice)
-    if (i >= 0 && i < counts.length) counts[i]++
-  }
-  renderPoll(counts, (data ?? []).length)
+  const p = await room.poll()
+  if (!activePoll || !p || p.id !== activePoll.id) return
+  const counts = activePoll.options.map((_, i) => Number(p.tally?.[String(i)] ?? 0))
+  renderPoll(counts, counts.reduce((n, c) => n + c, 0))
 }
 function setPoll(p: PollRow | null): void {
   activePoll = p && p.status === 'open' ? p : votedPolls.has(p?.id ?? '') ? p : null
@@ -1468,27 +1498,12 @@ try {
 }
 async function refreshBoard(): Promise<void> {
   if (!joined) return
-  const { data: qs } = await sb
-    .from('speaker_questions')
-    .select('id,refined,text,topic')
-    .eq('event_id', eventId)
-    .eq('status', 'submitted')
-    .order('created_at', { ascending: false })
-    .limit(30)
-  const ids = (qs ?? []).map((q) => q.id as string)
-  const counts = new Map<string, number>()
-  if (ids.length > 0) {
-    const { data: v } = await sb.from('question_votes').select('question_id').in('question_id', ids)
-    for (const r of v ?? []) {
-      const k = r.question_id as string
-      counts.set(k, (counts.get(k) ?? 0) + 1)
-    }
-  }
-  const list = (qs ?? [])
+  const qs = await room.questions(30)
+  const list = qs
     .map((q) => ({
-      id: q.id as string,
-      text: (q.refined as string) || (q.text as string),
-      votes: counts.get(q.id as string) ?? 0
+      id: q.id,
+      text: q.refined || q.text,
+      votes: q.votes
     }))
     .sort((a, b) => b.votes - a.votes)
   const wrap = el('qboard')
@@ -2044,34 +2059,34 @@ async function join(newJoin: boolean): Promise<void> {
   }
 
   // live data: subscribe first, then load the backlog (dedupe by idx).
-  // One channel per table: the server refuses a whole channel when it will
-  // not serve one of its tables, which once left every screen without
-  // captions. The event row itself is not on the live link (visitors read it
-  // through sitka_event); the page asks for it below.
+  // New lines arrive on the event's private channel (only the database sends
+  // on it); the event row itself is not on it (visitors read it through
+  // sitka_event), and the page asks for it below. How many are here is asked
+  // every twenty seconds.
+  // room notes seen, so one arriving both live and by asking shows once;
+  // only notes written after the page opened are shown
+  const notesSeen = new Set<string>()
+  let notesSince = new Date().toISOString()
   const wantTrans = translatedForMe()
-  const live = <T>(table: string, event: 'INSERT' | '*', on: (row: T) => void): void => {
-    sb.channel(`ev-${table}-${eventId}`)
-      .on('postgres_changes', { event, schema: 'public', table, filter: 'event_id=eq.' + eventId }, (payload) => on(payload.new as T))
-      .subscribe()
-  }
-  live<SegRow>('segments', 'INSERT', (row) => {
-    upsertSeg(row, pendingTranslations.get(row.idx))
-    pendingTranslations.delete(row.idx)
+  liveRoom(sb, eventId, 'ev', {
+    segments: (row) => {
+      upsertSeg(row as SegRow, pendingTranslations.get(row.idx))
+      pendingTranslations.delete(row.idx)
+    },
+    translations: (row) => {
+      if (wantTrans && row.lang === myLang) applyTranslation(row.idx, row.text)
+    },
+    polls: (p) => {
+      if (p && p.id) setPoll(p as PollRow)
+    },
+    room_notes: (note) => {
+      if (note?.text && (!note.id || !notesSeen.has(note.id))) {
+        if (note.id) notesSeen.add(note.id)
+        showRoomNote(note.text)
+      }
+    },
+    room_messages: (row) => renderRoomMsg(row as RoomRow)
   })
-  live<{ lang: string; idx: number; text: string }>('translations', 'INSERT', (row) => {
-    if (wantTrans && row.lang === myLang) applyTranslation(row.idx, row.text)
-  })
-  live<PollRow | null>('polls', '*', (p) => {
-    if (p && p.id) setPoll(p)
-  })
-  live<{ id?: string; text: string; created_at?: string }>('room_notes', 'INSERT', (note) => {
-    if (note?.text && (!note.id || !notesSeen.has(note.id))) {
-      if (note.id) notesSeen.add(note.id)
-      showRoomNote(note.text)
-    }
-  })
-  live<RoomRow>('room_messages', 'INSERT', (row) => renderRoomMsg(row))
-  live<unknown>('attendees', 'INSERT', () => void refreshCount())
   // (an attendee's own questions and their answers are private: they are
   // not sent over the room's live link, and arrive by the page asking)
 
@@ -2085,10 +2100,7 @@ async function join(newJoin: boolean): Promise<void> {
   let endedTicks = 0
   let lastTransIdx = -1
   let pollTicks = 0
-  // room notes seen, so one arriving both live and by asking shows once;
-  // only notes written after the page opened are shown
-  const notesSeen = new Set<string>()
-  let notesSince = new Date().toISOString()
+
   const watchEvent = async (): Promise<void> => {
     if (watching || !ev) return
     // After the end, the recap flag and the recording can still change for a
@@ -2115,56 +2127,25 @@ async function join(newJoin: boolean): Promise<void> {
         if (ev.status === 'live') showBanner()
       }
       if (ev.status === 'live') {
-        const { data: rows } = await sb
-          .from('segments')
-          .select('idx,start_sec,label,text')
-          .eq('event_id', eventId)
-          .gt('idx', lastSegIdx)
-          .order('idx', { ascending: true })
-          .limit(60)
-        for (const row of rows ?? []) {
-          const r = row as SegRow
+        // The captions and (in one's own language) their translations the
+        // live link missed: a phone that slept through a minute and woke to
+        // captions in English gets its own language back.
+        const f = await room.feed({ after: lastSegIdx, lang: wantTrans ? myLang : null, afterTr: lastTransIdx, limit: 80 })
+        for (const r of f.segments as SegRow[]) {
           lastSegIdx = Math.max(lastSegIdx, r.idx)
           if (!segEls.has(r.idx)) upsertSeg(r, pendingTranslations.get(r.idx))
         }
-        // The same for the translations and the poll, which until now came
-        // only over the live link: a phone that slept through a minute and
-        // woke to captions in English gets its own language back, and a poll
-        // opened while the link was down still reaches it.
-        if (wantTrans) {
-          const { data: tr } = await sb
-            .from('translations')
-            .select('idx,text')
-            .eq('event_id', eventId)
-            .eq('lang', myLang)
-            .gt('idx', lastTransIdx)
-            .order('idx', { ascending: true })
-            .limit(80)
-          for (const row of tr ?? []) {
-            const r = row as { idx: number; text: string }
-            lastTransIdx = Math.max(lastTransIdx, r.idx)
-            applyTranslation(r.idx, r.text)
-          }
+        for (const r of f.translations) {
+          lastTransIdx = Math.max(lastTransIdx, r.idx)
+          applyTranslation(r.idx, r.text)
         }
         pollTicks++
         if (pollTicks % 4 === 0) {
-          const { data: pollRows } = await sb
-            .from('polls')
-            .select('id,question,options,status')
-            .eq('event_id', eventId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-          const latest = pollRows && pollRows.length > 0 ? (pollRows[0] as PollRow) : null
+          // a poll opened while the link was down still reaches the phone
+          const latest = (await room.poll()) as PollRow | null
           if (latest && (!activePoll || activePoll.id !== latest.id || activePoll.status !== latest.status)) setPoll(latest)
           // the host's notes to the room, which until now came only over the live link
-          const { data: noteRows } = await sb
-            .from('room_notes')
-            .select('id,text,created_at')
-            .eq('event_id', eventId)
-            .gt('created_at', notesSince)
-            .order('created_at', { ascending: true })
-            .limit(5)
-          for (const n of (noteRows ?? []) as { id: string; text: string; created_at: string }[]) {
+          for (const n of await room.notes(notesSince)) {
             if (n.created_at > notesSince) notesSince = n.created_at
             if (notesSeen.has(n.id)) continue
             notesSeen.add(n.id)
@@ -2183,19 +2164,11 @@ async function join(newJoin: boolean): Promise<void> {
     if (document.visibilityState === 'visible') void watchEvent()
   })
 
-  const { data: segRows } = await sb
-    .from('segments')
-    .select('idx,start_sec,label,text')
-    .eq('event_id', eventId)
-    .order('idx', { ascending: true })
+  const backlog = await room.feed({ after: -1, lang: wantTrans ? myLang : null, afterTr: -1, limit: 1000 })
+  const segRows = backlog.segments
   let transMap = new Map<number, string>()
   if (wantTrans) {
-    const { data: tr } = await sb
-      .from('translations')
-      .select('idx,text')
-      .eq('event_id', eventId)
-      .eq('lang', myLang)
-    transMap = new Map((tr ?? []).map((r) => [r.idx as number, r.text as string]))
+    transMap = new Map(backlog.translations.map((r) => [r.idx, r.text]))
     for (const k of transMap.keys()) lastTransIdx = Math.max(lastTransIdx, k)
   }
   const wasListening = listening
@@ -2216,14 +2189,8 @@ async function join(newJoin: boolean): Promise<void> {
   el('leavebtn').classList.remove('hidden')
 
   // pick up a poll that is already running
-  const { data: pollRows } = await sb
-    .from('polls')
-    .select('id,question,options,status')
-    .eq('event_id', eventId)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false })
-    .limit(1)
-  if (pollRows && pollRows.length > 0) setPoll(pollRows[0] as PollRow)
+  const open = (await room.poll(true)) as PollRow | null
+  if (open) setPoll(open)
 
   applyEventState()
 }

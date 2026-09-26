@@ -1594,10 +1594,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * check failed (null: the store could not be reached, the piece waits).
    */
   async function storeFor(sessionId: string): Promise<Where | null> {
-    const m = cache.get(sessionId)?.meta ?? (await loadSession(sessionId))?.meta
+    const d = cache.get(sessionId) ?? (await loadSession(sessionId))
+    const m = d?.meta
     if (m?.store === 'r2') return (await store.ready()) ? 'r2' : null
     if (m?.store === 'sb') return 'sb'
-    return (await store.ready()) ? 'r2' : 'sb'
+    // Not fixed yet (the check was slow when the session began): fixed now,
+    // on the first clear answer, and kept with the session. Deciding afresh
+    // for each piece once split one recording between the two stores.
+    const answer = await store.known()
+    if (answer === null) return null
+    const where: Where = answer ? 'r2' : 'sb'
+    if (d && m && !m.store && !m.readOnly) {
+      m.store = where
+      void patchSession(sessionId, { meta: m }).catch(() => undefined)
+    }
+    return where
   }
 
   /** the storage server's word on a session: deleted (410), or its row not saved yet (409) */
@@ -2389,7 +2400,14 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
 
   // ---------- host side of the live video: one direct connection per phone ----------
   interface RtcHost {
-    channel: RealtimeChannel
+    /** offers to the room (private: only this host sends) */
+    down: RealtimeChannel
+    /** the phones' asks and answers (private: only this host reads) */
+    up: RealtimeChannel
+    /** the older shared channel, for pages from before the change */
+    legacy: RealtimeChannel
+    /** which of the two each phone came by */
+    via: Map<string, 'private' | 'legacy'>
     peers: Map<string, RTCPeerConnection>
     stream: MediaStream
   }
@@ -2451,12 +2469,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       pc.addTrack(t, new MediaStream([t]))
     }
     pc.onicecandidate = (e) => {
-      if (e.candidate)
-        void r.channel.send({
-          type: 'broadcast',
-          event: 'ice',
-          payload: { id, from: 'host', candidate: e.candidate.toJSON() }
-        })
+      if (e.candidate) rtcToPhone(r, id, 'ice', { id, from: 'host', candidate: e.candidate.toJSON() })
     }
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
@@ -2468,24 +2481,35 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     try {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      void r.channel.send({ type: 'broadcast', event: 'offer', payload: { id, sdp: pc.localDescription } })
+      rtcToPhone(r, id, 'offer', { id, sdp: pc.localDescription })
     } catch {
       pc.close()
       r.peers.delete(id)
     }
+  }
+  /** a message to one phone, on the channel it came by */
+  function rtcToPhone(r: RtcHost, id: string, event: string, payload: Record<string, unknown>): void {
+    const ch = r.via.get(id) === 'legacy' ? r.legacy : r.down
+    void ch.send({ type: 'broadcast', event, payload })
+  }
+  /** a message to every phone, on both channels */
+  async function rtcToRoom(r: RtcHost, event: string): Promise<void> {
+    await Promise.all(
+      [r.down, r.legacy].map((ch) => ch.send({ type: 'broadcast', event, payload: {} }).catch(() => undefined))
+    )
   }
   async function stopRtcHost(): Promise<void> {
     const r = rtc
     if (!r) return
     rtc = null
     try {
-      await r.channel.send({ type: 'broadcast', event: 'bye', payload: {} })
+      await rtcToRoom(r, 'bye')
     } catch {
       /* the room is already gone */
     }
     r.peers.forEach((pc) => pc.close())
     r.peers.clear()
-    void sb.removeChannel(r.channel)
+    for (const ch of [r.down, r.up, r.legacy]) void sb.removeChannel(ch)
   }
 
   async function confPollStats(): Promise<void> {
@@ -3965,7 +3989,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const m = /^part-(\d+)\.webm$/.exec(f.name)
         if (m) cloud.set(Number(m[1]), f.name)
       }
-      const localNos = await engine.localPartNos(id)
+      const localNos = (await engine.localPartNos(id)).filter((n) => n >= 0)
       const partNos = [...new Set([...cloud.keys(), ...localNos])].sort((a, b) => a - b)
       if (partNos.length > 0) {
         const buffers: ArrayBuffer[] = []
@@ -5322,26 +5346,43 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       const stream = source as MediaStream
       if (!conf || !stream || typeof RTCPeerConnection === 'undefined') return
       if (rtc) await stopRtcHost()
-      const channel = sb.channel('rtc-' + conf.eventId, { config: { broadcast: { self: false } } })
-      rtc = { channel, peers: new Map(), stream }
-      channel.on('broadcast', { event: 'want' }, ({ payload }) => {
-        const p = payload as { id?: string }
-        if (p.id) void rtcOfferTo(String(p.id))
-      })
-      channel.on('broadcast', { event: 'answer' }, ({ payload }) => {
-        const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
-        const pc = rtc?.peers.get(p.id)
-        if (pc && pc.signalingState === 'have-local-offer') void pc.setRemoteDescription(p.sdp).catch(() => undefined)
-      })
-      channel.on('broadcast', { event: 'ice' }, ({ payload }) => {
-        const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
-        if (p.from !== 'attendee') return
-        void rtc?.peers.get(p.id)?.addIceCandidate(p.candidate).catch(() => undefined)
-      })
-      channel.subscribe((status) => {
-        // phones that asked before the host was listening ask again at once
-        if (status === 'SUBSCRIBED') void channel.send({ type: 'broadcast', event: 'here', payload: {} })
-      })
+      // The phones' asks and answers arrive on rtcup:<event>, which only this
+      // host may read; offers go out on rtc:<event>, which only this host may
+      // send on. Phones on a page from before the change still use the older
+      // shared channel, and are answered there.
+      const priv = { config: { private: true, broadcast: { self: false } } }
+      const down = sb.channel('rtc:' + conf.eventId, priv)
+      const up = sb.channel('rtcup:' + conf.eventId, priv)
+      const legacy = sb.channel('rtc-' + conf.eventId, { config: { broadcast: { self: false } } })
+      const r: RtcHost = { down, up, legacy, via: new Map(), peers: new Map(), stream }
+      rtc = r
+      const listen = (ch: RealtimeChannel, via: 'private' | 'legacy'): void => {
+        ch.on('broadcast', { event: 'want' }, ({ payload }) => {
+          const p = payload as { id?: string }
+          if (!p.id) return
+          r.via.set(String(p.id), via)
+          void rtcOfferTo(String(p.id))
+        })
+        ch.on('broadcast', { event: 'answer' }, ({ payload }) => {
+          const p = payload as { id: string; sdp: RTCSessionDescriptionInit }
+          const pc = rtc?.peers.get(p.id)
+          if (pc && pc.signalingState === 'have-local-offer') void pc.setRemoteDescription(p.sdp).catch(() => undefined)
+        })
+        ch.on('broadcast', { event: 'ice' }, ({ payload }) => {
+          const p = payload as { id: string; from: string; candidate: RTCIceCandidateInit }
+          if (p.from !== 'attendee') return
+          void rtc?.peers.get(p.id)?.addIceCandidate(p.candidate).catch(() => undefined)
+        })
+      }
+      listen(up, 'private')
+      listen(legacy, 'legacy')
+      // phones that asked before the host was listening ask again at once
+      const hello = (ch: RealtimeChannel) => (status: string): void => {
+        if (status === 'SUBSCRIBED') void ch.send({ type: 'broadcast', event: 'here', payload: {} })
+      }
+      up.subscribe()
+      down.subscribe(hello(down))
+      legacy.subscribe(hello(legacy))
     },
     stopVideoBroadcast: async () => stopRtcHost(),
     pushStageFrame: async (dataUrl: string) => {
