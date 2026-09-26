@@ -3615,6 +3615,231 @@ body {
   min-width: 0;
 }
 
+/* ---------- an event, simply: one card, the rest folded away ---------- */
+.evs-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  padding: 22px 22px 20px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.evs-title {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+  width: 100%;
+}
+.evs-title:hover,
+.evs-title:focus {
+  outline: none;
+  border-bottom-color: var(--border);
+}
+.evs-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+.evs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.evs-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+}
+.evs-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.evs-langs {
+  position: relative;
+}
+.evs-langs summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  user-select: none;
+}
+.evs-langs summary::-webkit-details-marker {
+  display: none;
+}
+.evs-langs summary::after {
+  content: ' ▾';
+  color: var(--text-2);
+}
+.evs-langs[open] summary {
+  border-color: var(--text-2);
+}
+.evs-langs-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+.evs-lang {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.evs-lang:hover {
+  background: var(--bg-soft);
+}
+.evs-lang input {
+  accent-color: var(--text);
+}
+.evs-join {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.evs-qr {
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 6px;
+  cursor: zoom-in;
+}
+.evs-qr-empty {
+  background: var(--bg-soft);
+  cursor: default;
+}
+.evs-join-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.evs-join-title {
+  font-weight: 650;
+}
+.evs-join-url {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+.evs-join-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.evs-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.evs-go {
+  width: 100%;
+  justify-content: center;
+}
+.evs-more {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.evs-more > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  user-select: none;
+}
+.evs-more > summary::-webkit-details-marker {
+  display: none;
+}
+.evs-more > summary::after {
+  content: '+';
+  float: right;
+  color: var(--text-2);
+  font-weight: 400;
+}
+.evs-more[open] > summary::after {
+  content: '–';
+}
+.evs-more-body {
+  padding: 0 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.evs-section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.evs-section .field-hint {
+  margin: 4px 0 0;
+}
+.evs-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.evs-section-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.evs-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.evs-delete {
+  align-self: flex-start;
+  color: var(--text-2);
+}
+@media (max-width: 560px) {
+  .evs-join {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .evd-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -4595,6 +4820,40 @@ body.dragging-row .splitter-h {
   margin-top: 3px;
 }
 
+/* where the player will be, while the recording is being finished */
+.finishing-stage {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.finishing-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.35;
+  filter: blur(2px);
+}
+.finishing-center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+.finishing-center .mark,
+.finishing-center svg {
+  color: #fff;
+}
 .video-wrap {
   background: #000;
   position: relative;
@@ -9545,61 +9804,133 @@ video.is-hidden {
 /* ============ Share a recap ============ */
 
 .share-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-  border: 1.5px solid var(--text);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px 14px;
   background: var(--bg);
   margin: 12px 0 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
   animation: fadeIn 0.18s ease;
 }
-.share-card-body {
-  flex: 1;
-  min-width: 240px;
+.share-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .share-card-title {
   font-weight: 650;
-  margin-bottom: 3px;
+  font-size: 15px;
+}
+.share-card-x {
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.share-card-x:hover {
+  background: var(--bg-soft);
+  color: var(--text);
 }
 .share-card-desc {
   font-size: 13px;
   color: var(--text-2);
   line-height: 1.45;
+  margin-top: 4px;
 }
-.share-card-link {
-  display: inline-flex;
+.share-card-linkrow {
+  display: flex;
   align-items: center;
-  gap: 7px;
-  max-width: 100%;
-  margin-top: 8px;
-  padding: 6px 10px;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 5px 5px 5px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--bg-soft);
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
 }
-.share-card-link span {
+.share-card-url {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: all;
+}
+.share-card-url.pending {
+  color: var(--text-2);
+  user-select: none;
+}
+.share-card-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 .share-card-error {
   font-size: 13px;
   color: var(--danger);
   margin-top: 6px;
 }
-.share-card-actions {
+.share-ways {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.share-way {
+  display: inline-flex;
   align-items: center;
-  padding-top: 2px;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.share-way:hover {
+  background: var(--bg-soft);
+  border-color: var(--text-2);
+}
+.share-way-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.share-way-mark {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+.share-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.share-card-quiet {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.share-card-quiet:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 /* ============ Audience loop: reactions, polls, upvotes ============ */

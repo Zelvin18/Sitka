@@ -16,6 +16,10 @@ interface Props {
   compact?: boolean
   onStartEvent: (eventId: string) => void
   onOpenSession: (sessionId: string) => void
+  /** raised by the page around it ("Host an event"): opens the new-event form */
+  createNonce?: number
+  /** told when an event is open, so the page around it can step aside */
+  onSelect?: (eventId: string | null) => void
 }
 
 const ALL_VOICE_LANGS = [
@@ -57,7 +61,9 @@ export default function EventsView({
   initialEventId,
   compact = false,
   onStartEvent,
-  onOpenSession
+  onOpenSession,
+  createNonce = 0,
+  onSelect
 }: Props): React.JSX.Element {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [armedEventId, setArmedEventId] = useState<string | undefined>()
@@ -97,6 +103,25 @@ export default function EventsView({
 
   const selected = selectedId ? events.find((e) => e.id === selectedId) ?? null : null
   const armed = selected !== null && armedEventId === selected.id
+
+  // "Host an event" on the page around this opens the new-event form
+  useEffect(() => {
+    if (createNonce > 0) {
+      setError(null)
+      setSelectedId(null)
+      setCreateOpen(true)
+    }
+  }, [createNonce])
+  useEffect(() => {
+    onSelect?.(selectedId)
+  }, [selectedId, onSelect])
+  // An online event's link works the moment it exists: its code is shown at
+  // once, never behind an "arm" step.
+  useEffect(() => {
+    if (selected && !armed) void arm(selected)
+    // (once the event itself has loaded, not only its id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, armed])
 
   useEffect(() => {
     if (selected) setAgendaDraft((selected.agenda ?? []).join('\n'))
@@ -185,54 +210,36 @@ export default function EventsView({
         })
       : 'No date set'
 
-  // ============ detail (event command center) ============
+  // ============ detail: one card, then the rest under "More options" ============
+  // A host needs a name, a time if they want one, the code to share and the
+  // button to go live. Everything else is optional and folded away, so the
+  // page never reads like a form to fill in before an event can happen.
   if (selected) {
     const materials = selected.materials ?? []
     const topics = selected.agenda ?? []
     const preChatOn = selected.preEventChat !== false
     const voice = selected.liveVoice ?? { enabled: true, languages: ALL_VOICE_LANGS }
-    const ready = [
-      { done: Boolean(selected.startsAt), label: 'Date & time set' },
-      { done: materials.length > 0, label: 'AI briefed with materials' },
-      { done: topics.length > 0, label: 'Topics planned' },
-      { done: armed, label: 'Join code live & shareable' }
-    ]
-    const readyCount = ready.filter((r) => r.done).length
     const rel = relativeWhen(selected.startsAt)
+    const langLabel = !voice.enabled
+      ? 'Original language only'
+      : voice.languages.length === 0
+        ? 'Original language only'
+        : voice.languages.length === ALL_VOICE_LANGS.length
+          ? `All ${ALL_VOICE_LANGS.length} languages`
+          : voice.languages.length <= 2
+            ? voice.languages.join(', ')
+            : `${voice.languages.length} languages`
+    // this event's own link only: never another event's still in hand
+    const joinUrl = armed ? armedUrl : undefined
+    const setLangs = (languages: string[]): void =>
+      void window.sitka.updateEvent(selected.id, { liveVoice: { enabled: languages.length > 0, languages } }).then(() => refresh())
 
     return (
       <div className="content">
-        <div className="content-inner" style={{ maxWidth: 920 }}>
+        <div className="content-inner" style={{ maxWidth: 640 }}>
           <button className="btn btn-ghost btn-sm page-back" onClick={() => setSelectedId(null)}>
             ‹ All events
           </button>
-
-          <div className="evd-header">
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <h1 className="page-title" style={{ marginBottom: 4 }}>
-                {selected.title}
-              </h1>
-              <div className="evd-meta">
-                <IconCalendar size={13} />
-                <input
-                  type="datetime-local"
-                  className="evd-date-input"
-                  value={toLocalInput(selected.startsAt)}
-                  onChange={(e) => {
-                    const value = e.target.value ? new Date(e.target.value).getTime() : null
-                    void window.sitka
-                      .updateEvent(selected.id, { startsAt: value })
-                      .then(() => refresh())
-                  }}
-                />
-                {rel && <span className="evd-rel">{rel}</span>}
-              </div>
-            </div>
-            <button className="btn btn-primary btn-lg" onClick={() => onStartEvent(selected.id)}>
-              <IconBroadcast size={16} />
-              Go live now
-            </button>
-          </div>
 
           {error && (
             <div className="notice notice-error" style={{ marginTop: 14 }}>
@@ -240,30 +247,124 @@ export default function EventsView({
             </div>
           )}
 
-          <div className="evd-grid">
-            {/* ---------- left column ---------- */}
-            <div className="evd-main">
-              <div className="evd-card">
-                <div className="evd-card-head">
-                  <span>Event readiness</span>
-                  <span className="evd-progress-label">
-                    {readyCount} of {ready.length}
-                  </span>
-                </div>
-                <div className="ready-bar">
-                  <span style={{ width: `${(readyCount / ready.length) * 100}%` }} />
-                </div>
-                {ready.map((r, i) => (
-                  <div key={i} className={`ready-item${r.done ? ' done' : ''}`}>
-                    <span className="agenda-tick">{r.done ? '✓' : ''}</span>
-                    {r.label}
-                  </div>
-                ))}
-              </div>
+          <div className="evs-card">
+            <input
+              className="evs-title"
+              defaultValue={selected.title}
+              key={selected.id}
+              aria-label="Event name"
+              onBlur={(e) => {
+                const t = e.target.value.trim()
+                if (t && t !== selected.title) void window.sitka.updateEvent(selected.id, { title: t }).then(() => refresh())
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+            />
 
-              <div className="evd-card">
-                <div className="evd-card-head">
-                  <span>Brief the AI — materials</span>
+            <div className="evs-rows">
+              <label className="evs-row">
+                <span className="evs-label">
+                  <IconCalendar size={14} /> Starts
+                </span>
+                <span className="evs-value">
+                  <input
+                    type="datetime-local"
+                    className="evd-date-input"
+                    value={toLocalInput(selected.startsAt)}
+                    onChange={(e) => {
+                      const value = e.target.value ? new Date(e.target.value).getTime() : null
+                      void window.sitka.updateEvent(selected.id, { startsAt: value }).then(() => refresh())
+                    }}
+                  />
+                  {rel && <span className="evd-rel">{rel}</span>}
+                </span>
+              </label>
+
+              <div className="evs-row">
+                <span className="evs-label">Captions</span>
+                <details className="evs-langs">
+                  <summary>{langLabel}</summary>
+                  <div className="evs-langs-menu">
+                    <label className="evs-lang">
+                      <input
+                        type="checkbox"
+                        checked={voice.enabled && voice.languages.length === ALL_VOICE_LANGS.length}
+                        onChange={(e) => setLangs(e.target.checked ? ALL_VOICE_LANGS : [])}
+                      />
+                      All languages
+                    </label>
+                    {ALL_VOICE_LANGS.map((lang) => {
+                      const on = voice.enabled && voice.languages.includes(lang)
+                      return (
+                        <label key={lang} className="evs-lang">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() =>
+                              setLangs(on ? voice.languages.filter((l) => l !== lang) : [...(voice.enabled ? voice.languages : []), lang])
+                            }
+                          />
+                          {lang}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <div className="evs-join">
+              {joinUrl && inlineQr ? (
+                <img
+                  src={inlineQr}
+                  alt="Join QR"
+                  className="evs-qr"
+                  title="Click to enlarge"
+                  onClick={() => setQr({ url: joinUrl, data: inlineQr })}
+                />
+              ) : (
+                <div className="evs-qr evs-qr-empty" />
+              )}
+              <div className="evs-join-text">
+                <div className="evs-join-title">People join here</div>
+                <div className="evs-join-url">{joinUrl ?? 'Making the link…'}</div>
+                <div className="evs-join-actions">
+                  <button className="btn btn-sm" disabled={!joinUrl} onClick={() => joinUrl && copyLink(joinUrl)}>
+                    {linkCopied ? 'Copied' : 'Copy link'}
+                  </button>
+                  {joinUrl?.includes('/e/') && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Big-screen view for the venue projector or lobby TV"
+                      onClick={() => window.open(joinUrl.replace('/e/', '/s/'), '_blank')}
+                    >
+                      Stage screen
+                    </button>
+                  )}
+                </div>
+                {waitingCount > 0 && (
+                  <div className="evs-waiting">
+                    <span className="rec-dot" style={{ background: 'var(--text)' }} />
+                    {waitingCount} already waiting
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button className="btn btn-primary btn-lg evs-go" onClick={() => onStartEvent(selected.id)}>
+              <IconBroadcast size={16} />
+              Go live now
+            </button>
+          </div>
+
+          <details className="evs-more">
+            <summary>More options</summary>
+
+            <div className="evs-more-body">
+              <div className="evs-section">
+                <div className="evs-section-head">
+                  <span>Materials for the AI</span>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       className="btn btn-ghost btn-sm"
@@ -298,25 +399,17 @@ export default function EventsView({
                     </FilePick>
                   </div>
                 </div>
-                <p className="field-hint" style={{ marginBottom: materials.length > 0 ? 10 : 0 }}>
-                  Slides, agendas, bios, briefs (PDF, TXT, MD) — everything here makes
-                  every attendee's companion an expert on this event before it starts.
-                </p>
+                <p className="field-hint">Slides or notes, so attendees&rsquo; questions are answered from what you prepared.</p>
                 {materials.map((m, i) => (
                   <div key={i} className="mat-row">
                     <span className="mat-icon">
                       <IconNotes size={14} />
                     </span>
                     <span className="convo-line-title">{m.name}</span>
-                    <span className="convo-date" style={{ marginTop: 0 }}>
-                      {(m.chars / 1000).toFixed(1)}k chars
-                    </span>
                     <button
                       className="convo-line-delete"
                       title="Remove"
-                      onClick={() =>
-                        void window.sitka.removeMaterial(selected.id, i).then(() => refresh())
-                      }
+                      onClick={() => void window.sitka.removeMaterial(selected.id, i).then(() => refresh())}
                     >
                       ×
                     </button>
@@ -324,15 +417,12 @@ export default function EventsView({
                 ))}
               </div>
 
-              <div className="evd-card">
-                <div className="evd-card-head">
-                  <span>Banner</span>
+              <div className="evs-section">
+                <div className="evs-section-head">
+                  <span>Picture for voice-only events</span>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {selected.banner && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => void window.sitka.setEventBanner(selected.id, null).then(() => refresh())}
-                      >
+                      <button className="btn btn-ghost btn-sm" onClick={() => void window.sitka.setEventBanner(selected.id, null).then(() => refresh())}>
                         Remove
                       </button>
                     )}
@@ -352,7 +442,7 @@ export default function EventsView({
                     >
                       {(open) => (
                         <button className="btn btn-sm" onClick={open} disabled={bannerBusy}>
-                          <IconPlus size={12} strokeWidth={2.4} /> {bannerBusy ? 'Saving…' : selected.banner ? 'Change' : 'Add'}
+                          {bannerBusy ? 'Saving…' : selected.banner ? 'Change' : 'Add'}
                         </button>
                       )}
                     </FilePick>
@@ -361,207 +451,51 @@ export default function EventsView({
                 {selected.banner ? (
                   <img src={selected.banner} alt="" className="evd-banner" />
                 ) : (
-                  <p className="field-hint" style={{ margin: 0 }}>
-                    Presenting by voice alone? A poster, a logo or a photo of the speaker, shown on every
-                    attendee's phone where the video would be. Shared screens take over the moment you share one.
-                  </p>
+                  <p className="field-hint">A poster or photo shown on phones when you are not sharing a screen.</p>
                 )}
               </div>
 
-              <div className="evd-card">
-                <div className="evd-card-head">
+              <div className="evs-section">
+                <div className="evs-section-head">
                   <span>Planned topics</span>
-                  <span className="evd-progress-label">ticked off live · graded in the report</span>
                 </div>
                 <textarea
                   className="textarea"
-                  rows={Math.max(3, topics.length + 1)}
-                  placeholder="One topic per line…"
+                  rows={Math.max(2, topics.length + 1)}
+                  placeholder="One per line (optional)"
                   value={agendaDraft}
                   onChange={(e) => setAgendaDraft(e.target.value)}
                   onBlur={() =>
                     void window.sitka
-                      .updateEvent(selected.id, {
-                        agenda: agendaDraft.split('\n').map((l) => l.trim()).filter(Boolean)
-                      })
+                      .updateEvent(selected.id, { agenda: agendaDraft.split('\n').map((l) => l.trim()).filter(Boolean) })
                       .then(() => refresh())
                   }
                   spellCheck={false}
                 />
               </div>
 
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ alignSelf: 'flex-start' }}
-                onClick={() => setPendingDelete(selected)}
-              >
+              <div className="evs-section evs-toggle-row">
+                <div>
+                  <div className="evs-section-title">Questions before it starts</div>
+                  <p className="field-hint">People who scan early can ask about the event.</p>
+                </div>
+                <button
+                  className={`switch${preChatOn ? ' on' : ''}`}
+                  aria-label="Questions before it starts"
+                  onClick={() => void window.sitka.updateEvent(selected.id, { preEventChat: !preChatOn }).then(() => refresh())}
+                />
+              </div>
+
+              <button className="btn btn-ghost btn-sm evs-delete" onClick={() => setPendingDelete(selected)}>
                 Delete event
               </button>
             </div>
-
-            {/* ---------- right column ---------- */}
-            <div className="evd-side">
-              <div className="evd-card evd-qr-card">
-                <div className="evd-card-head">
-                  <span>Join code</span>
-                  {armed && <span className="ev-armed">Live</span>}
-                </div>
-                {armed && inlineQr ? (
-                  <>
-                    <img
-                      src={inlineQr}
-                      alt="Join QR"
-                      className="evd-qr-img"
-                      title="Click to enlarge"
-                      onClick={() => armedUrl && setQr({ url: armedUrl, data: inlineQr })}
-                    />
-                    <div className="evd-qr-url">{armedUrl}</div>
-                    <div className="evd-waiting">
-                      <span className="rec-dot" style={{ background: 'var(--text)' }} />
-                      {waitingCount === 0
-                        ? 'No one waiting yet — share the code'
-                        : `${waitingCount} already waiting`}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => armedUrl && copyLink(armedUrl)}
-                      >
-                        {linkCopied ? 'Copied ✓' : 'Copy link'}
-                      </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          inlineQr && void window.sitka.saveQr(inlineQr, selected.title)
-                        }
-                      >
-                        Save image…
-                      </button>
-                      {armedUrl?.includes('/e/') && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Big-screen view for the venue projector or lobby TV"
-                          onClick={() => window.open(armedUrl.replace('/e/', '/s/'), '_blank')}
-                        >
-                          Stage screen
-                        </button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="evd-qr-placeholder">
-                      <div className="art-qr" style={{ position: 'static', transform: 'none', opacity: 0.45 }}>
-                        {Array.from({ length: 9 }).map((_, i) => (
-                          <span key={i} className={i % 2 === 0 ? 'on' : ''} />
-                        ))}
-                      </div>
-                    </div>
-                    <p className="field-hint" style={{ textAlign: 'center', marginBottom: 12 }}>
-                      Arm the code to let people scan in early — they can already ask
-                      the AI about your event.
-                    </p>
-                    <button className="btn btn-primary" onClick={() => void arm(selected)}>
-                      Arm join code
-                    </button>
-                  </>
-                )}
-              </div>
-
-              <div className="evd-card">
-                <div className="evd-card-head" style={{ marginBottom: 4 }}>
-                  <span>Pre-event Q&amp;A</span>
-                  <button
-                    className={`switch${preChatOn ? ' on' : ''}`}
-                    aria-label="Toggle pre-event Q&A"
-                    onClick={() =>
-                      void window.sitka
-                        .updateEvent(selected.id, { preEventChat: !preChatOn })
-                        .then(() => refresh())
-                    }
-                  />
-                </div>
-                <p className="field-hint" style={{ margin: 0 }}>
-                  {preChatOn
-                    ? materials.length > 0
-                      ? 'Early scanners can already ask the AI about your event — it answers from your materials.'
-                      : 'On — add materials above so the AI has something to answer from.'
-                    : 'Off — early scanners see the waiting page only, until you go live.'}
-                </p>
-              </div>
-
-              <div className="evd-card">
-                <div className="evd-card-head" style={{ marginBottom: 4 }}>
-                  <span>Live Voice</span>
-                  <button
-                    className={`switch${voice.enabled ? ' on' : ''}`}
-                    aria-label="Toggle Live Voice"
-                    onClick={() =>
-                      void window.sitka
-                        .updateEvent(selected.id, {
-                          liveVoice: { enabled: !voice.enabled, languages: voice.languages }
-                        })
-                        .then(() => refresh())
-                    }
-                  />
-                </div>
-                <p className="field-hint" style={{ marginBottom: voice.enabled ? 10 : 0 }}>
-                  {voice.enabled
-                    ? 'Attendees follow your event as live captions in their language — and can have their phone speak them aloud. Offered languages:'
-                    : 'Off — everyone sees the original captions only.'}
-                </p>
-                {voice.enabled && (
-                  <div className="kind-row">
-                    {ALL_VOICE_LANGS.map((lang) => {
-                      const on = voice.languages.includes(lang)
-                      return (
-                        <button
-                          key={lang}
-                          className={`kind-chip${on ? ' sel' : ''}`}
-                          style={{ padding: '4px 11px', fontSize: 12 }}
-                          onClick={() =>
-                            void window.sitka
-                              .updateEvent(selected.id, {
-                                liveVoice: {
-                                  enabled: true,
-                                  languages: on
-                                    ? voice.languages.filter((l) => l !== lang)
-                                    : [...voice.languages, lang]
-                                }
-                              })
-                              .then(() => refresh())
-                          }
-                        >
-                          {lang}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="evd-card" style={{ textAlign: 'center' }}>
-                <div style={{ fontWeight: 650, marginBottom: 4 }}>Showtime?</div>
-                <p className="field-hint" style={{ marginBottom: 12 }}>
-                  Launching opens your Co-Pilot console — every waiting phone connects
-                  instantly.
-                </p>
-                <button className="btn" onClick={() => onStartEvent(selected.id)}>
-                  <IconBroadcast size={14} />
-                  Launch event
-                </button>
-              </div>
-            </div>
-          </div>
+          </details>
         </div>
 
         {qr && (
           <div className="dialog-overlay" onMouseDown={() => setQr(null)}>
-            <div
-              className="dialog"
-              style={{ width: 380, textAlign: 'center' }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+            <div className="dialog" style={{ width: 380, textAlign: 'center' }} onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title" style={{ fontSize: 17 }}>
                 {selected.title}
               </div>
@@ -569,28 +503,14 @@ export default function EventsView({
                 <img
                   src={qr.data}
                   alt="Join QR"
-                  style={{
-                    width: 280,
-                    height: 280,
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    background: '#fff',
-                    padding: 8
-                  }}
+                  style={{ width: 280, height: 280, borderRadius: 12, border: '1px solid var(--border)', background: '#fff', padding: 8 }}
                 />
               )}
-              <div
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 13,
-                  color: 'var(--text-2)',
-                  margin: '12px 0 16px',
-                  userSelect: 'text'
-                }}
-              >
-                {qr.url}
-              </div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--text-2)', margin: '12px 0 16px', userSelect: 'text' }}>{qr.url}</div>
               <div className="dialog-actions" style={{ justifyContent: 'center' }}>
+                <button className="btn" onClick={() => inlineQr && void window.sitka.saveQr(inlineQr, selected.title)}>
+                  Save image
+                </button>
                 <button className="btn btn-primary" onClick={() => setQr(null)}>
                   Done
                 </button>
@@ -634,13 +554,11 @@ export default function EventsView({
                   className="btn btn-primary"
                   disabled={!pasteText.trim()}
                   onClick={() =>
-                    void window.sitka
-                      .addMaterialText(selected.id, nameForPaste(pasteText), pasteText)
-                      .then((r) => {
-                        if (r.error) setError(r.error)
-                        setPasteOpen(false)
-                        void refresh()
-                      })
+                    void window.sitka.addMaterialText(selected.id, nameForPaste(pasteText), pasteText).then((r) => {
+                      if (r.error) setError(r.error)
+                      setPasteOpen(false)
+                      void refresh()
+                    })
                   }
                 >
                   Add material
@@ -672,24 +590,6 @@ export default function EventsView({
   // heading and the button are enough, and the list sits in the hub's flow.
   const body = (
     <>
-        {compact && (
-          <div className="ev-compact-head">
-            <div>
-              <div className="section-title" style={{ marginTop: 0 }}>Events you host</div>
-              <div className="ev-compact-sub">Brief Sitca with your documents, share the QR ahead, go live on the day.</div>
-            </div>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setError(null)
-                setCreateOpen(true)
-              }}
-            >
-              <IconPlus size={15} strokeWidth={2.2} />
-              Create an event
-            </button>
-          </div>
-        )}
         {!compact && (
         <div className="ev-hero photo">
             <Photo name="events-hero" position="68% center" />
@@ -804,6 +704,8 @@ export default function EventsView({
           </>
         )}
 
+        {!compact && (
+        <>
         <div className="section-title" style={{ marginTop: 34 }}>
           {events.length === 0 ? 'What is Events?' : 'How Events works'}
         </div>
@@ -855,15 +757,14 @@ export default function EventsView({
           <span>Take-home packs</span>
           <span>Event report</span>
         </div>
+        </>
+        )}
 
         {createOpen && (
           <div className="dialog-overlay" onMouseDown={() => setCreateOpen(false)}>
             <div className="dialog" style={{ width: 420 }} onMouseDown={(e) => e.stopPropagation()}>
               <div className="dialog-title">New event</div>
-              <div className="dialog-message">
-                Your event dashboard — with the shareable join code — is created
-                immediately.
-              </div>
+              <div className="dialog-message">You get a link and a QR code to share straight away.</div>
               <div className="field">
                 <label className="field-label">Event name</label>
                 <input
@@ -872,6 +773,9 @@ export default function EventsView({
                   autoFocus={window.innerWidth >= 860}
                   placeholder="Title of the event"
                   onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !busy) void createEvent()
+                  }}
                 />
               </div>
               <div className="field">
@@ -883,21 +787,12 @@ export default function EventsView({
                   onChange={(e) => setWhen(e.target.value)}
                 />
               </div>
-              <div className="field">
-                <label className="field-label">Planned topics (optional, one per line)</label>
-                <textarea
-                  className="textarea"
-                  rows={3}
-                  value={agendaText}
-                  onChange={(e) => setAgendaText(e.target.value)}
-                />
-              </div>
               <div className="dialog-actions">
                 <button className="btn" onClick={() => setCreateOpen(false)}>
                   Cancel
                 </button>
                 <button className="btn btn-primary" disabled={busy} onClick={() => void createEvent()}>
-                  {busy ? 'Creating…' : 'Create event'}
+                  {busy ? 'Creating…' : 'Create'}
                 </button>
               </div>
             </div>

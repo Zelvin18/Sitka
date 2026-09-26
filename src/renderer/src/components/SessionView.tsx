@@ -780,6 +780,14 @@ export default function SessionView({
       // recording (a voice note, a short talk) is fetched whole in one go —
       // quicker than any engine. Sound alone on an iPhone opens by its link
       // or whole: Safari's engine is unsure with a stream that is only sound.
+      // A recording already joined into one file plays from that file's link:
+      // listing and signing every part first cost one to three seconds before
+      // the first frame, for nothing (the later ways list them if they need to).
+      if (metaRef.current?.whole && !metaRef.current.audioOnly) {
+        ladderRef.current.ways = IOS ? ['hls', 'url', 'stream', 'blob'] : ['url', 'stream', 'blob']
+        void advance(gen)
+        return
+      }
       const sized = await window.sitka.listVideoPartsSized(sessionId).catch(() => [])
       if (gen !== loadGenRef.current) return
       sizedRef.current = sized
@@ -1209,11 +1217,17 @@ export default function SessionView({
             {phonePrep?.error && <span className="phone-prep bad">{phonePrep.error}</span>}
           </div>
         )}
+        {/* the recording is being finished: the player's own place, dark, with
+            the last frame seen on screen behind the mark, never a box of text */}
         {preparing && (
-          <div className="live-block" style={{ margin: '12px 24px 0' }}>
-            <Mark size={14} live />
-            <div className="live-block-text">
-              <b>Finishing up…</b>
+          <div
+            className={`finishing-stage${meta.audioOnly ? ' audio-only' : ''}`}
+            style={{ height: meta.audioOnly ? 220 : clamp(videoH, 140, 900) }}
+          >
+            {!meta.audioOnly && slides.length > 0 && <img className="finishing-still" src={slides[slides.length - 1].image} alt="" />}
+            <div className="finishing-center">
+              <Mark size={30} live />
+              <span>Finishing up</span>
             </div>
           </div>
         )}

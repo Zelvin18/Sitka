@@ -176,7 +176,10 @@ async function loadRecap(): Promise<Loaded | null> {
   }>(sb, pageId)
   if (!rc || !rc.enabled) return null
   // a frame of the recording stands in as the picture until the file is ready
-  if (rc.thumb && rc.thumb.startsWith('data:image/')) video().poster = rc.thumb
+  if (rc.thumb && rc.thumb.startsWith('data:image/')) {
+    video().poster = rc.thumb
+    showStill(rc.thumb)
+  }
   // A recap shared before the flag existed says nothing about its recording:
   // look in the owner's folder once, and play it if the parts are there.
   let hasParts = Boolean(rc.has_recording && rc.owner)
@@ -360,6 +363,19 @@ async function preview(): Promise<void> {
   }
 }
 /** one range of a file; the server must honour it, which both stores do */
+/**
+ * The recording's still picture on the stage from the first moment, behind
+ * the play button: the video element stays hidden until the file is chosen,
+ * which left the stage empty for two or three seconds.
+ */
+function showStill(src: string): void {
+  const stage = document.getElementById('stage')
+  if (!stage || stage.style.backgroundImage) return
+  stage.style.backgroundImage = `url("${src.replace(/"/g, '%22')}")`
+  stage.style.backgroundSize = 'contain'
+  stage.style.backgroundPosition = 'center'
+  stage.style.backgroundRepeat = 'no-repeat'
+}
 async function fetchRange(url: string, from: number, to: number): Promise<ArrayBuffer> {
   const r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` } })
   if (r.status !== 206) throw new Error(`range refused (${r.status})`)

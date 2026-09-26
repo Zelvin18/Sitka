@@ -23,6 +23,9 @@ const ASKED_KEY = 'sitka.sendSitca.asked'
  */
 export default function LiveHub({ initialEventId, paid, onJoin, onStartEvent, onOpenSession }: Props): React.JSX.Element {
   const [live, setLive] = useState<{ id: string; title: string; url: string }[]>([])
+  // "Host an event" opens the new-event form; an event being edited has the page to itself
+  const [createNonce, setCreateNonce] = useState(0)
+  const [editing, setEditing] = useState<string | null>(initialEventId ?? null)
   const [sendOpen, setSendOpen] = useState(false)
   const [asked, setAsked] = useState<boolean>(() => {
     try {
@@ -63,6 +66,8 @@ export default function LiveHub({ initialEventId, paid, onJoin, onStartEvent, on
   return (
     <div className="content">
       <div className="content-inner" style={{ maxWidth: 880 }}>
+        {!editing && (
+        <>
         <div className="hub-head">
           <h1 className="page-title">Live</h1>
           <p className="page-subtitle">Join a session, host one, or send Sitca in your place.</p>
@@ -87,10 +92,7 @@ export default function LiveHub({ initialEventId, paid, onJoin, onStartEvent, on
             <span className="home-action-title">Join a session</span>
             <span className="home-action-desc">Scan the host&rsquo;s QR code or paste their link. Captions in your language, and Sitca to ask privately.</span>
           </button>
-          <button
-            className="home-action"
-            onClick={() => document.getElementById('hosted-events')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          >
+          <button className="home-action" onClick={() => setCreateNonce((n) => n + 1)}>
             <span className="home-action-icon">
               <IconBroadcast size={19} strokeWidth={1.7} />
             </span>
@@ -108,8 +110,16 @@ export default function LiveHub({ initialEventId, paid, onJoin, onStartEvent, on
           </button>
         </div>
 
-        <div id="hosted-events" />
-        <EventsView compact initialEventId={initialEventId} onStartEvent={onStartEvent} onOpenSession={onOpenSession} />
+        </>
+        )}
+        <EventsView
+          compact
+          initialEventId={initialEventId}
+          onStartEvent={onStartEvent}
+          onOpenSession={onOpenSession}
+          createNonce={createNonce}
+          onSelect={setEditing}
+        />
       </div>
 
       {sendOpen && (

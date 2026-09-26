@@ -1,3 +1,4 @@
+import { fixedFrame } from '../lib/fixedFrame'
 import Photo from './Photo'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -209,8 +210,11 @@ const KIND_OPTIONS: { key: SessionKind; label: string; hint: string }[] = [
 // for browsers that cannot record MP4.
 function pickMimeType(): string {
   const candidates = [
-    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    // High profile first: a sharper picture for the same bits, and played by
+    // every current phone and browser; Baseline where High cannot be recorded
+    'video/mp4;codecs="avc1.640028,mp4a.40.2"',
     'video/mp4;codecs="avc1.64001F,mp4a.40.2"',
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
     'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
@@ -324,16 +328,29 @@ export default function LiveSession({
       setDeviceNote({ ok: d.ok, why: d.why })
     }
     window.addEventListener('sitka:device-copy', deviceCopy)
+    // A failed upload is retried at once and usually lands: said only when the
+    // recording has not reached the cloud for half a minute, and in plain words
+    // (the storage's own error goes to the operations view, not the person).
+    let troubleSince = 0
     const bad = (e: Event): void => {
       const d = (e as CustomEvent<{ sessionId: string; error: string }>).detail
       if (d?.sessionId !== sessionIdRef.current) return
-      setCloudTrouble(d.error)
+      if (!troubleSince) troubleSince = Date.now()
+      if (Date.now() - troubleSince >= 30000) {
+        setCloudTrouble(navigator.onLine ? 'The connection to the cloud is struggling.' : 'This device is offline.')
+      }
     }
+    const okAgain = (e: Event): void => {
+      const d = (e as CustomEvent<{ sessionId: string }>).detail
+      if (d?.sessionId === sessionIdRef.current) troubleSince = 0
+    }
+    window.addEventListener('sitka:upload-ok', okAgain)
     window.addEventListener('sitka:upload-ok', ok)
     window.addEventListener('sitka:upload-trouble', bad)
     return () => {
       window.removeEventListener('sitka:upload-ok', ok)
       window.removeEventListener('sitka:upload-trouble', bad)
+      window.removeEventListener('sitka:upload-ok', okAgain)
       window.removeEventListener('sitka:device-copy', deviceCopy)
     }
   }, [])
@@ -1616,7 +1633,14 @@ export default function LiveSession({
         }, 150)
       }
 
-      const recordTracks: MediaStreamTrack[] = [...(desktopStream?.getVideoTracks() ?? [])]
+      // The picture is recorded at one fixed size: a shared window or tab that
+      // changes size mid-recording once turned the rest of an MP4 recording
+      // into a green smear (lib/fixedFrame.ts). Its track is stopped with the
+      // other devices.
+      const rawVideo = desktopStream?.getVideoTracks()[0] ?? null
+      const fixed = rawVideo && IS_WEB && captureMode !== 'audio' ? fixedFrame(rawVideo) : null
+      if (fixed) streamsRef.current.push(new MediaStream([fixed.track]))
+      const recordTracks: MediaStreamTrack[] = fixed ? [fixed.track] : [...(desktopStream?.getVideoTracks() ?? [])]
       if (soundStream) recordTracks.push(...soundStream.getAudioTracks())
       const recordStream = new MediaStream(recordTracks)
 
@@ -1638,13 +1662,15 @@ export default function LiveSession({
       // On the website recordings live in cloud storage. The bitrate is the
       // balance between a picture whose text reads (1.2 Mbps carries Full HD
       // slides well) and a plan's room: an hour is about half a gigabyte, so
-      // the free plan's five hours fit its three.
+      // the free plan's five hours fit its three. Speech needs far less than
+      // music: 64 kbps beside a picture, 48 kbps for sound alone (half of
+      // before, the same to the ear and to transcription).
       const recorder = new MediaRecorder(recordStream, {
         mimeType: captureMode === 'audio' ? pickAudioMimeType() : pickMimeType(),
         ...(captureMode === 'audio'
-          ? { audioBitsPerSecond: 96_000 }
+          ? { audioBitsPerSecond: 48_000 }
           : IS_WEB
-            ? { videoBitsPerSecond: captureMode === 'camera' ? 1_100_000 : 1_200_000, audioBitsPerSecond: 96_000 }
+            ? { videoBitsPerSecond: captureMode === 'camera' ? 1_100_000 : 1_200_000, audioBitsPerSecond: 64_000 }
             : {})
       })
       recorder.ondataavailable = (e) => {
@@ -3061,17 +3087,17 @@ export default function LiveSession({
         {phase === 'recording' && cloudTrouble && (
           <div className="notice notice-error" style={{ margin: '12px 20px 0' }}>
             <span>
-              <strong>The recording is not reaching the cloud.</strong> {cloudTrouble}{' '}
+              <strong>Not uploading right now.</strong> {cloudTrouble}{' '}
               {deviceNote && !deviceNote.ok
-                ? 'It is held in this tab meanwhile, so keep it open until the recording is in the cloud; the transcript and notes are saved as usual.'
-                : 'It is kept safely on this device meanwhile and keeps trying; the transcript and notes are saved as usual.'}
+                ? 'Keep this tab open: the recording uploads when the connection returns.'
+                : 'Your recording is safe on this device and uploads when the connection returns.'}
             </span>
           </div>
         )}
-        {/* whether this device keeps a safety copy: said whenever there is
-            something to say, a failure or a copy the browser did not promise */}
-        {phase === 'recording' && deviceNote && (
-          <div className={deviceNote.ok ? 'soft-note' : 'notice'} style={{ margin: '12px 20px 0' }}>
+        {/* whether this device keeps a safety copy: said only when there is
+            something to do about it (keep the tab open) */}
+        {phase === 'recording' && deviceNote && !deviceNote.ok && (
+          <div className="notice" style={{ margin: '12px 20px 0' }}>
             <span>{deviceNote.why}</span>
           </div>
         )}

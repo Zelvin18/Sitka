@@ -401,3 +401,24 @@ export const IconExpand = (p: IconProps) =>
       <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
     </>
   )
+
+export const IconMail = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
+    </>
+  )
+
+/** a speech bubble with a handset: WhatsApp, drawn in line like the rest */
+export const IconChatPhone = (p: IconProps) =>
+  base(
+    p.size,
+    p.strokeWidth,
+    <>
+      <path d="M20.5 11.6a8.5 8.5 0 0 1-12.6 7.4L3.5 20.5l1.5-4.3a8.5 8.5 0 1 1 15.5-4.6z" />
+      <path d="M9.2 8.6c.2-.5.6-.5.9-.5.3 0 .5.1.7.6l.5 1.2c.1.3 0 .5-.2.7l-.4.5c.4.9 1.3 1.8 2.3 2.3l.5-.5c.2-.2.4-.3.7-.1l1.2.6c.3.2.4.4.3.8-.2.8-.9 1.3-1.6 1.3-2.6-.2-5.2-2.7-5.3-5.3 0-.6.2-1.2.4-1.6z" />
+    </>
+  )

@@ -4981,6 +4981,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const d = await loadSession(sessionId)
         if (!d) return { error: 'Session not found.' }
         let eventId = d.meta.eventId
+        // The room goes live at once; the event is tied to its session only
+        // once the session's row is written. The database refuses that tie
+        // until then, and asking for both together once left every phone on
+        // "waiting for the host" while the host was already recording.
+        const tieToSession = async (id: string): Promise<void> => {
+          const first = rowReady.get(sessionId)
+          if (first) await Promise.race([first, wait(30000)])
+          for (const delay of [0, 2000, 5000, 10000]) {
+            if (delay) await wait(delay)
+            const { error } = await sb.from('events').update({ session_id: sessionId, updated_at: new Date().toISOString() }).eq('id', id)
+            if (!error) return
+          }
+          reportError(location.pathname, `event ${id} could not be tied to its session ${sessionId}`)
+        }
         if (!eventId) {
           eventId = uid()
           const { error } = await sb.from('events').insert({
@@ -4991,16 +5005,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
             agenda: d.meta.agenda ?? [],
             pre_event_chat: true,
             materials_present: false,
-            live_voice: { enabled: true, languages: ALL_LANGS },
-            session_id: sessionId
+            live_voice: { enabled: true, languages: ALL_LANGS }
           })
           if (error) return { error: error.message }
           d.meta.eventId = eventId
           await patchSession(sessionId, { meta: d.meta })
         } else {
-          const err = await setEventStatus(eventId, 'live', { session_id: sessionId })
+          const err = await setEventStatus(eventId, 'live')
           if (err) return { error: 'The event could not be set live: ' + err }
         }
+        void tieToSession(eventId)
         if (conf) {
           clearInterval(conf.workTimer)
           clearInterval(conf.statsTimer)

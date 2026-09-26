@@ -104,3 +104,11 @@ Every run of `node tests/run.mjs`, newest last.
 | 2 | ✓ 16.8 s | ✓ 4.3 s | ✓ 11.6 s | ✓ 146/146 passed | ✓ 8.2 s | ✓ 8.3 s |
 | 3 | ✓ 16.9 s | ✓ 3.9 s | ✓ 11.6 s | ✓ 146/146 passed | ✓ 8.2 s | ✓ 8.6 s |
 
+## 2026-09-26 16:28 UTC · Live and media fixes · PASS 3× · commit 56e069c (with uncommitted changes)
+
+| Run | web types | server types | app types | test suites | web build | extension build |
+|---|---|---|---|---|---|---|
+| 1 | ✓ 14.9 s | ✓ 3.9 s | ✓ 11.0 s | ✓ 146/146 passed | ✓ 7.9 s | ✓ 8.2 s |
+| 2 | ✓ 16.5 s | ✓ 3.9 s | ✓ 10.7 s | ✓ 146/146 passed | ✓ 7.7 s | ✓ 8.1 s |
+| 3 | ✓ 16.0 s | ✓ 4.1 s | ✓ 11.0 s | ✓ 146/146 passed | ✓ 7.7 s | ✓ 8.2 s |
+

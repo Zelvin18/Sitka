@@ -191,6 +191,23 @@ fixes. Checked against the live database before part 11 runs: every read
 falls back to the older way and the room's channel falls back to the
 per-table feed.
 
+### From testing, and the two media reports (26 September, evening)
+
+| | Where | Finding | Fix |
+|---|---|---|---|
+| ☑ | Media reports | The picture turns into a green smear after the shared window or tab changes size (MP4 keeps the first size) | The picture is recorded through a frame of one fixed size, letterboxed (`src/renderer/src/lib/fixedFrame.ts`, frame by frame, so it works in a background tab); proven in Chromium: 15–18 of 42 points wrong after a resize before, none after |
+| ☑ | Media reports | Least efficient H.264 profile; music-grade sound | H.264 High first (Baseline where High is missing); sound 64 kbps beside a picture, 48 kbps alone |
+| ☑ | Media reports | The recap page shows nothing until the file is chosen; the session page lists every part before playing a joined file | The recap's still picture at once; a joined file plays from its link without listing the parts |
+| ☑ | Testing | Phones stayed on "waiting for the host" after the host went live | The event goes live on its own; it is tied to its session once the session's row exists (the database refused both together) |
+| ☑ | Testing | "Host an event" only scrolled; a second "Create an event" button | It opens the new-event form; the second button is gone |
+| ☑ | Testing | The event page was a long form | One card (name, time, captions as a dropdown, the code, Go live now); the rest under "More options"; "Launch event" and the readiness list removed; the code is shown at once |
+| ☑ | Testing | "Finishing up…" in a box | The player's own place, dark, with the last screen frame and the mark |
+| ☑ | Testing | Sharing needed "Create link", then a copy | The link is made on opening, shown with Copy, WhatsApp, Email, Gmail, LinkedIn, X and the phone's own share |
+| ☑ | Testing | Technical notices during a recording | Only what asks for something: "not uploading" after 30 s of trouble, in plain words; nothing about a copy the browser did not promise |
+| ☐ | Media reports | Recordings already smeared | A repair job on a server (the picture data survives; its size information does not) |
+| ☐ | Media reports | Files a third of the size; joining and playlists for every length | The server step after each recording (Set 5) |
+| ☐ | Testing | The live video lags a little on phones | To look at with a real room: the host's upload budget and the phones' buffer |
+
 ## Set 4 — Sessions, sync and the library
 
 | | Audit | Henry | Finding | Fix |

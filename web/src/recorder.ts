@@ -429,7 +429,9 @@ export class RecordingEngine {
         this.ev.deviceCopy?.({ sessionId, ok: false, why: 'This device is nearly out of space for the safety copy. Keep this tab open until the recording is in the cloud.' })
       } else if (!persisted) {
         // the browser may clear it under pressure: not a fault, but not promised either
-        this.ev.deviceCopy?.({ sessionId, ok: true, why: 'The browser did not promise to keep the safety copy; the cloud copy is what counts.' })
+        // not promised, but kept: nothing for the person to do, so nothing is said
+        this.ev.deviceCopy?.({ sessionId, ok: true })
+        this.say(`device copy not promised as permanent for ${sessionId}`)
       } else this.ev.deviceCopy?.({ sessionId, ok: true })
     } catch {
       /* an older browser: nothing to say */
