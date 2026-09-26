@@ -14,6 +14,7 @@
 // first and falls back, so an old session plays exactly as it always did and
 // no one has to migrate anything for it to work.
 
+import { timeoutSignal } from '../../src/shared/timeout'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type Where = 'r2' | 'sb'
@@ -92,7 +93,7 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
   // check once sent every later recording to the wrong store.
   async function ready(): Promise<boolean> {
     if (!readyOnce) {
-      const asking = fetch('/api/storage')
+      const asking = fetch('/api/storage', { signal: timeoutSignal(10000) })
         .then(async (r) => {
           if (!r.ok) throw new Error(`storage check ${r.status}`)
           const j = (await r.json()) as { configured?: boolean; supabase?: boolean }
@@ -126,7 +127,10 @@ export function createStore(sb: SupabaseClient, session?: () => string | null): 
     for (let attempt = 0; ; attempt++) {
       try {
         const t = await token()
+        // a time limit on every question: one that hangs on a bad mobile
+        // line once held an upload slot for ever and froze "in the cloud up to"
         const r = await fetch('/api/storage', {
+          signal: timeoutSignal(20000),
           method: 'POST',
           headers: {
             'content-type': 'application/json',

@@ -6,6 +6,7 @@
 
 import { test, before } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { supaDb, PEOPLE, sha256Hex } from '../lib/supadb.mjs'
 
 const A = PEOPLE.a.id
@@ -390,6 +391,64 @@ test('deleting a session takes its recap with it', async () => {
   await db.as(A, `delete from public.sessions where id = 'sess-del'`)
   const [r] = await db.as(null, `select public.sitka_recap('sess-del') as r`)
   assert.equal(r.r, null)
+})
+
+test('re-audit N4: a deleted session stays deleted: it cannot be written again, by anyone', async () => {
+  await db.sql(`insert into public.sessions (id, owner, meta) values ('sess-tomb', '${A}', '{}')`)
+  await db.as(A, `delete from public.sessions where id = 'sess-tomb'`)
+  const [t] = await db.as(A, `select id from public.deleted_sessions where id = 'sess-tomb'`)
+  assert.equal(t?.id, 'sess-tomb', 'the owner sees it was deleted')
+  assert.equal((await db.as(B, `select id from public.deleted_sessions`)).length, 0, 'nobody else does')
+  assert.match(await db.fails(A, `insert into public.sessions (id, owner, meta) values ('sess-tomb', '${A}', '{}')`), /was deleted/)
+  // nor by someone hoping to take over its old recap link
+  assert.match(await db.fails(B, `insert into public.sessions (id, owner, meta) values ('sess-tomb', '${B}', '{}')`), /was deleted/)
+  assert.equal(await db.fails(A, `insert into public.sessions (id, owner, meta) values ('sess-fresh', '${A}', '{}')`), '')
+  assert.match(await db.fails(A, `insert into public.deleted_sessions (id, owner) values ('x', '${A}')`), /permission denied/i)
+})
+
+test('re-audit N8: no read-only function writes (Postgres refuses it, and the feature fails)', async () => {
+  const rows = await db.sql(`
+    select p.oid::regprocedure::text as f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.provolatile <> 'v'
+      and p.prosrc ~* '(\\minsert\\s+into\\M|\\mupdate\\s+public\\.|\\mdelete\\s+from\\M|sitka_rate_hit|sitka_meter)'
+    order by 1`)
+  assert.deepEqual(rows.map((r) => r.f), [])
+  const [r] = await db.as(null, `select public.sitka_course_preview('COURSE22') as p`)
+  assert.equal(r.p?.course, 'Physics 101')
+})
+
+test('re-audit B9: owner rows written by anyone but the organisation’s owner are made memberships, and give no lead powers', async () => {
+  // a row the hole before part 2 let a stranger write (put back as the database's owner would find it)
+  await db.sql(`insert into public.org_members (org_id, user_id, role, name, email) values ('org-a', '${B}', 'owner', 'Ben', '${PEOPLE.b.email}')
+                on conflict (org_id, user_id) do update set role = 'owner'`)
+  const [before] = await db.as(B, `select public.sitka_is_lead('org-a') as lead`)
+  assert.equal(before.lead, false, 'a stray owner row no longer counts as lead, even before it is corrected')
+  await db.sql(readFileSync(new URL('../../supabase/migrations/20260926_09_reaudit.sql', import.meta.url), 'utf8'))
+  const [row] = await db.sql(`select role from public.org_members where org_id = 'org-a' and user_id = '${B}'`)
+  assert.equal(row.role, 'member')
+  const [owner] = await db.sql(`select role from public.org_members where org_id = 'org-a' and user_id = '${A}'`)
+  assert.equal(owner.role, 'owner', 'the real owner is untouched')
+  const [a] = await db.as(A, `select public.sitka_is_lead('org-a') as lead`)
+  assert.equal(a.lead, true)
+  await db.sql(`delete from public.org_members where org_id = 'org-a' and user_id = '${B}'`)
+})
+
+test('re-audit N30: a recap whose session is gone is switched off, and its owner may always switch one off', async () => {
+  // a recap left on by a session deleted before part 0 (the guard is not asked when the database's owner writes)
+  await db.sql(`insert into public.recaps (id, owner, title, enabled) values ('sess-orphan', '${A}', 'left on', true)`)
+  await db.sql(readFileSync(new URL('../../supabase/migrations/20260926_09_reaudit.sql', import.meta.url), 'utf8'))
+  const [r] = await db.sql(`select enabled from public.recaps where id = 'sess-orphan'`)
+  assert.equal(r.enabled, false)
+  await db.sql(`update public.recaps set enabled = true where id = 'sess-orphan'`)
+  assert.equal(await db.fails(A, `update public.recaps set enabled = false where id = 'sess-orphan'`), '')
+  assert.match(await db.fails(A, `update public.recaps set enabled = true where id = 'sess-orphan'`), /Only the person who recorded/)
+})
+
+test('migrations from part 9 on say that they ran', async () => {
+  const rows = await db.sql(`select name from public.schema_migrations order by 1`)
+  assert.ok(rows.some((r) => r.name === '20260926_09_reaudit'))
+  assert.equal((await db.as(null, `select 1 from pg_tables where schemaname = 'public' and tablename = 'schema_migrations'`)).length, 1)
+  assert.match(await db.fails(A, `select * from public.schema_migrations`), /permission denied/i)
 })
 
 // ---------- storage (Audit S7 · Henry D7) ----------

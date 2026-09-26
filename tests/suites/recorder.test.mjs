@@ -345,3 +345,75 @@ test('R10/R11: a session recorded in another tab is left to that tab', async () 
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: prev })
   }
 })
+
+// ---------- the second audit ----------
+
+test('re-audit N4: a session deleted on another device stops sending here, and its copy here goes', async () => {
+  const up = cloud()
+  const gone = new Set()
+  const put = up.put
+  up.put = async (sessionId, partNo, blob, kind, signal) => (gone.has(sessionId) ? { error: 'This session was deleted.', deleted: true } : put(sessionId, partNo, blob, kind, signal))
+  const { e } = engine(up)
+  const id = sid()
+  await record(e, id, 4)
+  assert.ok(await waitFor(() => up.numbers(id).length === 1))
+  gone.add(id)
+  for (let i = 4; i < 10; i++) await e.add(id, piece(i))
+  assert.ok(await waitFor(async () => (await device.chunkKeysOf(id)).value.length === 0), 'the device copy of a deleted session was not cleared')
+  const sentAfter = up.puts.filter((p) => p.sessionId === id).length
+  await sleep(300)
+  assert.equal(up.puts.filter((p) => p.sessionId === id).length, sentAfter, 'it kept trying to send a deleted session')
+  assert.deepEqual((await device.partsOf(id)).value, [])
+})
+
+test('re-audit R8: deleting stops an upload already on its way', async () => {
+  const up = cloud()
+  up.hang = true
+  const { e } = engine(up, { timeoutFor: () => 60000 })
+  const id = sid()
+  await record(e, id, 4)
+  assert.ok(await waitFor(() => up.puts.some((p) => p.sessionId === id)))
+  const started = Date.now()
+  await e.forget(id)
+  // the hanging upload answers as soon as its signal is aborted, not after its minute
+  assert.ok(await waitFor(() => !e.busy(), 2000), 'the upload was left running after the delete')
+  assert.ok(Date.now() - started < 2000)
+})
+
+test('re-audit N11: uploads work where AbortSignal.timeout does not exist (iPhones before iOS 16)', async () => {
+  const had = AbortSignal.timeout
+  // eslint-disable-next-line no-global-assign
+  delete AbortSignal.timeout
+  try {
+    assert.equal(typeof AbortSignal.timeout, 'undefined')
+    const up = cloud()
+    const { e } = engine(up)
+    const id = sid()
+    await record(e, id, 4)
+    const { left } = await e.end(id, 5000)
+    assert.equal(left, 0)
+    assert.deepEqual(up.numbers(id), [0, 1])
+  } finally {
+    AbortSignal.timeout = had
+  }
+})
+
+test('re-audit N35: "in the cloud up to" counts from the first piece, not from when the session was made', async () => {
+  // a clock that runs with real time, plus whatever the test skips ahead
+  let skip = 0
+  const up = cloud()
+  const { e, said } = engine(up, { now: () => Date.now() + skip })
+  const id = sid()
+  // the session was made a minute before recording began (the screen picker, permissions)
+  await e.begin(id, Date.now())
+  skip += 60000
+  for (let i = 0; i < 4; i++) {
+    skip += 3000
+    await e.add(id, piece(i))
+  }
+  await e.end(id, 5000)
+  const last = said.uploaded.filter((u) => u.sessionId === id && u.upToPart === 1).at(-1)
+  assert.ok(last, 'nothing was said to be up')
+  // four pieces of three seconds: about twelve seconds, never seventy-two
+  assert.ok(last.upToMs <= 15000, `said up to ${last.upToMs} ms`)
+})

@@ -5,6 +5,7 @@
  * desktop renderer runs online. The signed-in user's browser tab is the brain:
  * it captures, transcribes, answers attendees, and stores everything here.
  */
+import { timeoutSignal } from '../../src/shared/timeout'
 import type { RealtimeChannel, SupabaseClient, User } from '@supabase/supabase-js'
 import type { SitkaApi } from '../../src/preload/index'
 import {
@@ -275,6 +276,19 @@ function uid(): string {
  * which kind of computer, and whether it is the Chrome extension. Kept with
  * a session so a recording that has not reached the cloud can be found.
  */
+/** This browser's own id, made once (random, never sent anywhere but the session it records). */
+function thisDevice(): string {
+  try {
+    let id = localStorage.getItem('sitka.device')
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem('sitka.device', id)
+    }
+    return id
+  } catch {
+    return 'unknown'
+  }
+}
 function whereThisIs(): string {
   const ua = navigator.userAgent
   const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'a browser'
@@ -449,7 +463,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
   })()
   try {
     // a few seconds at most: the workspace waits on this, nothing else should
-    const r = await fetch('/api/health', { signal: AbortSignal.timeout(6000) })
+    const r = await fetch('/api/health', { signal: timeoutSignal(6000) })
     if (r.ok) platform = { ...platform, ...(await r.json()) }
   } catch {
     /* offline or slow — user keys still work, and the platform keys are checked again on first use */
@@ -736,6 +750,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       const bytes = await api.readVideo(id, 'video')
       if (!bytes || bytes.byteLength < 5000) return
+      // Every part, whole: the joined bytes must be exactly what the cloud
+      // lists. A part whose download failed was once left out and the rest
+      // saved as the whole recording, with a hole that was never mended.
+      if (bytes.byteLength !== total) {
+        if (!gapSaid.has(id)) {
+          gapSaid.add(id)
+          reportError(location.pathname, `recording not joined: read ${bytes.byteLength} bytes of ${total} listed (${id})`)
+        }
+        return
+      }
       const kind = mediaType(bytes.subarray(0, 12))
       // the fragment index, kept beside the parts: a phone plays the recording
       // from it as a playlist, piece by piece, starting at once
@@ -759,6 +783,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         console.warn('Sitca: whole-file upload failed', error)
         return
       }
+      // A part that landed while this was joining (the recorder's late last
+      // piece) is not in the file: it is not called whole, and the part's
+      // arrival has the file made again.
+      const after = await store.list(`${user.id}/${id}`).catch(() => null)
+      const partsNow = (after?.objects ?? [])
+        .filter((f) => /^part-\d+\.webm$/.test(f.name))
+        .map((f) => `${f.name}:${f.size ?? 0}`)
+        .sort()
+        .join(',')
+      const partsThen = listing.objects
+        .filter((f) => /^part-\d+\.webm$/.test(f.name))
+        .map((f) => `${f.name}:${f.size ?? 0}`)
+        .sort()
+        .join(',')
+      if (!after || partsNow !== partsThen) return
       d.meta.store = where
       d.meta.whole = true
       d.meta.flat = kind !== 'video/mp4' || Boolean(flat)
@@ -1184,7 +1223,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (!healthAsked) {
       healthAsked = (async () => {
         try {
-          const r = await fetch('/api/health', { signal: AbortSignal.timeout(8000) })
+          const r = await fetch('/api/health', { signal: timeoutSignal(8000) })
           if (r.ok) platform = { ...platform, ...((await r.json()) as { chat?: boolean; stt?: boolean }) }
         } catch {
           /* still unknown: asked again next time */
@@ -1308,6 +1347,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     if (!d) return
     const row = {
       id,
+      owner: user.id,
       meta: d.meta,
       transcript: d.segments,
       chat: d.chat,
@@ -1341,7 +1381,10 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const kept = await device.getBackups<Row>().catch(() => [] as Row[])
     const seen = new Set(out.filter(Boolean).map((r) => r.id))
     for (const r of kept) if (r && !seen.has(r.id)) out.push(r)
-    return out.filter(Boolean)
+    // Only this account's own. On a shared computer the next person once
+    // saw the last one's transcripts, and could write them into their own
+    // account; a backup that does not say whose it is is not shown either.
+    return out.filter((r) => Boolean(r) && (r as Row & { owner?: string }).owner === user.id)
   }
   function dropBackup(id: string): void {
     try {
@@ -1391,12 +1434,53 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         ...(c.meta.spaceId ? { space_id: c.meta.spaceId } : {})
       })
       if (!error || /duplicate|already exists|23505/i.test(error.message)) return true
+      // deleted, on this device or another: it stays deleted, here too
+      if (/was deleted/i.test(error.message)) {
+        await forgetDeleted(id)
+        return false
+      }
       lastError = error.message
       if (!isNetworkError(lastError)) break
     }
     storageProblem(lastError)
     backupSession(id)
     return false
+  }
+  /**
+   * A session the server says was deleted: everything this device still
+   * holds of it goes (its recording, its text backup, the marks that would
+   * write it back), and the library stops showing it.
+   */
+  async function forgetDeleted(id: string): Promise<void> {
+    createdHere.delete(id)
+    rowReady.delete(id)
+    await engine.forget(id)
+    dropBackup(id)
+    cache.delete(id)
+    allCache = null
+  }
+  /**
+   * A session this device holds parts of but whose row the server does not
+   * have: written from this page's copy, or from this device's text backup,
+   * when either is this account's own. Never another account's.
+   */
+  async function ensureRow(id: string): Promise<void> {
+    if (rowReady.has(id)) {
+      await rowReady.get(id)
+      return
+    }
+    if (!cache.get(id)) {
+      const b = (await readBackups()).find((r) => r.id === id)
+      if (!b) return
+      cache.set(id, rowToData(b))
+    }
+    createdHere.add(id)
+    const run = insertRow(id)
+    rowReady.set(id, run)
+    void run.finally(() => {
+      if (rowReady.get(id) === run) rowReady.delete(id)
+    })
+    await run
   }
   async function patchSession(id: string, patch: Record<string, unknown>): Promise<void> {
     dropAllCache()
@@ -1456,6 +1540,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     const running = granting.get(sessionId)
     if (running) return running
     const run = (async () => {
+      // the session's row first: the server gives links only to a session it has
+      const first = rowReady.get(sessionId)
+      if (first) await Promise.race([first, wait(15000)])
       const g = await store.grant(sessionId, from, GRANT_COUNT)
       if ('error' in g) {
         lastUploadError.set(sessionId, `upload links not issued: ${g.error}`)
@@ -1513,6 +1600,16 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     return (await store.ready()) ? 'r2' : 'sb'
   }
 
+  /** the storage server's word on a session: deleted (410), or its row not saved yet (409) */
+  const saidDeleted = (e: string): boolean => /said 410\b|was deleted/i.test(e)
+  const saidMissing = (e: string): boolean => /said 409\b|not saved yet/i.test(e)
+  /** a failed upload, read: deleted sessions stop; a missing row is written, then tried again */
+  function readRefusal(sessionId: string, error: string): { error: string; deleted?: boolean } {
+    if (saidDeleted(error)) return { error: 'This session was deleted.', deleted: true }
+    if (saidMissing(error)) void ensureRow(sessionId)
+    return { error }
+  }
+
   const recUploader: Uploader = {
     async put(sessionId, partNo, blob, kind, signal) {
       const where = await storeFor(sessionId)
@@ -1524,7 +1621,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
       }
       const link = await linkFor(sessionId, partNo)
       if (link && 'taken' in link) return { error: 'already there', taken: { size: link.taken } }
-      if (!link) return { error: lastUploadError.get(sessionId) ?? 'Upload links could not be issued yet.' }
+      if (!link) return readRefusal(sessionId, lastUploadError.get(sessionId) ?? 'Upload links could not be issued yet.')
       let sent = await store.putTo(link.url, blob, kind, signal)
       if ('error' in sent && sent.expired) {
         grants.delete(sessionId)
@@ -1536,7 +1633,7 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     },
     async putHeader(sessionId, blob, kind, signal) {
       const r = await store.upload(`${user.id}/${sessionId}/init.bin`, blob, kind, { signal })
-      return r.error ? { error: r.error } : { ok: true }
+      return r.error ? readRefusal(sessionId, r.error) : { ok: true }
     },
     async cloudParts(sessionId) {
       const where = await storeFor(sessionId)
@@ -1560,7 +1657,9 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         // "up to": the end of the last piece with nothing missing before it
         window.dispatchEvent(new CustomEvent('sitka:upload-ok', { detail: { sessionId, partNo, upToMs } }))
         if (partNo === 0) void thumbFromHeader(sessionId)
-        if (!engine.isLive(sessionId)) void settle(sessionId)
+        // a part landing after the recording ended: a whole file made before
+        // it is missing it, and is made again
+        if (!engine.isLive(sessionId)) void settle(sessionId, true)
       },
       trouble: ({ sessionId, error }) => {
         console.error('Sitca: part upload failed', sessionId, error)
@@ -1606,14 +1705,20 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
    * so, and the whole file is made (again, when a late part has just landed).
    */
   const settling = new Set<string>()
-  async function settle(sessionId: string): Promise<void> {
+  /** sessions a part has landed for since they last settled */
+  const lateLanded = new Set<string>()
+  async function settle(sessionId: string, partLanded = false): Promise<void> {
+    if (partLanded) lateLanded.add(sessionId)
     if (settling.has(sessionId) || engine.isLive(sessionId)) return
     settling.add(sessionId)
     try {
       if ((await engine.pending(sessionId)) > 0) return
       const d = cache.get(sessionId) ?? (await loadSession(sessionId))
       if (!d || d.meta.readOnly || d.meta.sample || d.meta.status === 'recording') return
-      if (d.meta.recordingPending || d.meta.uploadError) {
+      const rebuild = lateLanded.has(sessionId) && Boolean(d.meta.whole)
+      lateLanded.delete(sessionId)
+      if (rebuild) d.meta.whole = false
+      if (d.meta.recordingPending || d.meta.uploadError || rebuild) {
         delete d.meta.recordingPending
         delete d.meta.uploadError
         await patchSession(sessionId, { meta: d.meta })
@@ -1692,13 +1797,21 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         const d = await loadSession(r.id)
         if (!d) continue
         d.meta.status = 'complete'
+        // Recorded here, or on another device? Only the device that recorded
+        // knows whether its parts are all up. Another one closing a quiet
+        // session (a phone locked in a pocket) once cleared "still uploading"
+        // from its own empty queue, and the file was joined without its end.
+        const recordedHere = !d.meta.recordedBy || d.meta.recordedBy === thisDevice()
         if (!d.meta.durationMs || d.meta.durationMs <= 0) {
-          d.meta.durationMs = lastAt > d.meta.createdAt ? lastAt - d.meta.createdAt : 0
+          // the last piece this device kept, or else the recording's last sign of life
+          const lastSeen = lastAt || (r.updated_at ? new Date(r.updated_at).getTime() : 0)
+          d.meta.durationMs = lastSeen > d.meta.createdAt ? lastSeen - d.meta.createdAt : 0
         }
         // pieces that never became a part become one, numbered after all the rest
         await engine.sweepLoose(90000)
+        if (!recordedHere) d.meta.recordingPending = true
         // pending only when this device still holds parts the cloud lacks
-        if ((await engine.pending(r.id)) > 0) d.meta.recordingPending = true
+        else if ((await engine.pending(r.id)) > 0) d.meta.recordingPending = true
         else delete d.meta.recordingPending
         await patchSession(r.id, { meta: d.meta })
         emitSession(d.meta)
@@ -3212,7 +3325,8 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         space,
         audioOnly: audioOnly || undefined,
         spaceId: spaceId || undefined,
-        recordedOn: whereThisIs()
+        recordedOn: whereThisIs(),
+        recordedBy: thisDevice()
       }
       // where the recording goes, fixed for the session: the recording store
       // when this deployment has one (asked briefly; unknown leaves it to the upload)
@@ -3353,8 +3467,13 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
         return
       }
       // First, the recording is marked deleted on this device: no piece of it
-      // goes up from now on, and its device copy is cleared.
+      // goes up from now on, and its device copy is cleared. Its text backup
+      // and the mark that would write its row back go too: a save landing
+      // after the delete once brought a deleted session back.
       await engine.forget(id)
+      createdHere.delete(id)
+      rowReady.delete(id)
+      dropBackup(id)
       // A hosted event's recap dies with its session: the page closes and the
       // public copy of the recording, if one was made, is removed. The parts
       // below go too, so the recap's own player has nothing left to read.
@@ -4448,7 +4567,15 @@ export async function installWebApi(sb: SupabaseClient): Promise<void> {
     listOrgs: async (): Promise<Organization[]> => {
       // My organisations as the database gives them: the codes only to those
       // who may hand them out, counts without anyone's details
-      const mine = await sb.rpc('sitka_my_orgs')
+      let mine = await sb.rpc('sitka_my_orgs')
+      const missing = (e: { code?: string; message?: string } | null): boolean =>
+        Boolean(e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|does not exist/i.test(e.message ?? '')))
+      if (mine.error && !missing(mine.error)) {
+        // a failed call is not an empty list: asked again once, then said
+        await wait(1500)
+        mine = await sb.rpc('sitka_my_orgs')
+        if (mine.error && !missing(mine.error)) throw new Error('Your organisations could not be loaded just now. Check the connection and try again.')
+      }
       if (!mine.error && Array.isArray(mine.data)) {
         return (mine.data as Record<string, unknown>[]).map((r) => {
           const role = (['owner', 'lead', 'member'].includes(r.role as string) ? r.role : 'member') as OrgRole

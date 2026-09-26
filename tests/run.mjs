@@ -23,7 +23,7 @@ const times = Math.max(1, Number(args[args.indexOf('--times') + 1]) || 1)
 const label = args.includes('--label') ? args[args.indexOf('--label') + 1] : ''
 const quick = args.includes('--quick') // skip the two builds (for iterating)
 
-const env = { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096' }
+const env = { ...process.env, NODE_OPTIONS: '--max-old-space-size=2048' }
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 
 function run(name, cmd, argv, cwd, extraEnv = {}) {

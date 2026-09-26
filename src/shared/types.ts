@@ -116,6 +116,8 @@ export interface SessionMeta {
   spaceId?: string
   /** where the recording was made, in words a person recognises ("Chrome on Windows", "the Chrome extension") */
   recordedOn?: string
+  /** this browser's own random id, for the device that recorded: only it may say the recording is all up */
+  recordedBy?: string
   /** part of the recording is still on this device, waiting to upload */
   recordingPending?: boolean
   /** why the last upload from this device failed, in the cloud's words, so the page can say */

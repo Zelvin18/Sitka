@@ -94,6 +94,8 @@ test('connections the app needs are allowed', () => {
 test('recordings can play and the sign-in window can open', () => {
   const d = directives()
   assert.ok(d['media-src'].includes('blob:'), 'local recordings (blob:) cannot play')
+  // Save to Drive reads a recording held in the page (re-audit N33)
+  assert.ok(d['connect-src'].includes('blob:'), 'a recording held in the page cannot be read to send it on')
   assert.ok(d['media-src'].includes('https://*.r2.cloudflarestorage.com'), 'cloud recordings cannot play')
   assert.ok(d['worker-src'].includes("'self'"), 'the PDF reader worker cannot start')
   assert.ok(d['frame-src'].includes('https://accounts.google.com'))

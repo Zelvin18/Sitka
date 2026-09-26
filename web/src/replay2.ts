@@ -392,7 +392,7 @@ async function streamWhole(v: HTMLVideoElement, url: string, knownSize?: number)
     const mime = sniffWebmMime(head)
     if (!mime || !canStream(mime)) return false
     v.hidden = false
-    return await streamMedia(v, sourceFromUrl(url, size), {
+    return await streamMedia(v, sourceFromUrl(url, size, async () => (await renewLinks())?.whole ?? null), {
       durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
       onProgress: (f) => {
         el('playsub').textContent = f < 0.995 ? `${data.durationMs ? fmtLen(data.durationMs) : 'Ready'} · ${Math.round(f * 100)}% in` : data.durationMs ? fmtLen(data.durationMs) : 'Ready'
@@ -404,7 +404,54 @@ async function streamWhole(v: HTMLVideoElement, url: string, knownSize?: number)
   }
 }
 /** where the recording lives, kept for a second way in should the stream fail */
-let lastFound: { whole: string | null; parts: string[] } | null = null
+let lastFound: { whole: string | null; parts: string[]; hls?: string | null } | null = null
+/**
+ * Fresh links for the same recording. They last two hours; a long lecture,
+ * or a tab left paused, outlives them, and the page used to go on asking for
+ * the expired ones. Asked at most once a minute.
+ */
+let renewedAt = 0
+async function renewLinks(): Promise<typeof lastFound> {
+  if (!data.owner || !data.sessionId || Date.now() - renewedAt < 60000) return null
+  renewedAt = Date.now()
+  try {
+    const f = await store.media(data.owner, data.sessionId)
+    lastFound = { whole: f.whole, parts: f.parts, hls: f.hls }
+    console.info('[recap] links renewed')
+    return lastFound
+  } catch {
+    return null
+  }
+}
+/**
+ * The player's own loader (the phone's player, or a file played natively)
+ * failed: when its links may have expired, it is given fresh ones and put
+ * back where it was. True when that was tried.
+ */
+function renewNative(): boolean {
+  const v = video()
+  const cur = v.currentSrc || v.src
+  if (!cur || cur.startsWith('blob:') || !lastFound || Date.now() - renewedAt < 60000) return false
+  const kind = lastFound.hls && cur === lastFound.hls ? 'hls' : lastFound.whole && cur === lastFound.whole ? 'whole' : null
+  if (!kind) return false
+  const at = v.currentTime
+  const wasPlaying = !v.paused
+  void renewLinks().then((f) => {
+    const next = f ? (kind === 'hls' ? f.hls : f.whole) : null
+    if (!next) return
+    v.src = next
+    v.load()
+    v.addEventListener(
+      'loadedmetadata',
+      () => {
+        if (at > 0.5) v.currentTime = at
+        if (wasPlaying) v.play().catch(refused)
+      },
+      { once: true }
+    )
+  })
+  return true
+}
 /** the stream gave up partway: the file itself is handed to the player, at the same moment */
 let fellBack = false
 async function fallBackFromStream(): Promise<boolean> {
@@ -501,7 +548,8 @@ function loadMedia(): Promise<boolean> {
         // One question answers all of it: which store holds this recording,
         // whether it was joined into a single file, and the link to each part.
         const found = await store.media(data.owner, data.sessionId)
-        lastFound = { whole: found.whole, parts: found.parts }
+        lastFound = { whole: found.whole, parts: found.parts, hls: found.hls }
+        renewedAt = Date.now()
         // An iPhone or iPad plays the recording as a playlist in Safari's own
         // player: a tiny index, then the pieces, starting within a second or
         // two — the way every video site delivers to a phone. The joined
@@ -565,7 +613,7 @@ function loadMedia(): Promise<boolean> {
         // are appended in order, as before.
         const sized = found.partSizes && found.partSizes.length === paths.length
         const streamed = sized
-          ? await streamMedia(v, sourceFromParts(paths.map((url, i) => ({ url, size: found.partSizes![i] }))), {
+          ? await streamMedia(v, sourceFromParts(paths.map((url, i) => ({ url, size: found.partSizes![i] })), async () => (await renewLinks())?.parts ?? null), {
               durationSec: data.durationMs ? data.durationMs / 1000 : undefined,
               onProgress: (f) => {
                 el('playsub').textContent = f < 0.995 ? `${data.durationMs ? fmtLen(data.durationMs) : 'Ready'} · ${Math.round(f * 100)}% in` : data.durationMs ? fmtLen(data.durationMs) : 'Ready'
@@ -790,6 +838,8 @@ function wireMedia(): void {
   // words on the pill, so a failure is never a silent black box.
   v.addEventListener('error', () => {
     const code = v.error?.code
+    // a network failure on a link the store no longer honours: fresh links, same moment
+    if ((code === 2 || code === 4) && renewNative()) return
     // the stream broke partway (an engine that will not take a piece): the
     // file itself takes over from the same moment, before anything is said
     if ((code === 3 || code === 4) && !fellBack && streamedHere) {
@@ -1381,21 +1431,28 @@ function wireHeader(): void {
 }
 
 // ---------- boot ----------
+/** Nothing here to show: said at once, with nothing offered that cannot work. */
+function showNotFound(): void {
+  el('loading').classList.add('hidden')
+  el('notfound').classList.remove('hidden')
+  for (const id of ['keep', 'askfab', 'htag']) document.getElementById(id)?.remove()
+}
 async function boot(): Promise<void> {
   if (!pageId) {
-    el('loading').classList.add('hidden')
-    el('notfound').classList.remove('hidden')
+    showNotFound()
     return
   }
+  // an event and a recap are asked for together: a link that is neither is
+  // said to be unavailable as soon as both have answered
   let d: Loaded | null = null
   try {
-    d = (await loadEvent()) ?? (await loadRecap())
+    const [ev, rc] = await Promise.all([loadEvent().catch(() => null), loadRecap().catch(() => null)])
+    d = ev ?? rc
   } catch {
     d = null
   }
   if (!d) {
-    el('loading').classList.add('hidden')
-    el('notfound').classList.remove('hidden')
+    showNotFound()
     return
   }
   data = d

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:ext": "vite build -c vite.ext.config.ts",
-    "pack:ext": "npm run build:ext && powershell -NoProfile -Command \"Compress-Archive -Force -Path ../extension/dist/* -DestinationPath ../extension/sitca-extension.zip\"",
+    "pack:ext": "npm run build:ext && node scripts/pack-ext.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

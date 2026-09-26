@@ -1,4 +1,5 @@
 import './pageboot'
+import { timeoutSignal } from '../../src/shared/timeout'
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { patientFetch } from './patientFetch'
 import { downloadBytes, fileName, notesPdf, withoutTimes } from './notesFile'
@@ -23,8 +24,9 @@ const attendeeFetch: typeof fetch = (input, init) => {
 }
 const sb = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: false }, global: { fetch: attendeeFetch } })
 // The person's own account, when they have one on this browser: the app keeps
-// its session here too. Used only to say who they are and to keep the event.
-const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, global: { fetch: patientFetch } })
+// its session here too. Used only to say who they are and to keep the event;
+// it carries the attendee secret as well, which keeping an event checks.
+const sbMe = createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }, global: { fetch: attendeeFetch } })
 let me: { id: string; name: string } | null = null
 async function whoAmI(): Promise<void> {
   try {
@@ -176,7 +178,6 @@ async function insertAttendee(row: Record<string, unknown>, secret: string): Pro
   if (!withHash.error || !/secret_hash/i.test(withHash.error.message)) return withHash
   return sb.from('attendees').insert(row)
 }
-const secretParam = (secret: string): string => (secret ? `&secret=${encodeURIComponent(secret)}` : '')
 let persona: string | null = null
 let myLang = 'English'
 let joined = false
@@ -501,11 +502,12 @@ let voiceServerDown = 0 // when the natural voice last failed: the phone's voice
 async function fetchVoice(text: string): Promise<Blob | null> {
   if (Date.now() - voiceServerDown < 60000) return null
   try {
+    // an attendee's voice is paid for by the event: the page shows it is one
     const r = await fetch('/api/speak', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang: myLang, event: eventId }),
-      signal: AbortSignal.timeout(12000)
+      headers: { 'Content-Type': 'application/json', ...secretHeader(writeSecret) },
+      body: JSON.stringify({ text, lang: myLang, event: eventId, attendee: attId }),
+      signal: timeoutSignal(12000)
     })
     if (!r.ok || !/^audio\//i.test(r.headers.get('content-type') || '')) {
       voiceServerDown = Date.now()
@@ -1679,9 +1681,11 @@ function aiBubble(text: string): HTMLElement {
 }
 
 /** one of this page's own rows, read through the site's server (the rows are private in the database) */
-async function readOwn<T>(query: string): Promise<T | null> {
+// The secret goes in a header: a link with it in lands in server logs.
+const secretHeader = (secret: string): Record<string, string> => (secret ? { 'x-sitca-attendee': secret } : {})
+async function readOwn<T>(query: string, secret = ''): Promise<T | null> {
   try {
-    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store' })
+    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store', headers: secretHeader(secret) })
     if (!r.ok) return null
     const j = (await r.json()) as { row?: T | null }
     return j.row ?? null
@@ -1689,9 +1693,9 @@ async function readOwn<T>(query: string): Promise<T | null> {
     return null
   }
 }
-async function readOwnRows<T>(query: string): Promise<T[]> {
+async function readOwnRows<T>(query: string, secret = ''): Promise<T[]> {
   try {
-    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store' })
+    const r = await fetch(`/api/ask?${query}`, { cache: 'no-store', headers: secretHeader(secret) })
     if (!r.ok) return []
     const j = (await r.json()) as { rows?: T[] }
     return j.rows ?? []
@@ -1745,7 +1749,7 @@ async function submitAsk(
         lang: myLang,
         history: kind === 'ask' ? askHistory.slice(-8) : []
       }),
-      signal: AbortSignal.timeout(55000)
+      signal: timeoutSignal(55000)
     })
     const j = (await r.json().catch(() => ({}))) as { answer?: string; defer?: boolean; error?: string }
     if (r.ok && j.answer) {
@@ -1777,7 +1781,7 @@ async function submitAsk(
       if (pendingAsks.has(id)) resolveAsk(id, 'error', 'No answer arrived — is the host app running?')
       return
     }
-    const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}${secretParam(attSecret)}`)
+    const data = await readOwn<{ status: string; answer: string | null }>(`ask=${id}`, attSecret)
     if (data && data.status !== 'pending') {
       clearInterval(poll)
       if (kind === 'ask' && data.status === 'answered' && data.answer) {
@@ -2031,7 +2035,7 @@ async function join(newJoin: boolean): Promise<void> {
   applyEventState()
 
   // history: restore my previous Q&A after a refresh
-  const prevAsks = await readOwnRows<{ kind: string; question: string; answer: string | null; status: string }>(`attendee=${attId}${secretParam(attSecret)}`)
+  const prevAsks = await readOwnRows<{ kind: string; question: string; answer: string | null; status: string }>(`attendee=${attId}`, attSecret)
   for (const a of prevAsks) {
     if (a.status !== 'answered' || !a.answer) continue
     bubble('bub-u', a.question)
@@ -2039,72 +2043,37 @@ async function join(newJoin: boolean): Promise<void> {
     myChat.push({ role: 'user', content: a.question }, { role: 'assistant', content: a.answer })
   }
 
-  // live data: subscribe first, then load the backlog (dedupe by idx)
+  // live data: subscribe first, then load the backlog (dedupe by idx).
+  // One channel per table: the server refuses a whole channel when it will
+  // not serve one of its tables, which once left every screen without
+  // captions. The event row itself is not on the live link (visitors read it
+  // through sitka_event); the page asks for it below.
   const wantTrans = translatedForMe()
-  sb.channel('ev-' + eventId)
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'segments', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const row = payload.new as SegRow
-        upsertSeg(row, pendingTranslations.get(row.idx))
-        pendingTranslations.delete(row.idx)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'translations', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const row = payload.new as { lang: string; idx: number; text: string }
-        if (wantTrans && row.lang === myLang) applyTranslation(row.idx, row.text)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'events', filter: 'id=eq.' + eventId },
-      (payload) => {
-        // the host's heartbeat updates the row every few seconds: the page
-        // is only re-laid when something that shows has changed
-        const before = ev
-        ev = payload.new as EventRow
-        const changed =
-          !before ||
-          before.status !== ev.status ||
-          before.title !== ev.title ||
-          JSON.stringify(before.replay) !== JSON.stringify(ev.replay) ||
-          JSON.stringify(before.live_voice) !== JSON.stringify(ev.live_voice)
-        if (changed) applyEventState()
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'polls', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const p = payload.new as PollRow | null
-        if (p && p.id) setPoll(p)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'room_notes', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const note = payload.new as { text: string }
-        if (note?.text) showRoomNote(note.text)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'room_messages', filter: 'event_id=eq.' + eventId },
-      (payload) => renderRoomMsg(payload.new as RoomRow)
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'attendees', filter: 'event_id=eq.' + eventId },
-      () => void refreshCount()
-    )
-    // (an attendee's own questions and their answers are private: they are
-    // not sent over the room's live link, and arrive by the page asking)
-    .subscribe()
+  const live = <T>(table: string, event: 'INSERT' | '*', on: (row: T) => void): void => {
+    sb.channel(`ev-${table}-${eventId}`)
+      .on('postgres_changes', { event, schema: 'public', table, filter: 'event_id=eq.' + eventId }, (payload) => on(payload.new as T))
+      .subscribe()
+  }
+  live<SegRow>('segments', 'INSERT', (row) => {
+    upsertSeg(row, pendingTranslations.get(row.idx))
+    pendingTranslations.delete(row.idx)
+  })
+  live<{ lang: string; idx: number; text: string }>('translations', 'INSERT', (row) => {
+    if (wantTrans && row.lang === myLang) applyTranslation(row.idx, row.text)
+  })
+  live<PollRow | null>('polls', '*', (p) => {
+    if (p && p.id) setPoll(p)
+  })
+  live<{ id?: string; text: string; created_at?: string }>('room_notes', 'INSERT', (note) => {
+    if (note?.text && (!note.id || !notesSeen.has(note.id))) {
+      if (note.id) notesSeen.add(note.id)
+      showRoomNote(note.text)
+    }
+  })
+  live<RoomRow>('room_messages', 'INSERT', (row) => renderRoomMsg(row))
+  live<unknown>('attendees', 'INSERT', () => void refreshCount())
+  // (an attendee's own questions and their answers are private: they are
+  // not sent over the room's live link, and arrive by the page asking)
 
   // Realtime is the fast path; this is the safety net. A phone drops the
   // socket when its screen sleeps, and an event row that changes while the
@@ -2116,6 +2085,10 @@ async function join(newJoin: boolean): Promise<void> {
   let endedTicks = 0
   let lastTransIdx = -1
   let pollTicks = 0
+  // room notes seen, so one arriving both live and by asking shows once;
+  // only notes written after the page opened are shown
+  const notesSeen = new Set<string>()
+  let notesSince = new Date().toISOString()
   const watchEvent = async (): Promise<void> => {
     if (watching || !ev) return
     // After the end, the recap flag and the recording can still change for a
@@ -2183,6 +2156,20 @@ async function join(newJoin: boolean): Promise<void> {
             .limit(1)
           const latest = pollRows && pollRows.length > 0 ? (pollRows[0] as PollRow) : null
           if (latest && (!activePoll || activePoll.id !== latest.id || activePoll.status !== latest.status)) setPoll(latest)
+          // the host's notes to the room, which until now came only over the live link
+          const { data: noteRows } = await sb
+            .from('room_notes')
+            .select('id,text,created_at')
+            .eq('event_id', eventId)
+            .gt('created_at', notesSince)
+            .order('created_at', { ascending: true })
+            .limit(5)
+          for (const n of (noteRows ?? []) as { id: string; text: string; created_at: string }[]) {
+            if (n.created_at > notesSince) notesSince = n.created_at
+            if (notesSeen.has(n.id)) continue
+            notesSeen.add(n.id)
+            showRoomNote(n.text)
+          }
         }
       }
     } catch {
@@ -2360,7 +2347,7 @@ function renderBrief(brief: string, proxyId: string): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: crypto.randomUUID(), eventId, attendeeId: proxyId, secret: proxySecret(), kind: 'ask', question: q.slice(0, 600), persona: 'Someone who could not attend and asked Sitca to attend for them', lang: myLang, history: history.slice(-8) }),
-        signal: AbortSignal.timeout(55000)
+        signal: timeoutSignal(55000)
       })
       const j = (await r.json().catch(() => ({}))) as { answer?: string; error?: string }
       typing.remove()
@@ -2408,7 +2395,7 @@ function showProxyStatus(proxyId: string): void {
     // the event itself is asked as well, so the page knows when it starts
     // and when it ends without anyone refreshing it
     const [data, { data: fresh }] = await Promise.all([
-      readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}${secretParam(proxySecret())}`),
+      readOwn<{ status: string; brief: string | null }>(`proxy=${proxyId}`, proxySecret()),
       readEvent()
     ])
     if (fresh) {

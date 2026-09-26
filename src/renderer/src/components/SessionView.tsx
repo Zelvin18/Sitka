@@ -793,12 +793,14 @@ export default function SessionView({
       if (!small) for (let i = 0; i < 30 && !metaRef.current; i++) await new Promise((r) => setTimeout(r, 100))
       if (gen !== loadGenRef.current) return
       const audio = Boolean(metaRef.current?.audioOnly)
+      // An iPhone keeps its playlist first (the phone's own player, piece by
+      // piece): replacing the list here once dropped it before it was tried.
       ladderRef.current.ways = small
         ? ['blob', 'url', 'stream']
         : audio && IOS
-          ? ['url', 'blob', 'stream']
+          ? ['hls', 'url', 'blob', 'stream']
           : IOS
-            ? ['stream', 'url', 'blob']
+            ? ['hls', 'stream', 'url', 'blob']
             : ['url', 'stream', 'blob']
       void advance(gen)
     })()

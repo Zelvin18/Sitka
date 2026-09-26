@@ -3068,8 +3068,10 @@ export default function LiveSession({
             </span>
           </div>
         )}
-        {phase === 'recording' && deviceNote && !deviceNote.ok && (
-          <div className="notice" style={{ margin: '12px 20px 0' }}>
+        {/* whether this device keeps a safety copy: said whenever there is
+            something to say, a failure or a copy the browser did not promise */}
+        {phase === 'recording' && deviceNote && (
+          <div className={deviceNote.ok ? 'soft-note' : 'notice'} style={{ margin: '12px 20px 0' }}>
             <span>{deviceNote.why}</span>
           </div>
         )}

@@ -553,7 +553,12 @@ export default function App(): React.JSX.Element {
       .catch(() => undefined)
   }, [])
   const refreshOrgs = useCallback(async (): Promise<void> => {
-    setOrgs(await window.sitka.listOrgs())
+    // a list that could not be loaded keeps what was shown, rather than emptying it
+    try {
+      setOrgs(await window.sitka.listOrgs())
+    } catch (err) {
+      console.warn('Sitca: organisations not loaded', err)
+    }
   }, [])
   useEffect(() => {
     void refreshOrgs()

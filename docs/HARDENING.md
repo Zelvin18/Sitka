@@ -104,6 +104,84 @@ waiting on a device still go up.
 Tests: 15 drills, plus an API test for taken numbers; passed 3x with both
 builds (`tests/RESULTS.md`, "Set 3").
 
+## Set 3R — The second audit (26 September)
+
+The same two teams re-tested after Sets 1 to 3: **Re-audit** ("Pre-launch
+system audit, second pass", ids N1–N40) and **Henry 2** ("MVP readiness report",
+ids R B N P X M). Their ids overlap (both have an N1), so they are kept in
+separate columns. Findings that belong to a later set are listed there.
+
+### Part 1 — broken on the live site, money, and recordings that come back
+
+| | Re-audit | Henry 2 | Finding | Fix |
+|---|---|---|---|---|
+| ☑ | N1 | D5 (side effect) | Live event screens get no captions: a channel with the event listener is refused whole | One channel per table on the projector and attendee pages; the event row is asked for, never listened to; the projector and the attendee page also ask for missed captions, translations and room notes |
+| ☑ | N2 | N1 | Free accounts use the platform AI without limit by leaving out `kind` | Every platform-paid call counts against a monthly AI allowance (characters sent, per plan), read from the server's own meter; refused when it cannot be checked; one request capped at 220,000 characters |
+| ☑ | N5 | — | Summaries of long sessions lose their ending (server cut text at 30,000) | Server takes 100,000 per message and refuses more, never cuts |
+| ☑ | N6 | (extension) | The extension that ships is the old build | Rebuilt as 0.1.1; `npm run pack:ext` now zips with forward slashes and leaves the pinned `key` out of the store's copy (E6) |
+| ☑ | N4 | R3, R8 | Deleted sessions come back and keep uploading | The server remembers deleted sessions (`deleted_sessions`, migration 09): their rows cannot be written again and the upload route refuses them links; deleting drops the local backup and the "created here" mark; the engine stops sending and clears its copy when told a session was deleted elsewhere, and a delete aborts uploads already on their way |
+| ☑ | N4, N3 (part) | R8 | Upload links for sessions with no row | Links only for a session whose row is the caller's (409 "not saved yet", which writes the row from this account's own copy; 410 deleted; 403 another's) |
+| ☑ | N3 (part) | — | Shared computers: the next user's library shows the last one's text backups, which could be written into their account | Backups carry their owner; only this account's are read or written back. (Clearing at sign-out and tagging the recorder's device records: Set 4) |
+| ☑ | N8 | B2 | Course invitation previews fail every time | `sitka_course_preview` made volatile (migration 09); a test that no read-only function writes |
+| ☑ | N9 | B6 | "Keep this event" fails for every attendee with a secret | The page's signed-in client sends the attendee secret too |
+| ☑ | N10 | P4, M16 (part) | Public recap videos stop after two hours | The recap page asks for fresh links when the store refuses one (streamed or native, the phone playlist included) and carries on from the same moment |
+| ☑ | N11 | (engine) | iPhones on iOS 15 never upload (`AbortSignal.timeout`) | A time limit made by hand everywhere in the app (`src/shared/timeout.ts`) |
+| ☑ | N12 | N3, N8 | The storage limit can be skipped; upper-case keys escape it | Checked on every batch of links and every single upload, refused when unknown; a recording already in the cloud may finish a little past the line; keys must be lower case |
+| ☑ | N20 | R1 | Joining silently skips a part whose download failed | The joined bytes must equal the listed parts, or nothing is joined |
+| ☑ | — | R7 | A part landing during a join is left out, and the file called whole | The parts are listed again after the upload; a change means not whole |
+| ☑ | N21 | R2 | Another device closes a quiet session and clears "still uploading" | Each browser has its own id, kept in the session; only the device that recorded clears "pending"; the length is taken from the recording's last sign of life, not 0:00 |
+| ☑ | — | R2 (part) | A late part never rebuilds a file already joined | A part landing after the end marks the file not whole and it is made again |
+| ☑ | N22 | (engine) | Uploads stall on untimed questions | Every question to the storage route has a time limit; a failed readiness check is asked again |
+| ☑ | N35 | — | "In the cloud up to" runs ahead; the "copy not promised" note never shows | Counted from the first piece; the note shows whenever there is something to say |
+| ☑ | — | M14 | iPhones never try the playlist in the app | The playlist first in both iPhone branches |
+| ☑ | — | N4 | One attendee's secret (or a question id) opens another's private answer | Exactly one thing asked about per request; the secret sent in a header (P13) |
+| ☑ | N14 (part) | N2, N11 | Paid speech for anyone with an event id; provider errors shown | Anonymous speech needs a real attendee of that event with their secret, limited per attendee; provider errors stay in the log |
+| ☑ | — | N6 | One key's error switches a model off for everyone | Models marked gone per key |
+| ☑ | N30 | — | Recaps orphaned before part 0 stay public and cannot be switched off | Switched off once; switching off always allowed to the owner |
+| ☑ | — | B9, D1 (rest) | Owner rows written by strangers keep lead powers | Made memberships; the lead check reads an owner row only for the real owner |
+| ☑ | N33 | P11 (part) | Drive export of older recordings blocked by the security policy | `blob:` in `connect-src` |
+| ☑ | N37 | — | A network error empties the organisation list | Asked again, then said; the older read only when the function is missing |
+| ☑ | N39 | — | An unavailable recap page is slow to say so and offers actions | Event and recap asked together; nothing offered |
+| ☑ | N15 (part) | — | Nobody knows which migrations ran | `schema_migrations`, written by each migration from 09; `supabase/checks/verify-live.sql` holds both reports' read-only checks |
+| ☑ | — | (tests) | `tests/run.mjs` ran out of memory on a small machine | 2 GB per process |
+
+Tests: 131, passed 3x with both builds (`tests/RESULTS.md`, "Re-audit part 1"):
+new API tests for the allowance, long text, grants for deleted and missing
+sessions, the quota on every request, upper-case keys, speech and the answer
+selector; database tests for deleted sessions, read-only functions, stray
+owner rows and orphaned recaps; four engine drills (deleted elsewhere, delete
+stops uploads, no `AbortSignal.timeout`, "up to" from the first piece), each
+checked to fail without its fix.
+
+### Part 2 — live events (open)
+
+| | Re-audit | Henry 2 | Finding | Fix |
+|---|---|---|---|---|
+| ☐ | N7 | — | Captions, chat and questions of every open event can be listed | Read through functions that take an event id; table reads revoked from visitors; live push by Realtime Broadcast |
+| ☐ | — | P1 | The live-video signalling channel is public | Private Realtime channels; only the host sends offers |
+| ☐ | N16 | B5, D6 | Signed-in users see who asked each shared speaker question | Shared-question policy for visitors only |
+| ☐ | — | B4, P3 | Attendee rows without a secret are trusted | The hash required on new rows; old rows only while their event is open |
+| ☐ | N18 | P10, D10, B8 | Events filled or locked out; limits keyed on a spoofable header | Joins through the API; caps from the host's plan; keys on the account or the real client address |
+| ☐ | N13, N28 | N5, P5, P6, P7 | Recap chat and attendee questions as free general AI; host materials quotable | Answers kept to the recap; translation by line number, cached; budgets per recap charged to the owner |
+| ☐ | N14 (rest) | N7 | Speaker detection unmetered | Plan gate and metering by duration |
+
+### Part 3 — database operations and loose ends (open)
+
+| | Re-audit | Henry 2 | Finding | Fix |
+|---|---|---|---|---|
+| ☐ | — | B1 | Anonymous rows can fill the free database | Size caps, a global hourly ceiling, caps on transcript size |
+| ☐ | — | B3 | Functions made later are open to visitors by default | Revoked globally for the owner role |
+| ☐ | N29 | — | "Not valid" checks block updates of old rows | Violations counted and corrected, then validated |
+| ☐ | N31 | — | Migrations not safe to re-run one at a time | Re-grants inside 02; policies dropped by name; every owner listed |
+| ☐ | N32 | D2, D16 | Old short codes still work; leads insert spaces directly | Codes rotated; space inserts through the checked function |
+| ☐ | N34 | A7, A14, A15, N9, N10, N12, N13 | API loose ends | Deadlines everywhere, tickets with their own secret and a maximum life, limiter fails closed, account deletion complete |
+| ☐ | N23 | — | Deleting a very long recording deletes nothing; late uploads leave orphans | Deleted in batches on the server |
+| ☐ | N24, N26, N36 | R4–R6, R9 | Engine gaps: header kept on failure, memory cap, same-size collision, counter and part in one transaction, permanent errors | As the reports say |
+| ☐ | N25 | R4 | One recording split between the two stores when the check was slow | Store fixed on the first answer for the session |
+| ☐ | N19 | W5, W6, M12 | Long recordings never joined; joining in the browser | A server media job (Set 5) |
+| ⊘ | N38 | A17 | Vercel Hobby: 12 of 12 functions | Vercel Pro before charging |
+| ⊘ | — | (backups) | Backups incomplete; no restore | Supabase Pro with point-in-time recovery |
+
 ## Set 4 — Sessions, sync and the library
 
 | | Audit | Henry | Finding | Fix |
@@ -126,8 +204,8 @@ builds (`tests/RESULTS.md`, "Set 3").
 |---|---|---|---|---|
 | ☐ | X4 | M5 | Locking the phone silently stops recording | Keep-open notice; flush on hide; resume on return; gap marked; duration from the media |
 | ☐ | R15 | W6, M12, M13 | Whole recordings joined and played from memory | Never on phones; capped elsewhere; streams and playlists instead |
-| ☐ | — | M14 | The app never tries HLS on iPhone | HLS first on iOS |
-| ☐ | — | M16 | Expired links retried forever | Links renewed on 403 |
+| ☑ | — | M14 | The app never tries HLS on iPhone | HLS first on iOS (Set 3R) |
+| ◐ | — | M16 | Expired links retried forever | Links renewed on 403 (the recap page: Set 3R) |
 | ☐ | — | M17 | Video downloaded before play; 8 minutes buffered while paused | Nothing fetched before play on metered connections; small buffer |
 | ☐ | — | M18 | Playlist not checked against the parts | Sizes checked |
 | ☐ | X8 | — | WebM does not play on iPhone | MP4 recorded wherever the browser can; WebM sessions marked as such |
@@ -151,7 +229,7 @@ builds (`tests/RESULTS.md`, "Set 3").
 | ☐ | — | X8 | User's microphone starts muted | Follows Meet's mute state |
 | ☐ | — | X10 | Heavy jobs run in the engine during calls | Skipped in the engine |
 | ☐ | E5 | — | Recording in the side panel dies with it | Recording handed to the engine |
-| ☐ | E6 | — | Zip paths, pinned key | Forward-slash zip; key stripped for store builds |
+| ☑ | E6 | — | Zip paths, pinned key | Forward-slash zip; key stripped for store builds (Set 3R) |
 | ☐ | E7 | X14 | Sender not checked; look-alike domains; `tabs` | Sender checked; patterns anchored |
 | ☐ | — | X5 | Remote code in the package vs the listing | Google/Firebase loaders excluded from the extension build; listing corrected |
 | ☐ | — | X12 | Update mid-call; sign-out mid-recording | Updates deferred while recording; sign-out refused while pending |

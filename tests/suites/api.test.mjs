@@ -75,6 +75,21 @@ test('S6/A6: one answer, by its id, needs its attendee’s secret', async () => 
   assert.equal(ok.body.row.answer, 'private answer')
 })
 
+test('N4 (readiness): one attendee’s secret, or a speaker question’s id, never opens another attendee’s answer', async () => {
+  const mine = eventWithAttendee({ secret: 'mine' })
+  const theirs = eventWithAttendee({ secret: 'theirs' })
+  const theirAsk = uuid()
+  w.tables.asks.push({ id: theirAsk, event_id: theirs.eventId, attendee_id: theirs.attendee, kind: 'ask', status: 'answered', answer: 'their private answer' })
+  const mixed = await call(ask, request({ method: 'GET', query: { attendee: mine.attendee, ask: theirAsk, secret: 'mine' } }))
+  assert.equal(mixed.statusCode, 400)
+  const viaQuestion = await call(ask, request({ method: 'GET', query: { question: uuid(), ask: theirAsk } }))
+  assert.equal(viaQuestion.statusCode, 400)
+  // the secret in a header is read too (a link with it in lands in logs)
+  const header = await call(ask, request({ method: 'GET', headers: { 'x-sitca-attendee': 'theirs' }, query: { ask: theirAsk } }))
+  assert.equal(header.statusCode, 200)
+  assert.equal(header.body.row.answer, 'their private answer')
+})
+
 test('S6/A6: asking in an attendee’s name needs their secret, and their event', async () => {
   const { eventId, attendee } = eventWithAttendee({ secret: 'mine' })
   const noSecret = await call(ask, request({ body: { id: uuid(), eventId, attendeeId: attendee, kind: 'ask', question: 'q' } }))
@@ -170,14 +185,49 @@ test('S3: when the account service cannot be reached, the answer is “try again
 test('S12/D14: the server counts each question itself; own keys are not counted', async () => {
   const res = await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'ask', system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
   assert.equal(res.statusCode, 200, JSON.stringify(res.body))
-  assert.deepEqual(w.meter, [{ user: USERS.a.id, kind: 'ask', amount: 1 }])
+  assert.deepEqual(
+    w.meter.map((m) => m.kind),
+    ['ask', 'aic']
+  )
+  assert.equal(w.meter[1].amount, 3, 'the characters sent are counted')
   const other = await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'summary', system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
   assert.equal(other.statusCode, 200)
-  assert.equal(w.meter.at(-1).kind, 'ai')
+  assert.deepEqual(
+    w.meter.slice(-2).map((m) => m.kind),
+    ['ai', 'aic']
+  )
   w.meter = []
   const own = 'gsk_own_chat_key_1234567890abcdef'
   await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'ask', keys: { groqApiKey: own }, system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
   assert.deepEqual(w.meter, [])
+})
+
+test('N2: every platform-paid AI call counts against the month, whatever kind it names', async () => {
+  const u = { ...USERS.a }
+  const month = new Date().toISOString().slice(0, 10)
+  // this account has used its month's allowance on things that are not questions
+  w.tables.usage_meter.push({ user_id: u.id, day: month, kind: 'aic', n: 12_000_000 })
+  for (const kind of [undefined, 'summary', 'notes', 'ask']) {
+    const res = await call(chat, request({ headers: bearer(u), body: { kind, system: 's', messages: [{ role: 'user', content: 'hi' }] } }))
+    assert.equal(res.statusCode, 402, `kind ${kind} was answered past the allowance`)
+    assert.equal(res.body.limit, 'ai', JSON.stringify(res.body))
+  }
+  assert.equal(w.ai.groq.length + w.ai.anthropic.length, 0, 'no provider was paid')
+})
+
+test('N2/N5: long text is refused, never cut; a long session fits', async () => {
+  const hour = 'x'.repeat(80000)
+  const ok = await call(chat, request({ headers: bearer(USERS.a), body: { kind: 'summary', system: 's', messages: [{ role: 'user', content: hour }] } }))
+  assert.equal(ok.statusCode, 200, JSON.stringify(ok.body))
+  const sent = JSON.stringify(w.ai.groq.at(-1) ?? w.ai.anthropic.at(-1))
+  assert.ok(sent.includes(hour), 'the whole transcript reached the AI')
+  const tooLong = await call(chat, request({ headers: bearer(USERS.a), body: { system: 's', messages: [{ role: 'user', content: 'x'.repeat(100001) }] } }))
+  assert.equal(tooLong.statusCode, 400)
+  const tooMuch = await call(
+    chat,
+    request({ headers: bearer(USERS.a), body: { system: 'x'.repeat(140000), messages: [{ role: 'user', content: 'x'.repeat(90000) }] } })
+  )
+  assert.equal(tooMuch.statusCode, 413)
 })
 
 test('S12: a question is not answered free when the plan cannot be checked', async () => {
@@ -288,12 +338,23 @@ test('S11: speech for nobody in particular is refused', async () => {
   assert.equal(res.statusCode, 401)
 })
 
-test('S11: an attendee of an open event is read aloud; the limit key is not the caller’s choice', async () => {
+test('S11/N2: an attendee of an open event, with their secret, is read aloud; the limit key is not the caller’s choice', async () => {
   const eventId = 'ev-' + uuid().slice(0, 8)
+  const att = uuid()
+  const secret = 'f'.repeat(64)
   w.tables.events.push({ id: eventId, status: 'live', updated_at: new Date().toISOString() })
-  const res = await call(speak, request({ body: { text: 'hello', event: eventId, who: 'x1' } }))
+  w.tables.attendees.push({ id: att, event_id: eventId, secret_hash: createHash('sha256').update(secret).digest('hex') })
+  const res = await call(speak, request({ headers: { 'x-sitca-attendee': secret }, body: { text: 'hello', event: eventId, attendee: att, who: 'x1' } }))
   assert.equal(res.statusCode, 200)
   assert.ok([...w.rate.keys()].every((k) => !k.includes('x1')))
+  // knowing the event's id (it is on every screen in the room) is not enough
+  const idOnly = await call(speak, request({ body: { text: 'hello', event: eventId } }))
+  assert.equal(idOnly.statusCode, 401)
+  const wrong = await call(speak, request({ headers: { 'x-sitca-attendee': 'e'.repeat(64) }, body: { text: 'hello', event: eventId, attendee: att } }))
+  assert.equal(wrong.statusCode, 401)
+  // an attendee of another event is not one of this one
+  const other = await call(speak, request({ headers: { 'x-sitca-attendee': secret }, body: { text: 'hello', event: 'ev-elsewhere', attendee: att } }))
+  assert.equal(other.statusCode, 401)
 })
 
 test('S11: only the site and the extension get CORS', async () => {
@@ -391,8 +452,14 @@ test('S8/A4: one person’s sign-in never authorises another’s request', async
   assert.equal(stranger.statusCode, 403)
 })
 
+/** a session of this person's, as its row in the database */
+function ownSession(user, s = uuid()) {
+  w.tables.sessions.push({ id: s, owner: user.id })
+  return s
+}
+
 test('S12/A5: upload links: signed in, own session, a small batch, a few hours', async () => {
-  const s = uuid()
+  const s = ownSession(USERS.a)
   assert.equal((await call(storage, request({ body: { op: 'grant', session: s } }))).statusCode, 401)
   const res = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'grant', session: s, count: 400 } }))
   assert.equal(res.statusCode, 200)
@@ -402,7 +469,7 @@ test('S12/A5: upload links: signed in, own session, a small batch, a few hours',
 })
 
 test('R1/M3: numbers already holding a piece are never handed out again; they come back as taken, with sizes', async () => {
-  const s = uuid()
+  const s = ownSession(USERS.a)
   w.r2.set(`${USERS.a.id}/${s}/part-0000.webm`, Buffer.alloc(3000))
   w.r2.set(`${USERS.a.id}/${s}/part-0002.webm`, Buffer.alloc(5000))
   const res = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'grant', session: s, from: 0, count: 5 } }))
@@ -418,17 +485,50 @@ test('X1: upload links are refused for a session that belongs to someone else', 
   assert.equal(res.statusCode, 403)
 })
 
-test('S12: a new recording is refused when the plan’s storage is full; a running one never is', async () => {
-  const s = uuid()
+test('S12/N12: storage full: a new recording is refused however it asks; one already in the cloud may finish', async () => {
+  const s = ownSession(USERS.b)
   w.usage[USERS.b.id] = { plan: 'free' }
   w.r2.set(`${USERS.b.id}/${uuid()}.webm`, Buffer.alloc(8))
-  // pretend the folder is 4 GB: the fake lists real sizes, so a big object is stood in
-  const big = { length: 4 * 1024 ** 3 }
+  // pretend the folder is 3.5 GB (over the free plan's 3): the fake lists real sizes, so a big object is stood in
+  const big = { length: 3.5 * 1024 ** 3 }
   w.r2.set(`${USERS.b.id}/${uuid()}.webm`, big)
   const start = await call(storage, request({ headers: bearer(USERS.b), body: { op: 'grant', session: s, from: 0 } }))
   assert.equal(start.statusCode, 402)
-  const later = await call(storage, request({ headers: bearer(USERS.b), body: { op: 'grant', session: s, from: 60 } }))
-  assert.equal(later.statusCode, 200)
+  // starting part-way through once skipped the check
+  const skip = await call(storage, request({ headers: bearer(USERS.b), body: { op: 'grant', session: s, from: 60 } }))
+  assert.equal(skip.statusCode, 402)
+  // the single-upload route checks too
+  const whole = await call(storage, request({ headers: bearer(USERS.b), body: { op: 'put', keys: [{ key: `${USERS.b.id}/${s}/index.json` }] } }))
+  assert.equal(whole.statusCode, 200, 'a recording within the grace may still be joined')
+  // a recording already in the cloud may finish past the line
+  const running = ownSession(USERS.b)
+  w.r2.set(`${USERS.b.id}/${running}/part-0000.webm`, Buffer.alloc(8))
+  const more = await call(storage, request({ headers: bearer(USERS.b), body: { op: 'grant', session: running, from: 1 } }))
+  assert.equal(more.statusCode, 200)
+  // and nothing goes through when the plan cannot be read
+  w.usageDown = true
+  const unknown = await call(storage, request({ headers: bearer(USERS.n), body: { op: 'grant', session: ownSession(USERS.n) } }))
+  assert.equal(unknown.statusCode, 503)
+})
+
+test('N4/R8: no upload links for a deleted session, or one with no row of the caller’s', async () => {
+  const gone = uuid()
+  w.tables.deleted_sessions.push({ id: gone, owner: USERS.a.id })
+  const g = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'grant', session: gone } }))
+  assert.equal(g.statusCode, 410)
+  assert.equal(g.body.deleted, true)
+  const p = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'put', keys: [{ key: `${USERS.a.id}/${gone}.webm` }] } }))
+  assert.equal(p.statusCode, 410, 'a whole file finishing after the delete is refused')
+  const missing = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'grant', session: uuid() } }))
+  assert.equal(missing.statusCode, 409)
+  assert.equal(missing.body.missing, true)
+})
+
+test('N8: keys in upper case are refused (they would escape the plan’s count and the account’s deletion)', async () => {
+  const s = ownSession(USERS.a)
+  const key = `${USERS.a.id.toUpperCase()}/${s}/index.json`
+  const res = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'put', keys: [{ key }] } }))
+  assert.equal(res.statusCode, 403)
 })
 
 test('A5: odd key shapes are refused for uploads', async () => {
@@ -436,7 +536,7 @@ test('A5: odd key shapes are refused for uploads', async () => {
     const res = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'put', keys: [{ key, contentType: 'video/webm' }] } }))
     assert.equal(res.statusCode, 403, key)
   }
-  const ok = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'put', keys: [{ key: `${USERS.a.id}/${uuid()}/index.json`, contentType: 'application/json' }] } }))
+  const ok = await call(storage, request({ headers: bearer(USERS.a), body: { op: 'put', keys: [{ key: `${USERS.a.id}/${ownSession(USERS.a)}/index.json`, contentType: 'application/json' }] } }))
   assert.equal(ok.statusCode, 200)
 })
 

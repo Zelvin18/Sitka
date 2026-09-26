@@ -121,12 +121,43 @@ export function canStream(mime: string): boolean {
 
 // ---------- sources ----------
 
+/**
+ * Links to a recording last a couple of hours. A player watched longer than
+ * that, or left paused in a tab, meets a refusal (403 from the store); with
+ * `renew` it asks for fresh links, at most once a minute, and carries on.
+ */
+const EXPIRED = new Set([400, 401, 403])
+function renewer<T>(renew?: () => Promise<T | null>): (() => Promise<T | null>) | null {
+  if (!renew) return null
+  let last = 0
+  let running: Promise<T | null> | null = null
+  return () => {
+    if (running) return running
+    if (Date.now() - last < 60000) return Promise.resolve(null)
+    last = Date.now()
+    running = renew()
+      .catch(() => null)
+      .finally(() => {
+        running = null
+      })
+    return running
+  }
+}
+
 /** one file that honours byte ranges */
-export function sourceFromUrl(url: string, size: number): ByteSource {
+export function sourceFromUrl(url: string, size: number, renew?: () => Promise<string | null>): ByteSource {
+  const fresh = renewer(renew)
   return {
     size,
     async range(from, to, signal) {
-      const r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` }, signal })
+      let r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` }, signal })
+      if (EXPIRED.has(r.status) && fresh) {
+        const next = await fresh()
+        if (next) {
+          url = next
+          r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` }, signal })
+        }
+      }
       if (r.status !== 206) throw new Error(`range refused (${r.status})`)
       return r.arrayBuffer()
     }
@@ -134,7 +165,8 @@ export function sourceFromUrl(url: string, size: number): ByteSource {
 }
 
 /** parts laid end to end, each honouring byte ranges; sizes must be known */
-export function sourceFromParts(parts: { url: string; size: number }[]): ByteSource {
+export function sourceFromParts(parts: { url: string; size: number }[], renew?: () => Promise<string[] | null>): ByteSource {
+  const fresh = renewer(renew)
   const starts: number[] = []
   let total = 0
   for (const p of parts) {
@@ -152,7 +184,16 @@ export function sourceFromParts(parts: { url: string; size: number }[]): ByteSou
         const a = Math.max(from, s) - s
         const b = Math.min(to, e) - s
         const whole = a === 0 && b === parts[i].size - 1
-        const r = await fetch(parts[i].url, whole ? { signal } : { headers: { Range: `bytes=${a}-${b}` }, signal })
+        const get = (): Promise<Response> => fetch(parts[i].url, whole ? { signal } : { headers: { Range: `bytes=${a}-${b}` }, signal })
+        let r = await get()
+        if (EXPIRED.has(r.status) && fresh) {
+          const next = await fresh()
+          // the same parts, in the same order, freshly signed
+          if (next && next.length === parts.length) {
+            next.forEach((u, j) => (parts[j] = { ...parts[j], url: u }))
+            r = await get()
+          }
+        }
         if (!r.ok) throw new Error(`part ${i}: ${r.status}`)
         pieces.push(await r.arrayBuffer())
       }

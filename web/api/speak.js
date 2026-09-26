@@ -9,6 +9,7 @@
 // "not found", "decommissioned" or "requires terms acceptance" is skipped for
 // a while.
 
+import { createHash } from 'node:crypto'
 import { overLimitKey } from './_limit.js'
 import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, ipOf, allowOrigin } from './_auth.js'
 
@@ -35,6 +36,28 @@ async function eventIsOpen(id) {
   if (eventCache.size > 2000) eventCache.clear()
   eventCache.set(id, { ok, until: Date.now() + 60000 })
   return ok
+}
+
+const ATTENDEE_ID = /^[0-9a-fA-F-]{16,64}$/
+/**
+ * Is this a real attendee of this event, showing the secret their page
+ * holds? Knowing an event's id is not enough to spend on its voice: the id
+ * is on every screen in the room. A row made before secrets existed is not
+ * trusted here.
+ */
+async function attendeeOfEvent(attendee, eventId, secret) {
+  if (!ATTENDEE_ID.test(attendee) || !secret || !SUPA_URL || !SUPA_SERVICE) return false
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/attendees?id=eq.${attendee}&event_id=eq.${encodeURIComponent(eventId)}&select=secret_hash`, {
+      headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` },
+      signal: AbortSignal.timeout(4000)
+    })
+    const rows = r.ok ? await r.json() : []
+    const hash = Array.isArray(rows) && rows[0] ? rows[0].secret_hash : null
+    return Boolean(hash) && createHash('sha256').update(String(secret)).digest('hex') === hash
+  } catch {
+    return false
+  }
 }
 
 const KNOWN_GEMINI = [
@@ -369,12 +392,14 @@ export default async function handler(req, res) {
   }
   if (!bucket) {
     const eventId = String(body.event || '')
-    if (!(await eventIsOpen(eventId))) {
+    const attendee = String(body.attendee || '')
+    const secret = String(req.headers['x-sitca-attendee'] || '').slice(0, 128)
+    if (!(await eventIsOpen(eventId)) || !(await attendeeOfEvent(attendee, eventId, secret))) {
       res.status(401).json({ error: 'Sign in first.' })
       return
     }
-    // the room has a budget, and so does each address in it
-    if (await overLimitKey(`speak:ip:${ipOf(req)}`, 40, 800)) {
+    // the room has a budget, and so does each person and each address in it
+    if ((await overLimitKey(`speak:att:${attendee}`, 20, 300)) || (await overLimitKey(`speak:ip:${ipOf(req)}`, 40, 800))) {
       res.status(429).json({ error: 'Slow down a little.' })
       return
     }
@@ -395,7 +420,9 @@ export default async function handler(req, res) {
   const lang = String((req.body || {}).lang || '').slice(0, 40)
   const out = await synthesize(text, lang)
   if (!out.wav) {
-    res.status(503).json({ error: 'No voice available right now.', detail: out.errors.slice(0, 6) })
+    // the providers' own words stay in the server's log: they can name accounts and projects
+    console.warn('speak: no voice', out.errors.slice(0, 6))
+    res.status(503).json({ error: 'No voice available right now.' })
     return
   }
   res.setHeader('Content-Type', 'audio/wav')

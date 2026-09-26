@@ -30,7 +30,15 @@
  * is what lets tests drill it (tests/suites/recorder.test.mjs).
  */
 
-export type PutResult = { ok: true } | { error: string; taken?: { size: number } }
+/**
+ * `taken`: the cloud already holds that number (with its size). `deleted`:
+ * the server says the session was deleted (on another tab or device): the
+ * engine stops sending it and clears its device copy, as a delete here would.
+ */
+/** how long the recorder takes to hand over its first piece (the page asks for one every 3 s) */
+const FIRST_PIECE_MS = 3000
+
+export type PutResult = { ok: true } | { error: string; taken?: { size: number }; deleted?: boolean }
 
 export interface Uploader {
   /** Send one part. `taken`: the cloud already holds that number (with its size). */
@@ -305,6 +313,8 @@ export class RecordingEngine {
   private mem = new Map<string, { part: PartRec; bufs: ArrayBuffer[] }>()
   private queue = new Map<string, Job>()
   private running = new Set<string>()
+  /** uploads on their way, by session, so a delete can stop them */
+  private inFlight = new Map<string, Set<AbortController>>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private idle: (() => void)[] = []
 
@@ -426,6 +436,10 @@ export class RecordingEngine {
     if (seq === 0) {
       rec.kind = sniff(new Uint8Array(buf.slice(0, 12)))
       void this.keepHeader(sessionId, buf, rec.kind)
+      // The recording began about one piece before its first piece arrived,
+      // not when the session was made: the screen picker and the permission
+      // prompts come between, and "in the cloud up to" once ran ahead by them.
+      rec.startedAt = Math.max(rec.startedAt, at - FIRST_PIECE_MS)
     }
     const write = device.putChunk({ sessionId, seq, at, buf })
     live.pending.push({ seq, buf, at, write })
@@ -579,7 +593,34 @@ export class RecordingEngine {
     const { sessionId, partNo } = job
     const rec = await this.rec(sessionId)
     if (rec?.tombstone) return
-    const signalFor = (bytes: number): AbortSignal => AbortSignal.timeout(this.timeoutFor(bytes))
+    // A time limit per upload, and a way for a delete to stop it. Made by
+    // hand: AbortSignal.timeout is missing on iPhones before iOS 16, where it
+    // made every upload fail.
+    const made: { c: AbortController; t: ReturnType<typeof setTimeout> }[] = []
+    const signalFor = (bytes: number): AbortSignal => {
+      const c = new AbortController()
+      const t = setTimeout(() => c.abort(), this.timeoutFor(bytes))
+      ;(t as unknown as { unref?: () => void }).unref?.()
+      made.push({ c, t })
+      const set = this.inFlight.get(sessionId) ?? new Set<AbortController>()
+      set.add(c)
+      this.inFlight.set(sessionId, set)
+      return c.signal
+    }
+    try {
+      await this.sendWith(job, rec, signalFor)
+    } finally {
+      const set = this.inFlight.get(sessionId)
+      for (const { c, t } of made) {
+        clearTimeout(t)
+        set?.delete(c)
+      }
+      if (set && set.size === 0) this.inFlight.delete(sessionId)
+    }
+  }
+
+  private async sendWith(job: Job, rec: SessionRec | null, signalFor: (bytes: number) => AbortSignal): Promise<void> {
+    const { sessionId, partNo } = job
 
     // the header, sent once beside the parts
     if (partNo === -1) {
@@ -588,6 +629,7 @@ export class RecordingEngine {
       if (!h.ok) return this.retryLater(job, 'the device could not be read')
       if (!h.value) return
       const r = await this.up.putHeader(sessionId, new Blob([h.value.buf], { type: h.value.kind }), h.value.kind, signalFor(h.value.buf.byteLength))
+      if ('error' in r && r.deleted) return this.forget(sessionId)
       if ('error' in r && !r.taken) return this.retryLater(job, r.error)
       if (rec) {
         rec.headerUp = true
@@ -628,6 +670,11 @@ export class RecordingEngine {
     const r = await this.up.put(sessionId, partNo, blob, type, signalFor(blob.size))
 
     if ('error' in r) {
+      // deleted elsewhere: nothing more goes up, and the device copy goes
+      if (r.deleted) {
+        this.say(`session ${sessionId} was deleted elsewhere; its parts on this device are cleared`)
+        return this.forget(sessionId)
+      }
       if (r.taken) {
         if (r.taken.size === blob.size) {
           // this very part landed before (its answer was lost on the way back)
@@ -794,6 +841,9 @@ export class RecordingEngine {
     }
     for (const k of [...this.queue.keys()]) if (k.startsWith(sessionId + ':')) this.queue.delete(k)
     for (const k of [...this.mem.keys()]) if (k.startsWith(sessionId + ':')) this.mem.delete(k)
+    // uploads already on their way are stopped, not left to land after the delete
+    for (const c of this.inFlight.get(sessionId) ?? []) c.abort()
+    this.inFlight.delete(sessionId)
     await device.deleteChunks(sessionId)
     await device.deleteParts(sessionId)
     await device.deleteHeader(sessionId)

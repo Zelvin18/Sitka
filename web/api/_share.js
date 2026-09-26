@@ -97,6 +97,10 @@ export async function memberCanWatch(sessionId, token) {
  */
 export function keyShape(key) {
   const k = String(key)
+  // Every key the app makes is lower case. One in upper case would name the
+  // same folder in a different file: signed, but never counted against the
+  // plan nor removed with the account.
+  if (k !== k.toLowerCase()) return null
   let m = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\.webm$/i.exec(k)
   if (m && UUID.test(m[1]) && UUID.test(m[2])) return { owner: m[1].toLowerCase(), session: m[2].toLowerCase(), kind: 'whole' }
   m = /^([0-9a-f-]{36})\/([0-9a-f-]{36})\/(part-\d{4,6}\.webm|index\.json|init\.bin|manifest\.json)$/i.exec(k)

@@ -37,7 +37,9 @@ export function setEnv() {
 export const USERS = {
   a: { id: 'aaaaaaaa-0000-4000-8000-000000000001', email: 'a@example.com', token: 'token-a' },
   b: { id: 'bbbbbbbb-0000-4000-8000-000000000002', email: 'b@example.com', token: 'token-b' },
-  m: { id: 'cccccccc-0000-4000-8000-000000000003', email: 'member@example.com', token: 'token-m' }
+  m: { id: 'cccccccc-0000-4000-8000-000000000003', email: 'member@example.com', token: 'token-m' },
+  // an account only the "plan cannot be read" storage test uses (the server keeps plans a short while)
+  n: { id: 'dddddddd-0000-4000-8000-000000000004', email: 'new@example.com', token: 'token-n' }
 }
 
 /** A fresh world: tables, storage, and a log of every outside call. */
@@ -45,6 +47,8 @@ export function world() {
   return {
     authDown: false,
     tables: {
+      usage_meter: [],
+      deleted_sessions: [],
       sessions: [],
       recaps: [],
       events: [],
@@ -121,6 +125,7 @@ function matches(row, [col, expr]) {
   const op = expr.slice(0, dot)
   const arg = expr.slice(dot + 1)
   if (op === 'eq') return String(v) === arg
+  if (op === 'gte') return String(v) >= arg
   if (op === 'is') return arg === 'null' ? v == null : String(v) === arg
   if (op === 'like') return new RegExp('^' + arg.replace(/\*/g, '.*') + '$').test(String(v))
   if (op === 'ilike') return new RegExp('^' + arg.replace(/\*/g, '.*') + '$', 'i').test(String(v))
@@ -235,6 +240,7 @@ function rpc(w, name, args, headers) {
   if (name === 'sitka_meter') {
     if (keyRole(headers) !== 'service') return json(401, {})
     w.meter.push({ user: args.p_user, kind: args.p_kind, amount: args.p_amount })
+    w.tables.usage_meter.push({ user_id: args.p_user, day: new Date().toISOString().slice(0, 10), kind: args.p_kind, n: args.p_amount })
     return json(200, null)
   }
   return json(404, {})
@@ -289,7 +295,7 @@ function provider(w, host, path, method, headers, body) {
   }
   if (host === 'api.anthropic.com') {
     const b = JSON.parse(body || '{}')
-    w.ai.anthropic.push({ auth, system: b.system, model: b.model })
+    w.ai.anthropic.push({ auth, system: b.system, model: b.model, messages: b.messages })
     return json(200, { content: [{ type: 'text', text: 'claude answer' }] })
   }
   if (host === 'generativelanguage.googleapis.com') {

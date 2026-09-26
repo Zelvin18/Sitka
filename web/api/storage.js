@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   const owner = who ? who.id.toLowerCase() : null
 
   try {
-    if (op === 'put') return await putLinks(res, cfg, owner, body)
+    if (op === 'put') return await putLinks(res, cfg, owner, body, token)
     if (op === 'grant') return await grantLinks(res, cfg, owner, body, token)
     if (op === 'get') return await getLinks(res, cfg, owner, body, token)
     if (op === 'list') return await listFolder(res, cfg, owner, body, token)
@@ -139,23 +139,89 @@ async function footprint(cfg, owner) {
   return body
 }
 
-/** Has this account room for a new recording? True when its plan cannot be learned (a running session is never stopped by this). */
-async function roomFor(cfg, owner, token) {
+/**
+ * Has this account room for more? 'yes', 'no', or 'unknown' when the plan or
+ * the footprint cannot be learned just now (the upload waits on the device
+ * and is asked again; it is never let through unchecked). A recording
+ * already under way is given `graceGb` past the line, so a lecture is not cut
+ * in the middle; a new one gets none.
+ */
+async function roomFor(cfg, owner, token, graceGb = 0) {
   const u = await usageOf(token)
-  if (!u) return true
+  if (!u) return 'unknown'
   const gb = STORAGE_GB[u.plan] ?? STORAGE_GB.free
-  if (!gb) return true
-  const { bytes } = await footprint(cfg, owner)
-  return bytes < gb * 1024 ** 3
+  if (!gb) return 'yes'
+  let bytes
+  try {
+    ;({ bytes } = await footprint(cfg, owner))
+  } catch {
+    return 'unknown'
+  }
+  return bytes < (gb + graceGb) * 1024 ** 3 ? 'yes' : 'no'
+}
+const STORAGE_FULL = 'Your plan’s storage is full. Delete a recording or move up a plan to record more.'
+
+/**
+ * Whose session this is, by the database's own record: 'ours', 'other',
+ * 'deleted' (it was, and stays so), 'missing' (no row yet), or null when the
+ * database could not be asked. Uploads go only to a session that is ours.
+ */
+async function sessionState(owner, session) {
+  if (!SUPA_SERVICE) return null
+  const headers = { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` }
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/sessions?id=eq.${encodeURIComponent(session)}&select=owner`, {
+      headers,
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!r.ok) return null
+    const rows = await r.json()
+    const row = Array.isArray(rows) ? rows[0] : null
+    if (row) return String(row.owner).toLowerCase() === owner ? 'ours' : 'other'
+    // no row: deleted, or not written yet (a database without the record of
+    // deleted sessions yet answers "missing")
+    const d = await fetch(`${SUPA_URL}/rest/v1/deleted_sessions?id=eq.${encodeURIComponent(session)}&select=id`, {
+      headers,
+      signal: AbortSignal.timeout(5000)
+    })
+    if (d.ok) {
+      const gone = await d.json()
+      if (Array.isArray(gone) && gone.length > 0) return 'deleted'
+    }
+    return 'missing'
+  } catch {
+    return null
+  }
+}
+/** The answer to an upload for a session that is not ours to upload to; null when it is. */
+function refuseSession(res, state) {
+  if (state === 'ours') return null
+  if (state === 'other') return res.status(403).json({ error: 'This recording belongs to another account.' })
+  if (state === 'deleted') return res.status(410).json({ error: 'This session was deleted.', deleted: true })
+  if (state === 'missing') return res.status(409).json({ error: 'This session is not saved yet. It will be tried again.', missing: true })
+  return res.status(503).json({ error: 'Could not check this session just now. It will be tried again.' })
 }
 
 // ---------- the links ----------
 
-async function putLinks(res, cfg, owner, body) {
+async function putLinks(res, cfg, owner, body, token) {
   if (!owner) return res.status(401).json({ error: 'Sign in first.' })
   const items = Array.isArray(body.keys) ? body.keys : []
   const keys = items.map((i) => (typeof i === 'string' ? i : i?.key)).filter(Boolean)
   if (keys.length > 50 || !(await allow(owner, keys, true))) return res.status(403).json({ error: 'Not allowed.' })
+  // Only into a session that is ours and still there: a whole file or index
+  // finishing after its session was deleted is refused, not left behind.
+  const sessions = new Set(keys.map((k) => keyShape(k)?.session).filter(Boolean))
+  if (sessions.size > 4) return res.status(403).json({ error: 'Not allowed.' })
+  for (const session of sessions) {
+    const refused = refuseSession(res, await sessionState(owner, String(session).toLowerCase()))
+    if (refused) return refused
+  }
+  // the whole file replaces its pieces in the count, so a recording already
+  // held is given room to be joined
+  const room = await roomFor(cfg, owner, token, 2)
+  if (room === 'unknown') return res.status(503).json({ error: 'Could not check your storage just now. It will be tried again.' })
+  if (room === 'no') return res.status(402).json({ error: STORAGE_FULL, limit: 'storage' })
   const links = keys.map((key) => ({ key, url: presign(cfg, 'PUT', key, WRITE_SECS) }))
   return res.status(200).json({ links, expiresIn: WRITE_SECS })
 }
@@ -175,19 +241,11 @@ async function grantLinks(res, cfg, owner, body, token) {
   const from = Math.max(0, Math.min(99999, Math.floor(Number(body.from) || 0)))
   const count = Math.max(1, Math.min(GRANT_MAX, Math.floor(Number(body.count) || GRANT_MAX)))
   if (await overLimitKey(`grant:user:${owner}`, 30, 400)) return res.status(429).json({ error: 'Slow down a little.' })
-  // whose session this is, by the database's own record
-  if (SUPA_SERVICE) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/sessions?id=eq.${session}&select=owner`, {
-      headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` },
-      signal: AbortSignal.timeout(5000)
-    }).catch(() => null)
-    const rows = r && r.ok ? await r.json().catch(() => []) : []
-    const row = Array.isArray(rows) ? rows[0] : null
-    if (row && String(row.owner).toLowerCase() !== owner) return res.status(403).json({ error: 'This recording belongs to another account.' })
-  }
-  if (from === 0 && !(await roomFor(cfg, owner, token))) {
-    return res.status(402).json({ error: 'Your plan’s storage is full. Delete a recording or move up a plan to record more.', limit: 'storage' })
-  }
+  // Only the caller's own session, whose row is written and not deleted: a
+  // deleted session gets no more links from any tab or device, and pieces
+  // with no session behind them are not taken in.
+  const refused = refuseSession(res, await sessionState(owner, session))
+  if (refused) return refused
   // Numbers that already hold a piece are not handed out again: the recorder
   // is told they are taken, with their sizes, so a piece that already landed
   // (same size) counts as sent and a different one is given a new number.
@@ -203,6 +261,12 @@ async function grantLinks(res, cfg, owner, body, token) {
   } catch {
     /* unknown: every number is offered, as before */
   }
+  // The plan's storage, on every batch (starting part-way through once
+  // skipped it). A recording already in the cloud may finish a little past
+  // the line; a new one may not start past it.
+  const room = await roomFor(cfg, owner, token, held.size > 0 ? 1 : 0)
+  if (room === 'unknown') return res.status(503).json({ error: 'Could not check your storage just now. It will be tried again.' })
+  if (room === 'no') return res.status(402).json({ error: STORAGE_FULL, limit: 'storage' })
   const links = []
   for (let n = from; n < from + count; n++) {
     if (held.has(n)) {

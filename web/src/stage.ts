@@ -269,56 +269,90 @@ async function boot(): Promise<void> {
     setStagePoll(openPoll[0] as PollRow)
   }
 
-  sb.channel('stage-' + eventId)
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'segments', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const s = payload.new as SegRow
-        originals.set(s.idx, s.text)
-        if (!capLang) considerSeg(s.idx)
-        // translated stages wait briefly for the translation, then fall back
-        else setTimeout(() => considerSeg(s.idx), 9000)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'translations', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const t = payload.new as { lang: string; idx: number; text: string }
-        if (capLang && t.lang === capLang) {
-          translations.set(t.idx, t.text)
-          considerSeg(t.idx)
+  // One channel per table: the server refuses a whole channel when it will
+  // not serve one of its tables, which once left the projector with no
+  // captions at all. The event row is not on the live link; its start and
+  // end are asked for below.
+  const live = <T>(table: string, event: 'INSERT' | '*', on: (row: T) => void): void => {
+    sb.channel(`stage-${table}-${eventId}`)
+      .on('postgres_changes', { event, schema: 'public', table, filter: 'event_id=eq.' + eventId }, (payload) => on(payload.new as T))
+      .subscribe()
+  }
+  const takeSeg = (s: SegRow, late = false): void => {
+    if (originals.has(s.idx)) return
+    originals.set(s.idx, s.text)
+    if (!capLang || late) considerSeg(s.idx)
+    // translated stages wait briefly for the translation, then fall back
+    else setTimeout(() => considerSeg(s.idx), 9000)
+  }
+  const takeTranslation = (t: { lang?: string; idx: number; text: string }): void => {
+    if (!capLang || (t.lang && t.lang !== capLang) || translations.get(t.idx) === t.text) return
+    translations.set(t.idx, t.text)
+    considerSeg(t.idx)
+  }
+  const notesSeen = new Set<string>()
+  let notesSince = new Date().toISOString()
+  const takeNote = (n: { id?: string; text: string; created_at?: string }): void => {
+    if (!n?.text || (n.id && notesSeen.has(n.id))) return
+    if (n.id) notesSeen.add(n.id)
+    if (n.created_at && n.created_at > notesSince) notesSince = n.created_at
+    showStageNote(n.text)
+  }
+  live<SegRow>('segments', 'INSERT', (s) => takeSeg(s))
+  live<{ lang: string; idx: number; text: string }>('translations', 'INSERT', takeTranslation)
+  live<PollRow | null>('polls', '*', (p) => {
+    if (p && p.id) setStagePoll(p)
+  })
+  live<{ id?: string; text: string; created_at?: string }>('room_notes', 'INSERT', takeNote)
+
+  // The safety net: while live, the captions, translations and notes the
+  // live link missed (a dropped socket, a refused table) are asked for.
+  let lastIdx = Math.max(-1, ...originals.keys())
+  let lastTrIdx = Math.max(-1, ...translations.keys())
+  let catching = false
+  window.setInterval(async () => {
+    if (catching || !ev || ev.status !== 'live') return
+    catching = true
+    try {
+      const { data: segs } = await sb
+        .from('segments')
+        .select('idx,text')
+        .eq('event_id', eventId)
+        .gt('idx', lastIdx)
+        .order('idx', { ascending: true })
+        .limit(60)
+      const rows = (segs ?? []) as SegRow[]
+      // a long gap: only the tail is worth showing on a projector
+      for (const s of rows.slice(-3)) takeSeg(s, true)
+      for (const s of rows) lastIdx = Math.max(lastIdx, s.idx)
+      if (capLang) {
+        const { data: tr } = await sb
+          .from('translations')
+          .select('idx,text')
+          .eq('event_id', eventId)
+          .eq('lang', capLang)
+          .gt('idx', lastTrIdx)
+          .order('idx', { ascending: true })
+          .limit(60)
+        for (const t of (tr ?? []) as { idx: number; text: string }[]) {
+          lastTrIdx = Math.max(lastTrIdx, t.idx)
+          takeTranslation(t)
         }
       }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'events', filter: 'id=eq.' + eventId },
-      (payload) => {
-        ev = payload.new as EventRow
-        applyState()
-      }
-    )
-    // (the host's own screen gets these live; a stage opened by anyone else
-    // learns of a start or an end from the check below)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'polls', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const p = payload.new as PollRow | null
-        if (p && p.id) setStagePoll(p)
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'room_notes', filter: 'event_id=eq.' + eventId },
-      (payload) => {
-        const n = payload.new as { text: string }
-        if (n?.text) showStageNote(n.text)
-      }
-    )
-    .subscribe()
+      const { data: notes } = await sb
+        .from('room_notes')
+        .select('id,text,created_at')
+        .eq('event_id', eventId)
+        .gt('created_at', notesSince)
+        .order('created_at', { ascending: true })
+        .limit(5)
+      for (const n of (notes ?? []) as { id: string; text: string; created_at: string }[]) takeNote(n)
+    } catch {
+      /* the next tick tries again */
+    } finally {
+      catching = false
+    }
+  }, 4000)
 
   // the start, the end, a new title: asked for every five seconds
   window.setInterval(async () => {

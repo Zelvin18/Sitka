@@ -8,12 +8,17 @@
 
 import { SUPA_URL, SUPA_ANON, SUPA_SERVICE } from './_auth.js'
 
-/** hours, questions and storage a month; 0 = no limit */
+/**
+ * hours, questions and storage a month; 0 = no limit. `aiChars`: the text
+ * the app may send the platform's AI in a month (a picture counts as 6,000),
+ * about what a month of the plan's hours uses with room to spare. It is what
+ * bounds the bill: every platform-paid AI call counts, whatever it says it is.
+ */
 const LIMITS = {
-  free: { hours: 5, asks: 60, storageGb: 3 },
-  plus: { hours: 40, asks: 600, storageGb: 30 },
-  pro: { hours: 150, asks: 0, storageGb: 150 },
-  institution: { hours: 0, asks: 0, storageGb: 0 }
+  free: { hours: 5, asks: 60, storageGb: 3, aiChars: 12_000_000 },
+  plus: { hours: 40, asks: 600, storageGb: 30, aiChars: 90_000_000 },
+  pro: { hours: 150, asks: 0, storageGb: 150, aiChars: 320_000_000 },
+  institution: { hours: 0, asks: 0, storageGb: 0, aiChars: 0 }
 }
 const NAMES = { free: 'Free', plus: 'Plus', pro: 'Pro', institution: 'Institution' }
 /** a running session may finish past the line */
@@ -82,10 +87,58 @@ export async function allow(token, meter) {
   return { ok: true }
 }
 
+// ---------- the AI allowance, counted by the server ----------
+// Read from usage_meter with the service key (no database change needed),
+// afresh for every call: one small read beside an AI call that takes
+// seconds, and no stale count for a burst of calls to slip in on.
+function monthStart() {
+  const d = new Date()
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
+}
+async function aiCharsUsed(userId) {
+  if (!SUPA_URL || !SUPA_SERVICE) return null
+  try {
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/usage_meter?select=n&user_id=eq.${encodeURIComponent(userId)}&kind=eq.aic&day=gte.${monthStart()}`,
+      { headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}` }, signal: AbortSignal.timeout(4000) }
+    )
+    if (!r.ok) return null
+    const rows = await r.json()
+    return (Array.isArray(rows) ? rows : []).reduce((n, row) => n + Number(row.n || 0), 0)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * May this account send `chars` more to the platform's AI this month? Every
+ * platform-paid call asks, whatever kind it says it is. Refused (503) when
+ * it cannot be checked: the AI is the one thing here that costs by the call.
+ */
+export async function allowAi(token, userId, chars) {
+  let u = await usageOf(token)
+  if (!u) u = await usageOf(token, true)
+  const used = await aiCharsUsed(userId)
+  if (!u || used === null) {
+    return { ok: false, transient: true, message: 'Your plan could not be checked just now. Try again in a moment.' }
+  }
+  const plan = LIMITS[u.plan] ? u.plan : 'free'
+  const lim = LIMITS[plan].aiChars
+  if (lim > 0 && used + chars > lim) {
+    return {
+      ok: false,
+      plan,
+      message: `You’ve used this month’s AI allowance on the ${NAMES[plan]} plan. ${upgradeLine(plan)}`
+    }
+  }
+  return { ok: true }
+}
+
 /**
  * The server's own count of what costs money, in a table only it writes
  * (public.usage_meter): 'ask' for a question to the AI, 'ai' for the app's
- * other AI work, 'stt' for seconds of audio transcribed. Never throws; a
+ * other AI work, 'aic' for the characters sent to the AI, 'stt' for seconds
+ * of audio transcribed. Never throws; a
  * count that cannot be written is not worth failing the request over.
  */
 export async function meter(userId, kind, amount = 1) {

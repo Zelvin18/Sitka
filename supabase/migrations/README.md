@@ -28,6 +28,7 @@ A migration is not finished until that passes.
 | `20260925_06_indexes_constraints.sql` | indexes; status checks; account links (new rows only) |
 | `20260925_07_usage_retention.sql` | use counted by the server; sane session numbers; the nightly clean-up |
 | `20260925_08_functions_again.sql` | part 5 again, one function at a time (on the live database the SQL editor undid part 5 when it met a function not ours to change); ends by listing what visitors may run |
+| `20260926_09_reaudit.sql` | the second audit: invitation previews work again; deleted sessions stay deleted; orphaned recaps switched off; stray owner rows made memberships; a record of which migrations ran (`schema_migrations`) |
 
 ## Order for a release
 
@@ -35,3 +36,5 @@ A migration is not finished until that passes.
    reads until they exist).
 2. Run the new migrations here, in order.
 3. Rebuild and upload the Chrome extension, which carries its own copy of the app.
+4. Run `../checks/verify-live.sql` (read-only) and keep what it shows with the
+   release notes: it says what the live database really holds.

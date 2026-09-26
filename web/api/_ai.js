@@ -36,11 +36,18 @@ const KNOWN_VISION = [
 ]
 
 const listCache = new Map() // key tail -> { ids, at }
-const deadModels = new Map() // model id -> until (ms)
+// A model that is gone, per key: one account's error (a model its plan does
+// not include, terms it has not accepted, a user's own key) once switched the
+// model off for everyone on the instance for half an hour.
+const deadModels = new Map() // key tail + model id -> until (ms)
 const DEAD_MS = 30 * 60 * 1000
 
-const isDead = (id) => (deadModels.get(id) || 0) > Date.now()
-const markDead = (id) => deadModels.set(id, Date.now() + DEAD_MS)
+const deadKey = (key, id) => `${String(key || '').slice(-8)}:${id}`
+const isDead = (key, id) => (deadModels.get(deadKey(key, id)) || 0) > Date.now()
+const markDead = (key, id) => {
+  if (deadModels.size > 5000) deadModels.clear()
+  deadModels.set(deadKey(key, id), Date.now() + DEAD_MS)
+}
 
 // Reasoning models sometimes leak their private chain-of-thought — never show it.
 /**
@@ -291,7 +298,7 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
     }
     let plan
     try {
-      const vis = withImages ? (await visionCandidates(key)).filter((id) => !isDead(id)) : []
+      const vis = withImages ? (await visionCandidates(key)).filter((id) => !isDead(key, id)) : []
       if (requireVision) {
         if (vis.length === 0) {
           lastError = 'no vision model'
@@ -299,7 +306,7 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
         }
         plan = vis.map((id) => ({ id, keepImages: true }))
       } else {
-        const chat = (await chatCandidates(key, fast)).filter((id) => !isDead(id))
+        const chat = (await chatCandidates(key, fast)).filter((id) => !isDead(key, id))
         plan = [...vis.map((id) => ({ id, keepImages: true })), ...chat.map((id) => ({ id, keepImages: false }))]
       }
     } catch (err) {
@@ -321,7 +328,7 @@ async function groqChain(keys, system, messages, maxTokens, withImages, requireV
         keyErrors++
         break
       }
-      if (out.kind === 'model') markDead(step.id)
+      if (out.kind === 'model') markDead(key, step.id)
       if (out.kind === 'ratelimit') {
         keyRest.set(key.slice(-8), Date.now() + out.wait * 1000)
         break // this account is out of quota for now: the next key takes over
@@ -382,7 +389,7 @@ async function geminiChain(keys, system, messages, maxTokens, dl = null) {
   let lastError = 'no Gemini key'
   for (const key of keys) {
     let limited = 0
-    for (const model of (await geminiCandidates(key)).filter((id) => !isDead('gemini:' + id))) {
+    for (const model of (await geminiCandidates(key)).filter((id) => !isDead(key, 'gemini:' + id))) {
       if (dl && dl.left() < 4000) return { error: 'out of time' }
       let r
       try {
@@ -420,7 +427,7 @@ async function geminiChain(keys, system, messages, maxTokens, dl = null) {
       const msg = j.error?.message || `HTTP ${r.status}`
       lastError = `${model}: ${msg}`
       if ((r.status === 400 || r.status === 403) && /API key|permission|denied/i.test(msg)) break // bad key: next one
-      if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead('gemini:' + model)
+      if (r.status === 404 || /not found|not supported|deprecated/i.test(msg)) markDead(key, 'gemini:' + model)
       if (r.status === 429) {
         // Quota is per model per account: try the next model once, then rest the key.
         const mm = msg.match(/retry in ([\d.]+)s/i)

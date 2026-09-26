@@ -137,12 +137,18 @@ async function readOwn(req, res) {
   const question = pick(q.question)
   const proxy = pick(q.proxy)
   const attendee = pick(q.attendee)
-  if (!ask && !question && !proxy && !attendee) {
+  // Exactly one thing asked about. Mixing them once let one attendee's secret
+  // (or a speaker question's id) open another attendee's private answer.
+  const asked = [ask, question, proxy, attendee].filter(Boolean)
+  if (asked.length !== 1) {
     res.status(400).json({ error: 'bad-request' })
     return
   }
   res.setHeader('Cache-Control', 'no-store')
-  const secret = typeof q.secret === 'string' ? q.secret.slice(0, 128) : ''
+  // the secret travels in a header (never in a link that lands in logs); the
+  // query form is still read from pages loaded before the change
+  const fromHeader = req.headers && req.headers['x-sitca-attendee']
+  const secret = (typeof fromHeader === 'string' && fromHeader ? fromHeader : typeof q.secret === 'string' ? q.secret : '').slice(0, 128)
   // a speaker question is read by its own unguessable id; everything else
   // belongs to one attendee, who must show the secret their page holds
   if (!question) {

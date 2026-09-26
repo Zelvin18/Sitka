@@ -16,14 +16,19 @@
 // Answers stream as lines of JSON ({"delta"}, then {"done"}) when asked to.
 
 import { answer, platformKeys } from './_ai.js'
-import { allow, meter } from './_plan.js'
+import { allow, allowAi, meter } from './_plan.js'
 import { overLimitKey } from './_limit.js'
 import { SUPA_URL, SUPA_ANON, SUPA_SERVICE, UNCHECKED, userOf, tokenOf, ipOf, deadline, failSafely, realKey } from './_auth.js'
 
-// what one request may carry, so a single call cannot run up a bill
+// What one request may carry, so a single call cannot run up a bill. Text
+// over the limit is refused, never cut: a cut transcript made summaries of
+// long sessions miss their ending without anyone knowing.
 const MAX_SYSTEM = 150000
 const MAX_MESSAGES = 30
-const MAX_TEXT = 30000
+const MAX_TEXT = 100000
+/** all the text of one request, and what a picture counts as against it */
+const MAX_TOTAL = 220000
+const IMAGE_CHARS = 6000
 const MAX_IMAGES = 4
 const MAX_IMAGE_CHARS = 2_800_000 // a data URL of about 2 MB
 
@@ -38,13 +43,18 @@ function tidyMessages(list) {
   for (const m of list) {
     if (!m || (m.role !== 'user' && m.role !== 'assistant')) return null
     if (typeof m.content === 'string') {
-      out.push({ role: m.role, content: m.content.slice(0, MAX_TEXT) })
+      if (m.content.length > MAX_TEXT) return null
+      out.push({ role: m.role, content: m.content })
       continue
     }
     if (!Array.isArray(m.content) || m.content.length > 12) return null
     const parts = []
     for (const p of m.content) {
-      if (p && p.type === 'text') parts.push({ type: 'text', text: String(p.text || '').slice(0, MAX_TEXT) })
+      if (p && p.type === 'text') {
+        const text = String(p.text || '')
+        if (text.length > MAX_TEXT) return null
+        parts.push({ type: 'text', text })
+      }
       else if (p && p.type === 'image') {
         const url = String(p.dataUrl || '')
         if (++images > MAX_IMAGES || url.length > MAX_IMAGE_CHARS || !/^data:image\/[\w+.-]+;base64,/.test(url)) return null
@@ -54,6 +64,16 @@ function tidyMessages(list) {
     out.push({ role: m.role, content: parts })
   }
   return out
+}
+
+/** What a request costs to read: its text, and a fixed amount per picture. */
+function sizeOf(system, messages) {
+  let n = system.length
+  for (const m of messages) {
+    if (typeof m.content === 'string') n += m.content.length
+    else for (const p of m.content) n += p.type === 'text' ? p.text.length : IMAGE_CHARS
+  }
+  return n
 }
 
 // ---------- the public recap page: prompts built here ----------
@@ -271,7 +291,12 @@ export default async function handler(req, res) {
     }
     const messages = tidyMessages(body.messages)
     if (!messages) {
-      res.status(400).json({ error: 'That request is not one Sitca can answer.' })
+      res.status(400).json({ error: 'That request is not one Sitca can answer (or it is too long).' })
+      return
+    }
+    const size = sizeOf(system, messages)
+    if (size > MAX_TOTAL) {
+      res.status(413).json({ error: 'That request is too large.' })
       return
     }
     const maxTokens = Math.min(4000, Math.max(64, Number(body.maxTokens) || 1600))
@@ -310,8 +335,15 @@ export default async function handler(req, res) {
         return
       }
     }
+    // every platform-paid call, whatever kind it names, counts against the
+    // month's AI allowance by what it sends
+    const mayAi = await allowAi(tokenOf(req), me.id, size)
+    if (!mayAi.ok) {
+      res.status(mayAi.transient ? 503 : 402).json({ error: mayAi.message, plan: mayAi.plan, limit: 'ai' })
+      return
+    }
     // counted by the server as it is asked (a question, or the app's other AI work)
-    const counted = meter(me.id, body.kind === 'ask' ? 'ask' : 'ai', 1)
+    const counted = Promise.all([meter(me.id, body.kind === 'ask' ? 'ask' : 'ai', 1), meter(me.id, 'aic', size)])
     const out = await answer({
       system,
       messages,

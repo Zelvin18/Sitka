@@ -82,3 +82,17 @@ Every run of `node tests/run.mjs`, newest last.
 | 2 | ✓ 19.1 s | ✓ 3.9 s | ✓ 11.1 s | ✓ 117/117 passed | ✓ 8.1 s | ✓ 8.1 s |
 | 3 | ✓ 16.3 s | ✓ 3.8 s | ✓ 11.4 s | ✓ 117/117 passed | ✓ 8.2 s | ✓ 8.2 s |
 
+## 2026-09-26 08:03 UTC · Re-audit part 1 quick · PASS 1× · commit feace68 (with uncommitted changes)
+
+| Run | web types | server types | app types | test suites |
+|---|---|---|---|---|
+| 1 | ✓ 15.2 s | ✓ 3.6 s | ✓ 11.1 s | ✓ 129/129 passed |
+
+## 2026-09-26 08:10 UTC · Re-audit part 1 · PASS 3× · commit feace68 (with uncommitted changes)
+
+| Run | web types | server types | app types | test suites | web build | extension build |
+|---|---|---|---|---|---|---|
+| 1 | ✓ 15.3 s | ✓ 3.6 s | ✓ 11.1 s | ✓ 131/131 passed | ✓ 8.3 s | ✓ 8.2 s |
+| 2 | ✓ 16.5 s | ✓ 3.9 s | ✓ 11.2 s | ✓ 131/131 passed | ✓ 8.1 s | ✓ 8.2 s |
+| 3 | ✓ 17.1 s | ✓ 3.9 s | ✓ 11.1 s | ✓ 131/131 passed | ✓ 8.1 s | ✓ 8.2 s |
+

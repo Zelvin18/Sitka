@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sitca",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sitca sits beside your Google Meet, Zoom, Teams or YouTube session: live captions, private answers, notes, and a recap to share.",
   "icons": {
     "16": "icon-16.png",
